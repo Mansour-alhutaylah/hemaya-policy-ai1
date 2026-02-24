@@ -63,6 +63,7 @@ export default function Policies() {
     description: '',
     department: '',
     version: '1.0',
+    content_preview: '',
   });
 
   const { toast } = useToast();
@@ -130,6 +131,7 @@ export default function Policies() {
       description: '',
       department: '',
       version: '1.0',
+      content_preview: '',
     });
     setUploadProgress(0);
   };
@@ -148,21 +150,25 @@ export default function Policies() {
       }, 200);
 
       // Upload file
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      
+      const result = await base44.integrations.Core.UploadFile({ file });
+
       clearInterval(progressInterval);
       setUploadProgress(100);
 
       setNewPolicy(prev => ({
         ...prev,
         file_name: file.name,
-        file_url,
+        file_url: result.file_url,
         file_type: file.name.split('.').pop(),
+        content_preview: result.content_preview || '',
       }));
 
+      const chars = result.char_count || 0;
       toast({
         title: 'File Uploaded',
-        description: 'File has been uploaded. Please complete the form to save.',
+        description: chars > 0
+          ? `Text extracted: ${chars.toLocaleString()} characters. Complete the form to save.`
+          : 'File uploaded. Complete the form to save.',
       });
     } catch (error) {
       toast({
@@ -408,7 +414,7 @@ export default function Policies() {
             <div className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center hover:border-emerald-400 transition-colors">
               <input
                 type="file"
-                accept=".pdf,.docx,.txt"
+                accept=".pdf,.docx,.txt,.xlsx,.xls"
                 onChange={handleFileUpload}
                 className="hidden"
                 id="file-upload"

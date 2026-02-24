@@ -7,3 +7,7 @@ passlib[bcrypt]
 python-multipart
 python-dotenv
 httpx
+pymupdf
+python-docx
+openpyxl
+chardet
