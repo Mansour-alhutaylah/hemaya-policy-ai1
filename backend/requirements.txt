@@ -3,8 +3,11 @@ uvicorn
 sqlalchemy
 pydantic
 python-jose[cryptography]
-bcrypt
+passlib[bcrypt]
 python-multipart
 python-dotenv
 httpx
-psycopg2-binary
+pymupdf
+python-docx
+openpyxl
+chardet
