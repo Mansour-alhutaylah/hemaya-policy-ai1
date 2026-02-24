@@ -14,7 +14,6 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from backend import auth, database, models, schemas
-from backend.text_extractor import extract_text
 
 
 models.Base.metadata.create_all(bind=database.engine)
@@ -142,46 +141,14 @@ def update_me(settings: Dict[str, Any], current_user: models.User = Depends(get_
     return {"ok": True}
 
 
-# Allowed file types and max size (50 MB)
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".xlsx", ".xls"}
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-
-
 # File upload (used by policy upload flow)
 @app.post("/api/integrations/upload")
 async def upload_file(file: UploadFile = File(...)):
-    # Validate file extension
-    original_name = file.filename or "upload"
-    ext = Path(original_name).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type '{ext}' is not allowed. Allowed types: PDF, DOCX, TXT, XLSX",
-        )
-
-    # Read file content
-    content = await file.read()
-
-    # Validate file size
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File size exceeds the 50 MB limit",
-        )
-
-    # Save to disk
-    file_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{original_name}"
+    file_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
     dest = UPLOAD_DIR / file_name
-    dest.write_bytes(content)
-
-    # Extract text content
-    extracted_text = extract_text(dest, ext)
-
-    return {
-        "file_url": f"/uploads/{file_name}",
-        "content_preview": extracted_text,
-        "char_count": len(extracted_text),
-    }
+    with dest.open("wb") as f:
+        f.write(await file.read())
+    return {"file_url": f"/uploads/{file_name}"}
 
 
 # Generic Entity Routes
