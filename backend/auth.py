@@ -1,9 +1,10 @@
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
 
-SECRET_KEY = "CHANGEME_THIS_IS_UNSAFE_FOR_PRODUCTION"
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGEME_THIS_IS_UNSAFE_FOR_PRODUCTION")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 3000
 

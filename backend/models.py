@@ -41,6 +41,8 @@ class Policy(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     last_analyzed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Alias so frontend sort by "-created_date" works
+    created_date = Column(DateTime, default=datetime.utcnow)
 
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")
@@ -138,6 +140,8 @@ class AuditLog(Base):
     target_id = Column(String)
     details = Column(JSON, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_date = Column(DateTime, default=datetime.utcnow)
 
 
 class AIInsight(Base):
