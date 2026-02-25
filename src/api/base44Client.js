@@ -16,14 +16,17 @@ async function request(method, url, data) {
   const isJson = contentType.includes("application/json");
 
   if (!res.ok) {
-    // حاول تقرأ JSON، وإلا اقرأ كنص
     const text = await res.text();
-    if (isJson) {
+    if (isJson && text) {
       try {
         const j = JSON.parse(text);
-        throw new Error(j.detail || j.error || "Request failed");
-      } catch {
-        throw new Error(text || "Request failed");
+        const detail = j.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((e) => e.msg || e.message || JSON.stringify(e)).join(", ")
+          : detail || j.error || "Request failed";
+        throw new Error(msg);
+      } catch (parseErr) {
+        if (!(parseErr instanceof SyntaxError)) throw parseErr;
       }
     }
     throw new Error(text || "Request failed");

@@ -70,7 +70,7 @@ export default function Policies() {
 
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
-    queryFn: () => Policy.list('-created_date'),
+    queryFn: () => Policy.list('-created_at'),
   });
 
   const createPolicyMutation = useMutation({
@@ -84,7 +84,7 @@ export default function Policies() {
         action: 'policy_upload',
         target_type: 'policy',
         target_id: newPolicy.id,
-        details: `Uploaded policy: ${newPolicy.file_name}`,
+        details: { filename: newPolicy.file_name },
       });
       toast({
         title: 'Policy Uploaded',
@@ -148,21 +148,25 @@ export default function Policies() {
       }, 200);
 
       // Upload file
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      
+      const result = await base44.integrations.Core.UploadFile({ file });
+
       clearInterval(progressInterval);
       setUploadProgress(100);
 
       setNewPolicy(prev => ({
         ...prev,
         file_name: file.name,
-        file_url,
+        file_url: result.file_url,
         file_type: file.name.split('.').pop(),
+        content_preview: result.content_preview || '',
       }));
 
+      const charCount = result.char_count || 0;
       toast({
         title: 'File Uploaded',
-        description: 'File has been uploaded. Please complete the form to save.',
+        description: charCount > 0
+          ? `Extracted ${charCount.toLocaleString()} characters. Complete the form to save.`
+          : 'File uploaded. Complete the form to save.',
       });
     } catch (error) {
       toast({
@@ -269,7 +273,7 @@ export default function Policies() {
       cell: (row) => (
         <div>
           <p className="text-sm text-slate-900">
-            {row.created_date ? format(new Date(row.created_date), 'MMM d, yyyy') : '-'}
+            {row.created_at ? format(new Date(row.created_at), 'MMM d, yyyy') : '-'}
           </p>
           <p className="text-xs text-slate-500">
             {row.created_by || 'Unknown'}
@@ -408,7 +412,7 @@ export default function Policies() {
             <div className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center hover:border-emerald-400 transition-colors">
               <input
                 type="file"
-                accept=".pdf,.docx,.txt"
+                accept=".pdf,.docx,.txt,.xlsx,.xls"
                 onChange={handleFileUpload}
                 className="hidden"
                 id="file-upload"
@@ -528,8 +532,8 @@ export default function Policies() {
                 <div>
                   <p className="text-sm text-slate-500">Upload Date</p>
                   <p className="font-medium">
-                    {selectedPolicy.created_date 
-                      ? format(new Date(selectedPolicy.created_date), 'MMM d, yyyy HH:mm')
+                    {selectedPolicy.created_at 
+                      ? format(new Date(selectedPolicy.created_at), 'MMM d, yyyy HH:mm')
                       : '-'}
                   </p>
                 </div>

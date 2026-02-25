@@ -19,6 +19,8 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from backend import auth, database, models, schemas
+from backend.database import get_db
+from backend.text_extractor import extract_text
 
 
 models.Base.metadata.create_all(bind=database.engine)
@@ -38,7 +40,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -46,14 +48,6 @@ app.add_middleware(
 UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-
-
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # OAuth2 dependency for JWT bearer tokens
@@ -156,14 +150,36 @@ def update_me(settings: Dict[str, Any], current_user: models.User = Depends(get_
     return {"ok": True}
 
 
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".xlsx", ".xls"}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
 # File upload (used by policy upload flow)
 @app.post("/api/integrations/upload")
 async def upload_file(file: UploadFile = File(...)):
-    file_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+    original_name = file.filename or "upload"
+    ext = Path(original_name).suffix.lower()
+
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not supported. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File exceeds 50 MB limit")
+
+    file_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{original_name}"
     dest = UPLOAD_DIR / file_name
-    with dest.open("wb") as f:
-        f.write(await file.read())
-    return {"file_url": f"/uploads/{file_name}"}
+    dest.write_bytes(content)
+
+    extracted_text = extract_text(dest, ext)
+
+    return {
+        "file_url": f"/uploads/{file_name}",
+        "content_preview": extracted_text,
+        "char_count": len(extracted_text),
+    }
 
 
 # Generic Entity Routes

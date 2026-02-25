@@ -47,7 +47,11 @@ export default function Signup() {
       const d1 = await safeJson(r1);
 
       if (!r1.ok) {
-        throw new Error(d1?.detail || d1?.error || "Signup failed");
+        const detail = d1?.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((e) => e.msg || e.message || JSON.stringify(e)).join(", ")
+          : detail || d1?.error || "Signup failed";
+        throw new Error(msg);
       }
 
       // ✅ لا نسوي login هنا
@@ -130,7 +134,7 @@ export default function Signup() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
-              minLength={6}
+              minLength={8}
               required
             />
           </div>
