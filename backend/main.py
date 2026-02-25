@@ -1,8 +1,13 @@
 import os
 import random
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
@@ -20,6 +25,16 @@ from backend.text_extractor import extract_text
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    print(f"\n[UNHANDLED ERROR] {request.method} {request.url}\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,7 +98,7 @@ ENTITY_MAP: Dict[str, Any] = {
 
 # Auth Routes
 @app.post("/api/auth/register", response_model=schemas.User)
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def register(user: schemas.RegisterRequest, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
