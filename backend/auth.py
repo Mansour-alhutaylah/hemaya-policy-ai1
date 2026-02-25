@@ -2,10 +2,14 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
+<<<<<<< HEAD
 import bcrypt
 from jose import jwt
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "hemaya-super-secret-key-change-this-in-production-2024")
+=======
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGEME_THIS_IS_UNSAFE_FOR_PRODUCTION")
+>>>>>>> 2dcbf2847e8e53effdf0cd13fbc666c5c4a53f29
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 3000
 

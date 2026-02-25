@@ -86,6 +86,7 @@ ENTITY_MAP: Dict[str, Any] = {
     "AuditLog": models.AuditLog,
     "ControlLibrary": models.ControlLibrary,
     "AIInsight": models.AIInsight,
+    "Framework": models.Framework,
 }
 
 
@@ -263,6 +264,12 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Policy not found")
 
     policy.status = "processing"
+    db.commit()
+
+    # Remove previous analysis data for this policy to prevent duplicates on re-run
+    db.query(models.Gap).filter(models.Gap.policy_id == policy.id).delete()
+    db.query(models.MappingReview).filter(models.MappingReview.policy_id == policy.id).delete()
+    db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
     db.commit()
 
     text = (policy.content_preview or policy.description or policy.file_name or "").lower()

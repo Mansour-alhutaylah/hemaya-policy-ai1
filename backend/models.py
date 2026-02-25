@@ -39,9 +39,17 @@ class Policy(Base):
     file_type = Column(String, nullable=True)
     content_preview = Column(Text, nullable=True)
     framework_code = Column(String, nullable=True)
+<<<<<<< HEAD
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     last_analyzed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+=======
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    last_analyzed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    # Alias so frontend sort by "-created_date" works
+    created_date = Column(DateTime, default=datetime.utcnow)
+>>>>>>> 2dcbf2847e8e53effdf0cd13fbc666c5c4a53f29
 
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")
@@ -137,8 +145,15 @@ class AuditLog(Base):
     action = Column(String)
     target_type = Column(String)
     target_id = Column(String)
+<<<<<<< HEAD
     details = Column(JSONB, nullable=True)
     timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
+=======
+    details = Column(JSON, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_date = Column(DateTime, default=datetime.utcnow)
+>>>>>>> 2dcbf2847e8e53effdf0cd13fbc666c5c4a53f29
 
 
 class AIInsight(Base):

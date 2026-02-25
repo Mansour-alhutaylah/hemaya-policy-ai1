@@ -1,8 +1,9 @@
 // Inspired by react-hot-toast library
 import { useState, useEffect } from "react";
 
-const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_LIMIT = 1;
+const TOAST_REMOVE_DELAY = 500;
+const AUTO_DISMISS_DELAY = 4000;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -113,6 +114,9 @@ function dispatch(action) {
 function toast({ ...props }) {
   const id = genId();
 
+  // Dismiss all existing toasts before showing the new one
+  dispatch({ type: actionTypes.DISMISS_TOAST, toastId: undefined });
+
   const update = (props) =>
     dispatch({
       type: actionTypes.UPDATE_TOAST,
@@ -133,6 +137,11 @@ function toast({ ...props }) {
       },
     },
   });
+
+  // Auto-dismiss after AUTO_DISMISS_DELAY
+  setTimeout(() => {
+    dismiss();
+  }, AUTO_DISMISS_DELAY);
 
   return {
     id,
