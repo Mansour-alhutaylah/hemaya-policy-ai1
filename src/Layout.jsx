@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { cn } from '@/lib/utils';
@@ -30,12 +30,12 @@ export default function Layout({ children }) {
     
     try {
       // Get latest analyzed policy
-      const { data: policies } = await base44.entities.Policy.filter({ status: 'analyzed' });
-      
+      const policies = await api.entities.Policy.filter({ status: 'analyzed' });
+
       if (policies && policies.length > 0) {
         const latestPolicy = policies[0];
-        
-        const result = await base44.functions.invoke('generate_report', {
+
+        const result = await api.functions.invoke('generate_report', {
           policy_id: latestPolicy.id,
           report_type: reportConfig.type,
           format: reportConfig.format,

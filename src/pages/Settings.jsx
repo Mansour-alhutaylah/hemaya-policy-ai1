@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,7 +67,7 @@ export default function Settings() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const userData = await base44.auth.me();
+        const userData = await api.auth.me();
         setUser(userData);
         // Load any saved settings from user data
         if (userData.settings) {
@@ -84,7 +84,7 @@ export default function Settings() {
     setLoading(true);
     try {
       // Save settings to user profile
-      await base44.auth.updateMe({ settings });
+      await api.auth.updateMe({ settings });
       toast({
         title: 'Settings Saved',
         description: 'Your preferences have been updated successfully.',

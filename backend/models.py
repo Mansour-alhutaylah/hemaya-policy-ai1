@@ -1,5 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+
+def _now():
+    return datetime.now(timezone.utc)
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -22,7 +25,7 @@ class User(Base):
     last_name = Column(String)
     phone = Column(String, nullable=True)
     role = Column(String, default="user")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_now)
     settings = Column(JSONB, nullable=True)
 
 
@@ -39,17 +42,9 @@ class Policy(Base):
     file_type = Column(String, nullable=True)
     content_preview = Column(Text, nullable=True)
     framework_code = Column(String, nullable=True)
-<<<<<<< HEAD
-    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    uploaded_at = Column(DateTime(timezone=True), default=_now)
     last_analyzed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-=======
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
-    last_analyzed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    # Alias so frontend sort by "-created_date" works
-    created_date = Column(DateTime, default=datetime.utcnow)
->>>>>>> 2dcbf2847e8e53effdf0cd13fbc666c5c4a53f29
+    created_at = Column(DateTime(timezone=True), default=_now)
 
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")
@@ -65,7 +60,7 @@ class ControlLibrary(Base):
     title = Column(String)
     keywords = Column(JSONB)
     severity_if_missing = Column(String, default="Medium")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class ComplianceResult(Base):
@@ -79,7 +74,7 @@ class ComplianceResult(Base):
     controls_partial = Column(Integer, default=0)
     controls_missing = Column(Integer, default=0)
     status = Column(String)
-    analyzed_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    analyzed_at = Column(DateTime(timezone=True), default=_now)
     analysis_duration = Column(Float, default=0)
     details = Column(JSONB)
 
@@ -98,8 +93,10 @@ class Gap(Base):
     status = Column(String, default="Open")
     description = Column(Text, nullable=True)
     remediation = Column(Text, nullable=True)
+    remediation_notes = Column(Text, nullable=True)
     owner = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    due_date = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
     policy = relationship("Policy", back_populates="gaps")
 
@@ -118,7 +115,7 @@ class MappingReview(Base):
     review_notes = Column(Text, nullable=True)
     reviewer = Column(String, nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
     policy = relationship("Policy", back_populates="mappings")
 
@@ -133,8 +130,8 @@ class Report(Base):
     status = Column(String, default="Completed")
     download_url = Column(String, nullable=True)
     frameworks_included = Column(JSONB, nullable=True)
-    generated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    generated_at = Column(DateTime(timezone=True), default=_now)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class AuditLog(Base):
@@ -145,15 +142,9 @@ class AuditLog(Base):
     action = Column(String)
     target_type = Column(String)
     target_id = Column(String)
-<<<<<<< HEAD
     details = Column(JSONB, nullable=True)
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
-=======
-    details = Column(JSON, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    created_date = Column(DateTime, default=datetime.utcnow)
->>>>>>> 2dcbf2847e8e53effdf0cd13fbc666c5c4a53f29
+    timestamp = Column(DateTime(timezone=True), default=_now)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class AIInsight(Base):
@@ -167,7 +158,7 @@ class AIInsight(Base):
     priority = Column(String)
     confidence = Column(Float, default=0)
     status = Column(String, default="New")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class Framework(Base):

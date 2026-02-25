@@ -1,10 +1,9 @@
 import React, { createContext, useState, useContext, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  // ✅ تحميل المستخدم بأمان من localStorage
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem("user");
@@ -26,7 +25,6 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  // ✅ تسجيل الدخول
   const login = ({ token, user }) => {
     if (!token) return;
 
@@ -41,7 +39,6 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
   };
 
-  // ✅ التحقق من الجلسة
   const checkAuth = async () => {
     const token = localStorage.getItem("token");
 
@@ -56,7 +53,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(true);
       setAuthError(null);
 
-      const currentUser = await base44.auth.me();
+      const currentUser = await api.auth.me();
 
       if (currentUser) {
         setUser(currentUser);
@@ -83,7 +80,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ✅ تسجيل الخروج
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);

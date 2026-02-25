@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,10 +15,10 @@ import { Bell, FileBarChart, Search, LogOut, User, Settings, ChevronDown } from 
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/lib/AuthContext"; // ✅ مهم
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Topbar({ onGenerateReport }) {
-  const { user: ctxUser, logout: ctxLogout } = useAuth(); // ✅ من الكونتكست
+  const { user: ctxUser, logout: ctxLogout } = useAuth();
   const [user, setUser] = useState(ctxUser || null);
 
   const [notifications] = useState([
@@ -27,12 +27,10 @@ export default function Topbar({ onGenerateReport }) {
     { id: 3, title: "Report Ready", message: "Q4 Compliance Report is ready to download", time: "2h ago", unread: false },
   ]);
 
-  // ✅ لما يتغير ctxUser يحدث هنا
   useEffect(() => {
     if (ctxUser) setUser(ctxUser);
   }, [ctxUser]);
 
-  // ✅ fallback: localStorage ثم /auth/me
   useEffect(() => {
     const loadUser = async () => {
       try {
@@ -44,7 +42,7 @@ export default function Topbar({ onGenerateReport }) {
           return;
         }
 
-        const userData = await base44.auth.me();
+        const userData = await api.auth.me();
         setUser(userData);
         localStorage.setItem("user", JSON.stringify(userData));
       } catch {
@@ -57,12 +55,10 @@ export default function Topbar({ onGenerateReport }) {
   const unreadCount = notifications.filter((n) => n.unread).length;
 
   const handleLogout = () => {
-    // الأفضل تستخدم الكونتكست لو موجود
     if (typeof ctxLogout === "function") return ctxLogout();
-    base44.auth.logout("/login");
+    api.auth.logout("/login");
   };
 
-  // ✅ اسم العرض: first_name ثم full_name ثم email
   const displayName = useMemo(() => {
     if (!user) return "User";
     return (
@@ -87,7 +83,6 @@ export default function Topbar({ onGenerateReport }) {
       u?.email ||
       "U";
 
-    // لو email خذ أول حرفين
     if (name.includes("@")) return name.slice(0, 2).toUpperCase();
 
     const parts = name.trim().split(/\s+/);
@@ -172,7 +167,6 @@ export default function Topbar({ onGenerateReport }) {
               </Avatar>
 
               <div className="flex flex-col items-start">
-                {/* ✅ هنا يظهر first_name بدل User */}
                 <span className="text-sm font-medium text-slate-700">
                   {displayName}
                 </span>

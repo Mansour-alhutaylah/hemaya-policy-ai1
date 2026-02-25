@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -47,8 +47,8 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
-const Policy = base44.entities.Policy;
-const AuditLog = base44.entities.AuditLog;
+const Policy = api.entities.Policy;
+const AuditLog = api.entities.AuditLog;
 
 export default function Policies() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -78,7 +78,7 @@ export default function Policies() {
       return Policy.create(policyData);
     },
     onSuccess: async (newPolicy) => {
-      queryClient.invalidateQueries(['policies']);
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
       await AuditLog.create({
         actor: 'Current User',
         action: 'policy_upload',
@@ -105,7 +105,7 @@ export default function Policies() {
   const updatePolicyMutation = useMutation({
     mutationFn: ({ id, data }) => Policy.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['policies']);
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
       toast({
         title: 'Policy Updated',
         description: 'Policy status has been updated.',
@@ -116,7 +116,7 @@ export default function Policies() {
   const deletePolicyMutation = useMutation({
     mutationFn: (id) => Policy.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(['policies']);
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
       toast({
         title: 'Policy Deleted',
         description: 'Policy has been removed.',
@@ -148,7 +148,7 @@ export default function Policies() {
       }, 200);
 
       // Upload file
-      const result = await base44.integrations.Core.UploadFile({ file });
+      const result = await api.integrations.Core.UploadFile({ file });
 
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -208,15 +208,15 @@ export default function Policies() {
       });
 
       // Call backend function
-      const result = await base44.functions.invoke('analyze_policy', {
+      const result = await api.functions.invoke('analyze_policy', {
         policy_id: policy.id,
         frameworks: ['NCA ECC', 'ISO 27001', 'NIST 800-53'],
       });
 
       if (result.success) {
-        queryClient.invalidateQueries(['policies']);
-        queryClient.invalidateQueries(['complianceResults']);
-        queryClient.invalidateQueries(['gaps']);
+        queryClient.invalidateQueries({ queryKey: ['policies'] });
+        queryClient.invalidateQueries({ queryKey: ['complianceResults'] });
+        queryClient.invalidateQueries({ queryKey: ['gaps'] });
         
         toast({
           title: 'Analysis Complete',

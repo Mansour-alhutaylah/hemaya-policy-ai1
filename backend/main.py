@@ -1,7 +1,7 @@
 import os
 import random
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -146,7 +146,7 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
 
 @app.post("/api/auth/updateMe")
 def update_me(settings: Dict[str, Any], current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    current_user.settings = settings
+    current_user.settings = settings.get("settings", settings)
     db.commit()
     return {"ok": True}
 
@@ -156,7 +156,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 # File upload (used by policy upload flow)
 @app.post("/api/integrations/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     original_name = file.filename or "upload"
     ext = Path(original_name).suffix.lower()
 
@@ -170,7 +170,7 @@ async def upload_file(file: UploadFile = File(...)):
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 50 MB limit")
 
-    file_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{original_name}"
+    file_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{original_name}"
     dest = UPLOAD_DIR / file_name
     dest.write_bytes(content)
 
@@ -336,7 +336,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
             controls_partial=controls_partial,
             controls_missing=controls_missing,
             status=status_label,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(timezone.utc),
             analysis_duration=0,
             details={"notes": "Analysis complete"},
         )
@@ -349,7 +349,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
         db.add_all(gaps)
 
     policy.status = "analyzed"
-    policy.last_analyzed_at = datetime.utcnow()
+    policy.last_analyzed_at = datetime.now(timezone.utc)
     db.commit()
 
     return {
@@ -366,7 +366,9 @@ async def run_simulation(request: schemas.RunSimulationRequest, db: Session = De
     if not results:
         return JSONResponse(status_code=404, content={"error": "No results to simulate"})
 
-    impact = 1.5
+    controls_selected = len(request.control_ids or [])
+    impact = 1.5 + controls_selected * 0.5
+    controls_resolved = max(3, controls_selected)
     projected = []
     for r in results:
         projected_score = min(100, (r.compliance_score or 0) + impact * 3)
@@ -376,11 +378,11 @@ async def run_simulation(request: schemas.RunSimulationRequest, db: Session = De
             "projected_score": round(projected_score),
             "improvement": round(projected_score - (r.compliance_score or 0)),
             "controls_covered": r.controls_covered,
-            "controls_missing": max(0, (r.controls_missing or 0) - 3),
+            "controls_missing": max(0, (r.controls_missing or 0) - controls_resolved),
         })
 
     gaps = db.query(models.Gap).filter(models.Gap.policy_id == request.policy_id).all()
-    gaps_resolved = min(len(gaps), 3)
+    gaps_resolved = min(len(gaps), controls_resolved)
 
     return {
         "success": True,
@@ -388,7 +390,7 @@ async def run_simulation(request: schemas.RunSimulationRequest, db: Session = De
             {"framework": r.framework, "score": round(r.compliance_score or 0)} for r in results
         ],
         "projected_results": projected,
-        "controls_implemented": 3,
+        "controls_implemented": controls_resolved,
         "gaps_resolved": gaps_resolved,
         "total_impact": round(sum(p["improvement"] for p in projected) / len(projected)),
     }
@@ -400,7 +402,7 @@ async def generate_report(request: schemas.GenerateReportRequest, db: Session = 
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
 
-    download_url = f"/uploads/report_{request.policy_id}_{int(datetime.utcnow().timestamp())}.txt"
+    download_url = f"/uploads/report_{request.policy_id}_{int(datetime.now(timezone.utc).timestamp())}.txt"
     report = models.Report(
         policy_id=policy.id,
         report_type=request.report_type,
@@ -408,7 +410,7 @@ async def generate_report(request: schemas.GenerateReportRequest, db: Session = 
         status="Completed",
         download_url=download_url,
         frameworks_included=request.frameworks_included,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
     db.add(report)
 
@@ -457,11 +459,11 @@ async def chat_assistant(payload: Dict[str, Any], db: Session = Depends(get_db),
     else:
         response = "I can help with compliance status, gap analysis, and framework guidance."
 
-    return {"response": response, "timestamp": datetime.utcnow().isoformat()}
+    return {"response": response, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/api/functions/db_health")
 def db_health(db: Session = Depends(get_db)):
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     return {"ok": True, "time": now}
 

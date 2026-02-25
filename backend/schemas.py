@@ -90,7 +90,9 @@ class Gap(BaseModel):
     status: Optional[str] = None
     description: Optional[str] = None
     remediation: Optional[str] = None
+    remediation_notes: Optional[str] = None
     owner: Optional[str] = None
+    due_date: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -165,6 +167,7 @@ class AnalyzeRequest(BaseModel):
 
 class RunSimulationRequest(BaseModel):
     policy_id: str
+    control_ids: Optional[List[str]] = None
     parameters: Optional[Any] = None
 
 

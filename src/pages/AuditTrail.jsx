@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import EmptyState from '@/components/ui/EmptyState';
@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-const AuditLog = base44.entities.AuditLog;
+const AuditLog = api.entities.AuditLog;
 
 const actionConfig = {
   policy_upload: { icon: Upload, color: 'bg-blue-100 text-blue-700', label: 'Policy Upload' },
@@ -57,7 +57,7 @@ export default function AuditTrailPage() {
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['auditLogs'],
-    queryFn: () => AuditLog.list('-created_date', 100),
+    queryFn: () => AuditLog.list('-timestamp', 100),
   });
 
   // Generate sample logs if none exist
@@ -71,7 +71,7 @@ export default function AuditTrailPage() {
         target_type: 'policy',
         target_id: 'policy-001',
         details: 'Uploaded Security Policy v2.1',
-        created_date: new Date(now - 1000 * 60 * 5).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 5).toISOString(),
       },
       {
         id: 'sample-2',
@@ -80,7 +80,7 @@ export default function AuditTrailPage() {
         target_type: 'analysis',
         target_id: 'analysis-001',
         details: 'Started compliance analysis for Security Policy v2.1',
-        created_date: new Date(now - 1000 * 60 * 10).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 10).toISOString(),
       },
       {
         id: 'sample-3',
@@ -89,7 +89,7 @@ export default function AuditTrailPage() {
         target_type: 'analysis',
         target_id: 'analysis-001',
         details: 'Completed analysis across 3 frameworks',
-        created_date: new Date(now - 1000 * 60 * 15).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 15).toISOString(),
       },
       {
         id: 'sample-4',
@@ -98,7 +98,7 @@ export default function AuditTrailPage() {
         target_type: 'mapping',
         target_id: 'mapping-001',
         details: 'Accepted mapping for control A.5.1.1',
-        created_date: new Date(now - 1000 * 60 * 60).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 60).toISOString(),
       },
       {
         id: 'sample-5',
@@ -107,7 +107,7 @@ export default function AuditTrailPage() {
         target_type: 'gap',
         target_id: 'gap-001',
         details: 'Updated gap status to In Progress, assigned to IT Security Team',
-        created_date: new Date(now - 1000 * 60 * 120).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 120).toISOString(),
       },
       {
         id: 'sample-6',
@@ -116,7 +116,7 @@ export default function AuditTrailPage() {
         target_type: 'report',
         target_id: 'report-001',
         details: 'Generated Executive Summary report (PDF)',
-        created_date: new Date(now - 1000 * 60 * 180).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 180).toISOString(),
       },
       {
         id: 'sample-7',
@@ -125,7 +125,7 @@ export default function AuditTrailPage() {
         target_type: 'user',
         target_id: 'user-002',
         details: 'User logged in from 192.168.1.100',
-        created_date: new Date(now - 1000 * 60 * 240).toISOString(),
+        timestamp: new Date(now - 1000 * 60 * 240).toISOString(),
       },
     ];
   };
@@ -139,12 +139,12 @@ export default function AuditTrailPage() {
     const matchesAction = actionFilter === 'all' || log.action === actionFilter;
     
     // Date range filter
-    if (dateRange.from && log.created_date) {
-      const logDate = new Date(log.created_date);
+    if (dateRange.from && log.timestamp) {
+      const logDate = new Date(log.timestamp);
       if (logDate < dateRange.from) return false;
     }
-    if (dateRange.to && log.created_date) {
-      const logDate = new Date(log.created_date);
+    if (dateRange.to && log.timestamp) {
+      const logDate = new Date(log.timestamp);
       if (logDate > dateRange.to) return false;
     }
     
@@ -154,7 +154,7 @@ export default function AuditTrailPage() {
   const handleExport = () => {
     // TODO: Implement actual CSV export
     const csvContent = filteredLogs.map(log => 
-      `${log.created_date},${log.actor},${log.action},${log.details}`
+      `${log.timestamp},${log.actor},${log.action},${log.details}`
     ).join('\n');
     
     const blob = new Blob([`Date,Actor,Action,Details\n${csvContent}`], { type: 'text/csv' });
@@ -168,14 +168,14 @@ export default function AuditTrailPage() {
   const columns = [
     {
       header: 'Timestamp',
-      accessor: 'created_date',
+      accessor: 'timestamp',
       cell: (row) => (
         <div className="text-sm">
           <p className="font-medium text-slate-900">
-            {row.created_date ? format(new Date(row.created_date), 'MMM d, yyyy') : '-'}
+            {row.timestamp ? format(new Date(row.timestamp), 'MMM d, yyyy') : '-'}
           </p>
           <p className="text-slate-500">
-            {row.created_date ? format(new Date(row.created_date), 'HH:mm:ss') : '-'}
+            {row.timestamp ? format(new Date(row.timestamp), 'HH:mm:ss') : '-'}
           </p>
         </div>
       ),

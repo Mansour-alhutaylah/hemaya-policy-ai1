@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,7 +36,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-const ComplianceResult = base44.entities.ComplianceResult;
+const ComplianceResult = api.entities.ComplianceResult;
 
 const frameworksData = [
   {

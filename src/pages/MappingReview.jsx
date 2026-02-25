@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -41,9 +41,9 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-const MappingReview = base44.entities.MappingReview;
-const Policy = base44.entities.Policy;
-const AuditLog = base44.entities.AuditLog;
+const MappingReview = api.entities.MappingReview;
+const Policy = api.entities.Policy;
+const AuditLog = api.entities.AuditLog;
 
 const CONFIDENCE_THRESHOLD = 0.6;
 
@@ -64,7 +64,7 @@ export default function MappingReviewPage() {
 
   const { data: mappings = [], isLoading } = useQuery({
     queryKey: ['mappingReviews'],
-    queryFn: () => MappingReview.list('-created_date'),
+    queryFn: () => MappingReview.list('-created_at'),
   });
 
   const { data: policies = [] } = useQuery({
@@ -80,13 +80,13 @@ export default function MappingReviewPage() {
   const updateMappingMutation = useMutation({
     mutationFn: ({ id, data }) => MappingReview.update(id, data),
     onSuccess: async (_, variables) => {
-      queryClient.invalidateQueries(['mappingReviews']);
+      queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
       await AuditLog.create({
         actor: 'Current User',
         action: 'mapping_review',
         target_type: 'mapping',
-        target_id: variables.id,
-        details: `Reviewed mapping with decision: ${variables.data.decision}`,
+        target_id: selectedMapping?.id,
+        details: { decision: reviewDecision },
       });
       toast({
         title: 'Review Saved',

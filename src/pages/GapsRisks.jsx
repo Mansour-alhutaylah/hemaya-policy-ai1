@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -54,9 +54,9 @@ import {
   CartesianGrid
 } from 'recharts';
 
-const Gap = base44.entities.Gap;
-const Policy = base44.entities.Policy;
-const AuditLog = base44.entities.AuditLog;
+const Gap = api.entities.Gap;
+const Policy = api.entities.Policy;
+const AuditLog = api.entities.AuditLog;
 
 const severityConfig = {
   Critical: { color: 'bg-red-100 text-red-700 border-red-200', chartColor: '#ef4444', icon: ArrowUpCircle },
@@ -86,7 +86,7 @@ export default function GapsRisks() {
 
   const { data: gaps = [], isLoading } = useQuery({
     queryKey: ['gaps'],
-    queryFn: () => Gap.list('-created_date'),
+    queryFn: () => Gap.list('-created_at'),
   });
 
   const { data: policies = [] } = useQuery({
@@ -102,13 +102,13 @@ export default function GapsRisks() {
   const updateGapMutation = useMutation({
     mutationFn: ({ id, data }) => Gap.update(id, data),
     onSuccess: async (_, variables) => {
-      queryClient.invalidateQueries(['gaps']);
+      queryClient.invalidateQueries({ queryKey: ['gaps'] });
       await AuditLog.create({
         actor: 'Current User',
         action: 'gap_update',
         target_type: 'gap',
         target_id: variables.id,
-        details: `Updated gap status to: ${variables.data.status}`,
+        details: { status: editForm.status },
       });
       toast({
         title: 'Gap Updated',

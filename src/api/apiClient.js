@@ -35,7 +35,6 @@ async function request(method, url, data) {
   if (res.status === 204) return null;
   if (isJson) return res.json();
 
-  // لو السيرفر رجّع نص
   return res.text();
 }
 
@@ -54,12 +53,13 @@ const entityHandler = {
   }),
 };
 
-export const base44 = {
+export const api = {
   auth: {
     me: () => request("GET", "/auth/me"),
     updateMe: (data) => request("POST", "/auth/updateMe", data),
     logout: (redirectUrl) => {
       localStorage.removeItem("token");
+      localStorage.removeItem("user");
       window.location.href = redirectUrl || "/login";
     },
   },

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,8 +38,9 @@ import {
   Cell
 } from 'recharts';
 
-const ComplianceResult = base44.entities.ComplianceResult;
-const Gap = base44.entities.Gap;
+const ComplianceResult = api.entities.ComplianceResult;
+const Gap = api.entities.Gap;
+const Policy = api.entities.Policy;
 
 // Sample controls for simulation
 const sampleControls = [
@@ -61,6 +62,11 @@ export default function Simulation() {
   const [simulationRun, setSimulationRun] = useState(false);
   const [simulationResults, setSimulationResults] = useState(null);
   const { toast } = useToast();
+
+  const { data: policies = [] } = useQuery({
+    queryKey: ['policies'],
+    queryFn: () => Policy.list('-created_at'),
+  });
 
   const { data: results = [] } = useQuery({
     queryKey: ['complianceResults'],
@@ -122,7 +128,7 @@ export default function Simulation() {
       const latestPolicy = analyzedPolicies[0];
 
       // Call backend simulation
-      const result = await base44.functions.invoke('run_simulation', {
+      const result = await api.functions.invoke('run_simulation', {
         policy_id: latestPolicy.id,
         control_ids: selectedControls,
       });

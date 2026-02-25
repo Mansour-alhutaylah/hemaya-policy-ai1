@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import StatsCard from '@/components/ui/StatsCard';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -39,15 +39,15 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 
-const Policy = base44.entities.Policy;
-const ComplianceResult = base44.entities.ComplianceResult;
-const Gap = base44.entities.Gap;
-const AuditLog = base44.entities.AuditLog;
+const Policy = api.entities.Policy;
+const ComplianceResult = api.entities.ComplianceResult;
+const Gap = api.entities.Gap;
+const AuditLog = api.entities.AuditLog;
 
 export default function Dashboard() {
   const { data: policies = [], isLoading: policiesLoading } = useQuery({
     queryKey: ['policies'],
-    queryFn: () => Policy.list('-created_date', 10),
+    queryFn: () => Policy.list('-created_at', 10),
   });
 
   const { data: results = [], isLoading: resultsLoading } = useQuery({
@@ -57,12 +57,12 @@ export default function Dashboard() {
 
   const { data: gaps = [], isLoading: gapsLoading } = useQuery({
     queryKey: ['gaps'],
-    queryFn: () => Gap.list('-created_date', 50),
+    queryFn: () => Gap.list('-created_at', 50),
   });
 
   const { data: auditLogs = [], isLoading: logsLoading } = useQuery({
     queryKey: ['auditLogs'],
-    queryFn: () => AuditLog.list('-created_date', 10),
+    queryFn: () => AuditLog.list('-timestamp', 10),
   });
 
   const isLoading = policiesLoading || resultsLoading || gapsLoading;
@@ -111,8 +111,8 @@ export default function Dashboard() {
     id: log.id,
     action: log.action,
     actor: log.actor,
-    target: log.details,
-    time: log.created_date,
+    target: typeof log.details === 'object' ? JSON.stringify(log.details) : log.details,
+    time: log.timestamp,
   }));
 
   // Default activity if no logs

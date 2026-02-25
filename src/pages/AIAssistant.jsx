@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,118 +21,6 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-const Policy = base44.entities.Policy;
-const ComplianceResult = base44.entities.ComplianceResult;
-const Gap = base44.entities.Gap;
-
-// Deterministic responses based on context
-const generateResponse = (message, context) => {
-  const lowerMessage = message.toLowerCase();
-  const { policies, results, gaps } = context;
-
-  // Policy-related questions
-  if (lowerMessage.includes('policy') || lowerMessage.includes('policies')) {
-    if (policies.length === 0) {
-      return {
-        text: "You haven't uploaded any policies yet. To get started, go to the **Policies** page and upload your first security policy document. I can help analyze it once it's uploaded!",
-        type: 'info'
-      };
-    }
-    const policyNames = policies.map(p => p.file_name).join(', ');
-    return {
-      text: `You currently have **${policies.length} policies** uploaded: ${policyNames}.\n\nWould you like me to:\n- Summarize the compliance status of a specific policy?\n- Suggest improvements for any policy?\n- Compare policies across frameworks?`,
-      type: 'info'
-    };
-  }
-
-  // Gap-related questions
-  if (lowerMessage.includes('gap') || lowerMessage.includes('missing') || lowerMessage.includes('remediat')) {
-    const openGaps = gaps.filter(g => g.status === 'Open');
-    const criticalGaps = gaps.filter(g => g.severity === 'Critical');
-    
-    if (openGaps.length === 0) {
-      return {
-        text: "Great news! You currently have no open compliance gaps. Keep up the excellent work maintaining your security posture!",
-        type: 'success'
-      };
-    }
-    
-    return {
-      text: `You have **${openGaps.length} open gaps** that need attention${criticalGaps.length > 0 ? `, including **${criticalGaps.length} critical** ones` : ''}.\n\n**Priority recommendations:**\n1. Address critical gaps first, particularly those related to access control and data protection\n2. Assign owners to unassigned gaps\n3. Set realistic due dates for remediation\n\nWould you like specific remediation guidance for any particular gap?`,
-      type: 'warning'
-    };
-  }
-
-  // Compliance score questions
-  if (lowerMessage.includes('score') || lowerMessage.includes('compliance') || lowerMessage.includes('status')) {
-    if (results.length === 0) {
-      return {
-        text: "You haven't run any compliance analyses yet. Upload a policy and run an analysis to see your compliance scores across frameworks.",
-        type: 'info'
-      };
-    }
-
-    const latestByFramework = {};
-    results.forEach(r => {
-      if (!latestByFramework[r.framework] || new Date(r.analyzed_at) > new Date(latestByFramework[r.framework].analyzed_at)) {
-        latestByFramework[r.framework] = r;
-      }
-    });
-
-    const summaries = Object.values(latestByFramework).map(r => 
-      `- **${r.framework}**: ${Math.round(r.compliance_score || 0)}% (${r.status})`
-    ).join('\n');
-
-    return {
-      text: `Here's your current compliance status:\n\n${summaries}\n\n**Key insights:**\n- Focus on frameworks below 70% compliance\n- Review partial controls for quick wins\n- Address missing controls systematically`,
-      type: 'info'
-    };
-  }
-
-  // Improvement suggestions
-  if (lowerMessage.includes('improve') || lowerMessage.includes('suggest') || lowerMessage.includes('recommend')) {
-    return {
-      text: `Based on your compliance data, here are my **top recommendations**:\n\n1. **Access Control Enhancements** - Implement role-based access control (RBAC) and regular access reviews\n\n2. **Documentation Updates** - Ensure policies explicitly reference control requirements\n\n3. **Monitoring & Logging** - Establish comprehensive security event logging\n\n4. **Training Programs** - Develop role-specific security awareness training\n\n5. **Incident Response** - Document and test your incident response procedures\n\nWould you like detailed guidance on any of these areas?`,
-      type: 'suggestion'
-    };
-  }
-
-  // Framework-specific questions
-  if (lowerMessage.includes('nca') || lowerMessage.includes('ecc')) {
-    return {
-      text: `**NCA ECC (Essential Cybersecurity Controls)** is Saudi Arabia's national cybersecurity framework.\n\n**Key domains:**\n- Cybersecurity Governance\n- Cybersecurity Defense\n- Cybersecurity Resilience\n- Third-Party & Cloud Cybersecurity\n- ICS Cybersecurity\n\nTo improve your NCA ECC compliance, focus on:\n1. Establishing a cybersecurity committee\n2. Implementing security baselines\n3. Conducting regular risk assessments\n4. Developing incident response capabilities`,
-      type: 'info'
-    };
-  }
-
-  if (lowerMessage.includes('iso') || lowerMessage.includes('27001')) {
-    return {
-      text: `**ISO 27001:2022** is the international standard for Information Security Management Systems (ISMS).\n\n**Key control domains:**\n- Organizational controls (A.5)\n- People controls (A.6)\n- Physical controls (A.7)\n- Technological controls (A.8)\n\nTo improve ISO 27001 compliance:\n1. Document your ISMS scope and policy\n2. Conduct risk assessment and treatment\n3. Implement Statement of Applicability (SoA)\n4. Establish internal audit program`,
-      type: 'info'
-    };
-  }
-
-  if (lowerMessage.includes('nist') || lowerMessage.includes('800-53')) {
-    return {
-      text: `**NIST 800-53 Rev. 5** provides security and privacy controls for federal information systems.\n\n**Control families include:**\n- Access Control (AC)\n- Audit and Accountability (AU)\n- Security Assessment (CA)\n- Configuration Management (CM)\n- Incident Response (IR)\n\nFor NIST 800-53 compliance:\n1. Categorize your systems (FIPS 199)\n2. Select baseline controls\n3. Implement and assess controls\n4. Authorize and monitor continuously`,
-      type: 'info'
-    };
-  }
-
-  // Help / what can you do
-  if (lowerMessage.includes('help') || lowerMessage.includes('what can you') || lowerMessage.includes('how do i')) {
-    return {
-      text: `I'm your **AI Compliance Assistant**! I can help you with:\n\n📊 **Analysis & Insights**\n- Explain compliance scores and status\n- Identify priority gaps and risks\n- Suggest remediation actions\n\n📚 **Framework Guidance**\n- NCA ECC, ISO 27001, NIST 800-53 requirements\n- Control mapping explanations\n- Best practices for compliance\n\n📝 **Policy Support**\n- Review policy coverage\n- Suggest policy improvements\n- Explain control requirements\n\nJust ask me anything about your compliance posture!`,
-      type: 'info'
-    };
-  }
-
-  // Default response
-  return {
-    text: `I understand you're asking about "${message.substring(0, 50)}..."\n\nI can help you with:\n- **Compliance status** - Understanding your current scores\n- **Gap analysis** - Identifying and prioritizing gaps\n- **Framework guidance** - NCA ECC, ISO 27001, NIST requirements\n- **Policy improvements** - Suggestions to enhance compliance\n\nCould you please be more specific about what you'd like to know?`,
-    type: 'info'
-  };
-};
 
 export default function AIAssistant() {
   const [messages, setMessages] = useState([
@@ -148,21 +35,6 @@ export default function AIAssistant() {
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
-
-  const { data: policies = [] } = useQuery({
-    queryKey: ['policies'],
-    queryFn: () => Policy.list(),
-  });
-
-  const { data: results = [] } = useQuery({
-    queryKey: ['complianceResults'],
-    queryFn: () => ComplianceResult.list(),
-  });
-
-  const { data: gaps = [] } = useQuery({
-    queryKey: ['gaps'],
-    queryFn: () => Gap.list(),
-  });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -185,7 +57,7 @@ export default function AIAssistant() {
 
     try {
       // Call backend function
-      const result = await base44.functions.invoke('chat_assistant', {
+      const result = await api.functions.invoke('chat_assistant', {
         message: userMessage.content,
       });
 

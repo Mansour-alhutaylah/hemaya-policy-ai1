@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -41,9 +41,9 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-const Report = base44.entities.Report;
-const Policy = base44.entities.Policy;
-const AuditLog = base44.entities.AuditLog;
+const Report = api.entities.Report;
+const Policy = api.entities.Policy;
+const AuditLog = api.entities.AuditLog;
 
 const reportTypeConfig = {
   'Executive Summary': { icon: FileText, color: 'bg-blue-100 text-blue-700' },
@@ -69,7 +69,7 @@ export default function Reports() {
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ['reports'],
-    queryFn: () => Report.list('-created_date'),
+    queryFn: () => Report.list('-created_at'),
   });
 
   const { data: policies = [] } = useQuery({
@@ -81,25 +81,6 @@ export default function Reports() {
     acc[p.id] = p;
     return acc;
   }, {});
-
-  const createReportMutation = useMutation({
-    mutationFn: (reportData) => Report.create(reportData),
-    onSuccess: async (newReport) => {
-      queryClient.invalidateQueries(['reports']);
-      await AuditLog.create({
-        actor: 'Current User',
-        action: 'report_generate',
-        target_type: 'report',
-        target_id: newReport.id,
-        details: `Generated ${newReport.report_type} report`,
-      });
-      toast({
-        title: 'Report Generated',
-        description: 'Your report is ready for download.',
-      });
-      setShowGenerateDialog(false);
-    },
-  });
 
   const filteredReports = reports.filter(report => {
     const policy = policyMap[report.policy_id];
@@ -131,7 +112,7 @@ export default function Reports() {
     setGenerating(true);
     
     try {
-      const result = await base44.functions.invoke('generate_report', {
+      const result = await api.functions.invoke('generate_report', {
         policy_id: reportConfig.policy_id,
         report_type: reportConfig.report_type,
         format: reportConfig.format,
@@ -139,7 +120,7 @@ export default function Reports() {
       });
 
       if (result.success) {
-        queryClient.invalidateQueries(['reports']);
+        queryClient.invalidateQueries({ queryKey: ['reports'] });
         toast({
           title: 'Report Generated',
           description: 'Your report is ready for download.',
@@ -229,7 +210,7 @@ export default function Reports() {
           <Calendar className="w-4 h-4" />
           {row.generated_at 
             ? format(new Date(row.generated_at), 'MMM d, yyyy HH:mm')
-            : format(new Date(row.created_date), 'MMM d, yyyy HH:mm')}
+            : format(new Date(row.created_at), 'MMM d, yyyy HH:mm')}
         </div>
       ),
     },

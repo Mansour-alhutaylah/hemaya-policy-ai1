@@ -1,15 +1,11 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-<<<<<<< HEAD
 import bcrypt
 from jose import jwt
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "hemaya-super-secret-key-change-this-in-production-2024")
-=======
-SECRET_KEY = os.getenv("SECRET_KEY", "CHANGEME_THIS_IS_UNSAFE_FOR_PRODUCTION")
->>>>>>> 2dcbf2847e8e53effdf0cd13fbc666c5c4a53f29
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 3000
 
@@ -28,7 +24,7 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (
+    expire = datetime.now(timezone.utc) + (
         expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire})

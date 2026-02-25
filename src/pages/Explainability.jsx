@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,8 +35,8 @@ import {
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
-const MappingReview = base44.entities.MappingReview;
-const Policy = base44.entities.Policy;
+const MappingReview = api.entities.MappingReview;
+const Policy = api.entities.Policy;
 
 const CONFIDENCE_THRESHOLD = 0.6;
 
@@ -47,7 +47,7 @@ export default function Explainability() {
 
   const { data: mappings = [], isLoading } = useQuery({
     queryKey: ['mappingReviews'],
-    queryFn: () => MappingReview.list('-created_date'),
+    queryFn: () => MappingReview.list('-created_at'),
   });
 
   const { data: policies = [] } = useQuery({

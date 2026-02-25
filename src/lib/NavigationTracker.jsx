@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import { base44 } from "@/api/base44Client";
 import { pagesConfig } from "@/pages.config";
 
 export default function NavigationTracker() {
@@ -12,7 +11,7 @@ export default function NavigationTracker() {
   const mainPageKey = pagesConfig?.mainPage ?? Object.keys(Pages)[0] ?? null;
 
   useEffect(() => {
-    if (!mainPageKey) return;
+    if (!mainPageKey || !isAuthenticated) return;
 
     const pathname = location?.pathname ?? "/";
     let pageName = null;
@@ -30,12 +29,8 @@ export default function NavigationTracker() {
       pageName = matchedKey || null;
     }
 
-    const logFn = base44?.appLogs?.logUserInApp;
-
-    if (isAuthenticated && pageName && typeof logFn === "function") {
-      Promise.resolve(logFn(pageName)).catch(() => {
-      });
-    }
+    // Navigation is tracked via the auth context — no external service needed.
+    void pageName;
   }, [location?.pathname, isAuthenticated, Pages, mainPageKey]);
 
   return null;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,9 +31,9 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
-const AIInsight = base44.entities.AIInsight;
-const ComplianceResult = base44.entities.ComplianceResult;
-const Gap = base44.entities.Gap;
+const AIInsight = api.entities.AIInsight;
+const ComplianceResult = api.entities.ComplianceResult;
+const Gap = api.entities.Gap;
 
 const insightTypeConfig = {
   gap_priority: { 
@@ -80,7 +80,7 @@ export default function AIInsightsPage() {
 
   const { data: insights = [], isLoading } = useQuery({
     queryKey: ['aiInsights'],
-    queryFn: () => AIInsight.list('-created_date'),
+    queryFn: () => AIInsight.list('-created_at'),
   });
 
   const { data: results = [] } = useQuery({
@@ -90,13 +90,13 @@ export default function AIInsightsPage() {
 
   const { data: gaps = [] } = useQuery({
     queryKey: ['gaps'],
-    queryFn: () => Gap.filter({ status: 'Open' }, '-created_date', 10),
+    queryFn: () => Gap.filter({ status: 'Open' }),
   });
 
   const updateInsightMutation = useMutation({
     mutationFn: ({ id, data }) => AIInsight.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['aiInsights']);
+      queryClient.invalidateQueries({ queryKey: ['aiInsights'] });
     },
   });
 

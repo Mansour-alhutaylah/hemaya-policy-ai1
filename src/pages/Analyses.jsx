@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -49,8 +49,8 @@ import {
   CartesianGrid
 } from 'recharts';
 
-const ComplianceResult = base44.entities.ComplianceResult;
-const Policy = base44.entities.Policy;
+const ComplianceResult = api.entities.ComplianceResult;
+const Policy = api.entities.Policy;
 
 export default function Analyses() {
   const [searchQuery, setSearchQuery] = useState('');
