@@ -7,7 +7,4 @@ bcrypt
 python-multipart
 python-dotenv
 httpx
-pymupdf
-python-docx
-openpyxl
-chardet
+psycopg2-binary
