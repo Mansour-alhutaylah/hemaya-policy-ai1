@@ -3,13 +3,13 @@ import random
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,9 +21,10 @@ from sqlalchemy.orm import Session
 from backend import auth, database, models, schemas
 from backend.database import get_db
 from backend.text_extractor import extract_text
+from backend.rag_engine import run_full_analysis, chat_with_context
+from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
+from backend.chunker import chunk_text
 
-
-models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
 
@@ -156,7 +157,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 # File upload (used by policy upload flow)
 @app.post("/api/integrations/upload")
-async def upload_file(file: UploadFile = File(...), current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def upload_file(file: UploadFile = File(...), policy_id: Optional[str] = Form(None), current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     original_name = file.filename or "upload"
     ext = Path(original_name).suffix.lower()
 
@@ -175,6 +176,13 @@ async def upload_file(file: UploadFile = File(...), current_user: models.User = 
     dest.write_bytes(content)
 
     extracted_text = extract_text(dest, ext)
+
+    # Chunk and embed at upload time so analysis only needs to search, not re-embed.
+    # policy_id must be passed as a form field by the caller once the Policy row exists.
+    if extracted_text and not extracted_text.startswith("[Extraction error") and policy_id:
+        chunks = chunk_text(extracted_text)
+        embeddings = await get_embeddings([c["text"] for c in chunks])
+        store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
 
     return {
         "file_url": f"/uploads/{file_name}",
@@ -272,73 +280,52 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
     db.commit()
 
-    text = (policy.content_preview or policy.description or policy.file_name or "").lower()
+    ai_results = await run_full_analysis(db, request.policy_id, request.frameworks)
+
     results = []
     mappings = []
     gaps = []
 
-    for fw in request.frameworks:
-        controls = db.query(models.ControlLibrary).filter(models.ControlLibrary.framework == fw).all()
-        controls_covered = 0
-        controls_partial = 0
-        controls_missing = 0
+    for fw, fw_data in ai_results.items():
+        for detail in fw_data["details"]:
+            mappings.append(
+                models.MappingReview(
+                    policy_id=policy.id,
+                    control_id=detail["control_code"],
+                    framework=fw,
+                    evidence_snippet=detail.get("evidence", ""),
+                    confidence_score=detail.get("confidence", 0.0),
+                    ai_rationale=detail.get("rationale", ""),
+                    decision="Accepted" if detail["status"] == "Compliant" else "Pending",
+                )
+            )
 
-        if not controls:
-            score = random.randint(60, 85)
-            controls_missing = 5
-        else:
-            for control in controls:
-                keywords = control.keywords or []
-                matches = sum(1 for kw in keywords if kw.lower() in text) if text else 0
-                confidence = matches / len(keywords) if keywords else 0
-                if confidence >= 0.7:
-                    controls_covered += 1
-                elif confidence >= 0.3:
-                    controls_partial += 1
-                else:
-                    controls_missing += 1
-
-                evidence = control.title or control.control_code or ""
-                mappings.append(
-                    models.MappingReview(
+            if detail["status"] != "Compliant":
+                gaps.append(
+                    models.Gap(
                         policy_id=policy.id,
-                        control_id=control.control_code,
                         framework=fw,
-                        evidence_snippet=evidence,
-                        confidence_score=confidence,
-                        ai_rationale=f"Matched {matches}/{len(keywords) if keywords else 1} keywords" if keywords else "No keywords",
-                        decision="Accepted" if confidence >= 0.6 else "Pending",
+                        control_id=detail["control_code"],
+                        control_name=detail["control_code"],
+                        severity=detail.get("severity_if_missing", "Medium"),
+                        status="Open",
+                        description=detail.get("recommendation", f"Control {detail['control_code']} not fully covered"),
                     )
                 )
 
-                if confidence < 0.6:
-                    gaps.append(
-                        models.Gap(
-                            policy_id=policy.id,
-                            framework=fw,
-                            control_id=control.control_code,
-                            control_name=control.title,
-                            severity=control.severity_if_missing or "Medium",
-                            status="Open",
-                            description=f"Control {control.control_code} not fully covered",
-                        )
-                    )
-
-            total_controls = len(controls)
-            score = ((controls_covered + controls_partial * 0.5) / total_controls) * 100 if total_controls else 0
-
+        score = fw_data["score"]
         status_label = "Compliant" if score >= 80 else "Partially Compliant" if score >= 60 else "Not Compliant"
         result = models.ComplianceResult(
             policy_id=policy.id,
             framework=fw,
             compliance_score=score,
-            controls_covered=controls_covered,
-            controls_partial=controls_partial,
-            controls_missing=controls_missing,
+            controls_covered=fw_data["compliant"],
+            controls_partial=fw_data["partial"],
+            controls_missing=fw_data["non_compliant"],
             status=status_label,
             analyzed_at=datetime.now(timezone.utc),
             analysis_duration=0,
-            details={"notes": "Analysis complete"},
+            details={"notes": "AI RAG analysis complete"},
         )
         db.add(result)
         results.append(result)
@@ -430,35 +417,9 @@ async def generate_report(request: schemas.GenerateReportRequest, db: Session = 
 
 @app.post("/api/functions/chat_assistant")
 async def chat_assistant(payload: Dict[str, Any], db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    message = (payload.get("message") or "").lower()
-    policies = db.query(models.Policy).all()
-    results = db.query(models.ComplianceResult).all()
-    gaps = db.query(models.Gap).all()
-
-    response = ""
-    if "policy" in message or "policies" in message:
-        if not policies:
-            response = "You have not uploaded any policies yet."
-        else:
-            names = ", ".join(p.file_name or "Policy" for p in policies[:5])
-            response = f"You have {len(policies)} policies: {names}."
-    elif "gap" in message or "missing" in message:
-        open_gaps = [g for g in gaps if (g.status or "").lower() == "open"]
-        critical = [g for g in gaps if (g.severity or "").lower() == "critical"]
-        response = f"Open gaps: {len(open_gaps)}. Critical: {len(critical)}. Address critical gaps first."
-    elif "score" in message or "compliance" in message:
-        if not results:
-            response = "No compliance analyses have been run yet."
-        else:
-            latest = {}
-            for r in results:
-                if r.framework not in latest or (r.analyzed_at and r.analyzed_at > latest[r.framework].analyzed_at):
-                    latest[r.framework] = r
-            summaries = [f"{fw}: {round(r.compliance_score or 0)}%" for fw, r in latest.items()]
-            response = "Current compliance scores - " + ", ".join(summaries)
-    else:
-        response = "I can help with compliance status, gap analysis, and framework guidance."
-
+    message = payload.get("message") or ""
+    policy_id = payload.get("policy_id")
+    response = await chat_with_context(db, message, policy_id=policy_id)
     return {"response": response, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 

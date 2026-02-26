@@ -7,8 +7,10 @@ bcrypt
 python-multipart
 python-dotenv
 httpx
+numpy
 psycopg2-binary
 pymupdf
 python-docx
 openpyxl
 chardet
+watchfiles

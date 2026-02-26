@@ -28,7 +28,7 @@ class UserLogin(BaseModel):
 
 
 class User(UserBase):
-    id: str
+    id: Any
     role: str
     settings: Optional[Any] = None
     created_at: datetime
