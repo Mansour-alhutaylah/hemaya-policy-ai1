@@ -31,7 +31,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  Brain
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -57,6 +60,7 @@ export default function Analyses() {
   const [frameworkFilter, setFrameworkFilter] = useState('all');
   const [selectedResult, setSelectedResult] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [expandedControl, setExpandedControl] = useState(null);
 
   const urlParams = new URLSearchParams(window.location.search);
   const policyIdFilter = urlParams.get('policy_id');
@@ -261,93 +265,151 @@ export default function Analyses() {
             </DialogTitle>
           </DialogHeader>
 
-          {selectedResult && (
-            <div className="space-y-6 py-4">
-              {/* Summary Cards */}
-              <div className="grid grid-cols-3 gap-4">
-                <Card className="bg-emerald-50 border-emerald-200">
-                  <CardContent className="p-4 text-center">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-emerald-700">{selectedResult.controls_covered || 0}</p>
-                    <p className="text-xs text-emerald-600">Covered</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-amber-50 border-amber-200">
-                  <CardContent className="p-4 text-center">
-                    <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-amber-700">{selectedResult.controls_partial || 0}</p>
-                    <p className="text-xs text-amber-600">Partial</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-red-50 border-red-200">
-                  <CardContent className="p-4 text-center">
-                    <XCircle className="w-6 h-6 text-red-600 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-red-700">{selectedResult.controls_missing || 0}</p>
-                    <p className="text-xs text-red-600">Missing</p>
-                  </CardContent>
-                </Card>
-              </div>
+          {selectedResult && (() => {
+            const perControl = selectedResult.details?.per_control || [];
+            const statusIcon = {
+              Compliant:     <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />,
+              Partial:       <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />,
+              'Non-Compliant': <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />,
+            };
+            return (
+              <div className="space-y-5 py-2">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-3 gap-3">
+                  <Card className="bg-emerald-50 border-emerald-200">
+                    <CardContent className="p-3 text-center">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
+                      <p className="text-xl font-bold text-emerald-700">{selectedResult.controls_covered || 0}</p>
+                      <p className="text-xs text-emerald-600">Covered</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-amber-50 border-amber-200">
+                    <CardContent className="p-3 text-center">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 mx-auto mb-1" />
+                      <p className="text-xl font-bold text-amber-700">{selectedResult.controls_partial || 0}</p>
+                      <p className="text-xs text-amber-600">Partial</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-red-50 border-red-200">
+                    <CardContent className="p-3 text-center">
+                      <XCircle className="w-5 h-5 text-red-600 mx-auto mb-1" />
+                      <p className="text-xl font-bold text-red-700">{selectedResult.controls_missing || 0}</p>
+                      <p className="text-xs text-red-600">Missing</p>
+                    </CardContent>
+                  </Card>
+                </div>
 
-              {/* Score & Chart */}
-              <div className="flex items-center gap-8">
-                <div className="flex-1">
-                  <div className="text-center">
-                    <div className={`inline-flex items-center justify-center w-32 h-32 rounded-full ${getScoreBg(selectedResult.compliance_score)}`}>
+                {/* Score + Pie */}
+                <div className="flex items-center gap-6">
+                  <div className="flex-1 text-center">
+                    <div className={`inline-flex items-center justify-center w-28 h-28 rounded-full ${getScoreBg(selectedResult.compliance_score)}`}>
                       <div>
-                        <p className={`text-4xl font-bold ${getScoreColor(selectedResult.compliance_score)}`}>
+                        <p className={`text-3xl font-bold ${getScoreColor(selectedResult.compliance_score)}`}>
                           {Math.round(selectedResult.compliance_score || 0)}%
                         </p>
                         <p className="text-xs text-slate-500">Compliance</p>
                       </div>
                     </div>
                   </div>
+                  <div className="flex-1">
+                    <ResponsiveContainer width="100%" height={140}>
+                      <PieChart>
+                        <Pie data={getControlsChartData(selectedResult)} cx="50%" cy="50%" innerRadius={35} outerRadius={55} dataKey="value">
+                          {getControlsChartData(selectedResult).map((entry, i) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-1 text-sm">
+                    <div><p className="text-slate-500 text-xs">Framework</p><p className="font-medium">{selectedResult.framework}</p></div>
+                    <div><p className="text-slate-500 text-xs">Policy</p><p className="font-medium text-xs">{policyMap[selectedResult.policy_id]?.file_name || '—'}</p></div>
+                    <div><p className="text-slate-500 text-xs">Analyzed</p><p className="font-medium text-xs">{selectedResult.analyzed_at ? format(new Date(selectedResult.analyzed_at), 'MMM d HH:mm') : '—'}</p></div>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie
-                        data={getControlsChartData(selectedResult)}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={60}
-                        dataKey="value"
-                      >
-                        {getControlsChartData(selectedResult).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
 
-              {/* Details */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-500">Framework</p>
-                  <p className="font-medium">{selectedResult.framework}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Status</p>
-                  <StatusBadge status={selectedResult.status} />
-                </div>
-                <div>
-                  <p className="text-slate-500">Policy</p>
-                  <p className="font-medium">{policyMap[selectedResult.policy_id]?.file_name || selectedResult.policy_id}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Analyzed At</p>
-                  <p className="font-medium">
-                    {selectedResult.analyzed_at 
-                      ? format(new Date(selectedResult.analyzed_at), 'MMM d, yyyy HH:mm')
-                      : '-'}
-                  </p>
-                </div>
+                {/* Per-control breakdown */}
+                {perControl.length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                      <Brain className="w-4 h-4" /> Per-Control Breakdown ({perControl.length} controls)
+                    </p>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50 sticky top-0">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-slate-600">Control</th>
+                            <th className="text-center py-2 px-2 font-semibold text-slate-600">Status</th>
+                            <th className="text-center py-2 px-2 font-semibold text-slate-600">Confidence</th>
+                            <th className="text-left py-2 px-2 font-semibold text-slate-600">Evidence</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {perControl.map((ctrl, idx) => (
+                            <React.Fragment key={idx}>
+                              <tr
+                                className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+                                onClick={() => setExpandedControl(expandedControl === idx ? null : idx)}
+                              >
+                                <td className="py-2 px-3">
+                                  <div className="flex items-center gap-1">
+                                    {expandedControl === idx
+                                      ? <ChevronDown className="w-3 h-3 text-slate-400" />
+                                      : <ChevronRight className="w-3 h-3 text-slate-400" />}
+                                    <span className="font-mono font-medium">{ctrl.control_code}</span>
+                                  </div>
+                                  <p className="text-slate-500 ml-4 line-clamp-1">{ctrl.control_title}</p>
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    {statusIcon[ctrl.status] || statusIcon['Non-Compliant']}
+                                  </div>
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <span className={`font-medium ${(ctrl.confidence || 0) >= 0.7 ? 'text-emerald-600' : (ctrl.confidence || 0) >= 0.5 ? 'text-amber-600' : 'text-red-600'}`}>
+                                    {Math.round((ctrl.confidence || 0) * 100)}%
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-slate-600 max-w-xs">
+                                  <p className="line-clamp-1">{ctrl.evidence || '—'}</p>
+                                </td>
+                              </tr>
+                              {expandedControl === idx && (
+                                <tr className="bg-slate-50">
+                                  <td colSpan={4} className="px-4 py-3 text-xs">
+                                    {ctrl.gaps && ctrl.gaps !== 'None' && (
+                                      <div className="mb-2">
+                                        <p className="font-semibold text-red-600 mb-0.5">Gaps:</p>
+                                        <p className="text-slate-600">{ctrl.gaps}</p>
+                                      </div>
+                                    )}
+                                    {ctrl.rationale && (
+                                      <div className="mb-2">
+                                        <p className="font-semibold text-slate-700 mb-0.5">Rationale:</p>
+                                        <p className="text-slate-600">{ctrl.rationale}</p>
+                                      </div>
+                                    )}
+                                    {ctrl.recommendation && ctrl.recommendation !== 'None needed' && (
+                                      <div>
+                                        <p className="font-semibold text-emerald-700 mb-0.5">Recommendation:</p>
+                                        <p className="text-slate-600">{ctrl.recommendation}</p>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="flex justify-between">
             <Link to={createPageUrl(`MappingReview?policy_id=${selectedResult?.policy_id}`)}>

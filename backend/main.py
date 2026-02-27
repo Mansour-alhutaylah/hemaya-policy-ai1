@@ -306,10 +306,11 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
                         policy_id=policy.id,
                         framework=fw,
                         control_id=detail["control_code"],
-                        control_name=detail["control_code"],
-                        severity=detail.get("severity_if_missing", "Medium"),
+                        control_name=detail.get("control_title", detail["control_code"]),
+                        severity=detail.get("priority", detail.get("severity_if_missing", "Medium")),
                         status="Open",
-                        description=detail.get("recommendation", f"Control {detail['control_code']} not fully covered"),
+                        description=detail.get("gaps", f"Control {detail['control_code']} gap identified"),
+                        remediation=detail.get("recommendation", "Review and implement this control"),
                     )
                 )
 
@@ -325,7 +326,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
             status=status_label,
             analyzed_at=datetime.now(timezone.utc),
             analysis_duration=0,
-            details={"notes": "AI RAG analysis complete"},
+            details={"per_control": fw_data["details"]},
         )
         db.add(result)
         results.append(result)
@@ -427,4 +428,61 @@ async def chat_assistant(payload: Dict[str, Any], db: Session = Depends(get_db),
 def db_health(db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc).isoformat()
     return {"ok": True, "time": now}
+
+
+# ━━━ Framework Document Management ━━━
+
+@app.post("/api/functions/upload_framework_doc")
+async def upload_framework_doc(
+    file: UploadFile = File(...),
+    framework: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Upload a framework reference document (NCA ECC, ISO 27001, NIST 800-53)."""
+    ext = Path(file.filename or "upload").suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not supported. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+        )
+
+    fw_dir = UPLOAD_DIR / "frameworks"
+    fw_dir.mkdir(exist_ok=True)
+    file_path = fw_dir / (file.filename or "upload")
+
+    content = await file.read()
+    file_path.write_bytes(content)
+
+    from backend.framework_loader import load_framework_document
+
+    result = await load_framework_document(db, str(file_path), framework, file.filename or "")
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+
+@app.get("/api/functions/framework_status")
+def framework_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Check which frameworks have reference documents loaded."""
+    from backend.framework_loader import get_framework_stats
+
+    stats = get_framework_stats(db)
+
+    return {
+        "frameworks": {
+            "NCA ECC": stats.get("NCA ECC", {"chunks": 0, "documents": 0}),
+            "ISO 27001": stats.get("ISO 27001", {"chunks": 0, "documents": 0}),
+            "NIST 800-53": stats.get("NIST 800-53", {"chunks": 0, "documents": 0}),
+        },
+        "ready": all(
+            stats.get(fw, {}).get("chunks", 0) > 0
+            for fw in ["NCA ECC", "ISO 27001", "NIST 800-53"]
+        ),
+    }
 

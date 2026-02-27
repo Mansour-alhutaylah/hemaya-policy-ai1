@@ -181,96 +181,139 @@ async def analyze_control_compliance(
     db: Session,
     policy_id: str,
     control: dict,
+    framework_name: str = "",
 ) -> dict:
     """
-    Run the full Retrieve → Rerank → Generate pipeline for one control.
+    Enhanced RAG pipeline that compares org policy against framework requirements.
+
+    For each control:
+    1. Find what the FRAMEWORK REQUIRES (from framework_chunks)
+    2. Find what the ORGANIZATION'S POLICY SAYS (from policy_chunks)
+    3. Ask the LLM to COMPARE them and judge compliance
 
     Args:
-        db:         SQLAlchemy session.
-        policy_id:  UUID string of the policy to search within.
-        control:    Dict with keys: control_code, title, keywords,
-                    framework, severity_if_missing.
+        db:             SQLAlchemy session.
+        policy_id:      UUID string of the policy to search within.
+        control:        Dict with keys: control_code, title, keywords,
+                        framework, severity_if_missing.
+        framework_name: Framework name for context retrieval. Falls back to
+                        control["framework"] if not provided.
 
     Returns:
-        Dict with keys: status, confidence, evidence, rationale,
-        recommendation, control_code, framework, retrieved_chunks,
-        reranked_chunks.
+        Dict with keys: status, confidence, evidence, gaps, rationale,
+        recommendation, priority, control_code, control_title, framework,
+        severity_if_missing, retrieved_chunks, reranked_chunks.
     """
-    # Build a rich query from available fields (ControlLibrary has no description)
-    keywords_str = " ".join(control.get("keywords") or [])
-    control_query = (
-        f"{control['control_code']}: {control['title']}. {keywords_str}".strip()
-    )
+    from .framework_loader import get_framework_context
 
-    # ── STEP 1: embed the query and retrieve top-K chunks ──────────────────
+    fw = framework_name or control.get("framework", "")
+    keywords_raw = control.get("keywords") or []
+    if isinstance(keywords_raw, str):
+        try:
+            import json as _json
+            keywords_raw = _json.loads(keywords_raw)
+        except Exception:
+            keywords_raw = []
+    keywords_str = " ".join(keywords_raw)
+    control_query = f"{control['control_code']}: {control['title']}. {keywords_str}".strip()
+
+    # ── STEP 1: embed the query ─────────────────────────────────────────────
     query_embedding = (await get_embeddings([control_query], is_query=True))[0]
+
+    # ── STEP 2: get framework requirements (what SHOULD exist) ─────────────
+    framework_context = get_framework_context(db, fw, query_embedding, top_k=3)
+    framework_text = "\n---\n".join(c["text"] for c in framework_context)
+
+    # Fallback: use control title + keywords when no framework docs loaded
+    if not framework_text.strip():
+        framework_text = (
+            f"Control: {control['control_code']} - {control['title']}\n"
+            f"Keywords: {keywords_str or 'N/A'}\n"
+            f"Severity if missing: {control.get('severity_if_missing', 'High')}"
+        )
+
+    # ── STEP 3: get policy evidence (what IS in the org's policy) ──────────
     retrieved = search_similar_chunks(
         db,
         query_embedding,
         policy_id=policy_id,
         top_k=TOP_K_RETRIEVAL,
     )
-
-    # ── STEP 2: rerank to keep the most relevant evidence ──────────────────
     best_chunks = await rerank_chunks(control_query, retrieved, top_k=TOP_K_RERANK)
 
     if not best_chunks:
-        # Policy has no indexed chunks yet — return a safe default
-        logger.warning(
-            "No chunks found for policy %s — was it indexed?", policy_id
-        )
+        logger.warning("No chunks found for policy %s — was it indexed?", policy_id)
         return {
             "status": "Non-Compliant",
             "confidence": 0.0,
             "evidence": "",
-            "rationale": "No indexed policy text found. Upload and index the policy first.",
+            "gaps": "No indexed policy text found for analysis.",
+            "rationale": "No policy text was found. Upload and index the policy first.",
             "recommendation": "Re-upload and index the policy document.",
+            "priority": control.get("severity_if_missing", "High"),
             "control_code": control["control_code"],
-            "framework": control.get("framework", ""),
+            "control_title": control.get("title", ""),
+            "framework": fw,
             "retrieved_chunks": 0,
             "reranked_chunks": 0,
+            "severity_if_missing": control.get("severity_if_missing", "High"),
         }
 
-    # ── STEP 3: build the compliance judgment prompt ────────────────────────
-    evidence_text = "\n---\n".join(c["text"] for c in best_chunks)
+    policy_text = "\n---\n".join(c["text"] for c in best_chunks)
 
+    # ── STEP 4: build the enhanced comparison prompt ────────────────────────
     prompt = (
         "<|im_start|>system\n"
-        "You are a cybersecurity compliance auditor for Saudi Arabian organizations.\n"
-        "Analyze whether the given policy text satisfies the specified security control.\n\n"
-        "Respond in this EXACT JSON format (no extra text before or after):\n"
+        "You are an expert cybersecurity compliance auditor specializing in Saudi Arabian "
+        "regulations. You compare an organization's policy against a framework control "
+        "requirement and identify specific gaps.\n\n"
+        "Respond ONLY in this exact JSON format (no extra text):\n"
         "{\n"
-        '  "status": "Compliant" | "Partial" | "Non-Compliant",\n'
+        '  "status": "Compliant" or "Partial" or "Non-Compliant",\n'
         '  "confidence": 0.0 to 1.0,\n'
-        '  "evidence": "Quote the specific text that supports your judgment",\n'
-        '  "rationale": "Explain WHY this control is or is not covered",\n'
-        '  "recommendation": "If not fully compliant, what should be added"\n'
+        '  "evidence": "Quote the exact text from the org policy that addresses this control",\n'
+        '  "gaps": "What specific requirements are NOT covered. Say None if fully compliant",\n'
+        '  "rationale": "Detailed explanation of your judgment",\n'
+        '  "recommendation": "Specific actionable steps to achieve full compliance. Say None needed if compliant",\n'
+        '  "priority": "Critical" or "High" or "Medium" or "Low"\n'
         "}\n"
         "<|im_end|>\n"
         "<|im_start|>user\n"
         f"CONTROL: {control['control_code']} - {control['title']}\n"
-        f"KEYWORDS: {keywords_str}\n\n"
-        "POLICY TEXT (relevant excerpts):\n"
-        f"{evidence_text}\n\n"
-        "Judge whether this policy text satisfies the control requirement.\n"
+        f"FRAMEWORK: {fw}\n"
+        f"SEVERITY IF MISSING: {control.get('severity_if_missing', 'High')}\n\n"
+        "FRAMEWORK REQUIREMENT (what SHOULD exist in the policy):\n"
+        f"{framework_text}\n\n"
+        "ORGANIZATION'S POLICY (what ACTUALLY exists):\n"
+        f"{policy_text}\n\n"
+        "Compare the framework requirement against the organization's policy. "
+        "Is this control adequately addressed?\n"
         "<|im_end|>\n"
         "<|im_start|>assistant\n"
     )
 
-    # ── STEP 4: get the LLM judgment ───────────────────────────────────────
+    # ── STEP 5: get the LLM judgment ───────────────────────────────────────
     llm_response = await call_llm(prompt)
 
-    # ── STEP 5: parse the structured JSON from the response ────────────────
+    # ── STEP 6: parse the structured JSON ──────────────────────────────────
     result = _parse_llm_json(llm_response)
 
-    # Enforce valid status values in case the model drifts
     if result.get("status") not in {"Compliant", "Partial", "Non-Compliant"}:
         result["status"] = "Non-Compliant"
 
+    # Ensure all fields have defaults
+    result.setdefault("gaps", "")
+    result.setdefault("priority", control.get("severity_if_missing", "High"))
+    result.setdefault("evidence", "")
+    result.setdefault("rationale", "")
+    result.setdefault("recommendation", "")
+
     result["control_code"] = control["control_code"]
-    result["framework"] = control.get("framework", "")
+    result["control_title"] = control.get("title", "")
+    result["framework"] = fw
     result["retrieved_chunks"] = len(retrieved)
     result["reranked_chunks"] = len(best_chunks)
+    result["severity_if_missing"] = control.get("severity_if_missing", "High")
 
     return result
 
@@ -354,9 +397,9 @@ async def run_full_analysis(
                 "framework": framework,
                 "severity_if_missing": control.severity_if_missing or "Medium",
             }
-            result = await analyze_control_compliance(db, policy_id, control_dict)
-            # Carry severity through so main.py can use it when creating Gap rows
-            result["severity_if_missing"] = control_dict["severity_if_missing"]
+            result = await analyze_control_compliance(
+                db, policy_id, control_dict, framework_name=framework
+            )
             framework_results.append(result)
 
         total = len(framework_results)
@@ -406,30 +449,50 @@ async def chat_with_context(
     Returns:
         The model's answer as a plain string.
     """
+    from .framework_loader import get_framework_context
+
     query_embedding = (await get_embeddings([message], is_query=True))[0]
     retrieved = search_similar_chunks(
         db, query_embedding, policy_id=policy_id, top_k=10
     )
     best_chunks = await rerank_chunks(message, retrieved, top_k=5)
 
-    context = (
+    policy_context = (
         "\n---\n".join(c["text"] for c in best_chunks)
         if best_chunks
-        else "No relevant policy text found in the knowledge base."
+        else "[No relevant policy text found in the knowledge base]"
+    )
+
+    # Add framework reference knowledge
+    framework_context_parts: list[str] = []
+    for fw in ["NCA ECC", "ISO 27001", "NIST 800-53"]:
+        fw_chunks = get_framework_context(db, fw, query_embedding, top_k=2)
+        if fw_chunks:
+            fw_text = "\n".join(c["text"] for c in fw_chunks)
+            framework_context_parts.append(f"[{fw}]:\n{fw_text}")
+
+    framework_context = (
+        "\n\n".join(framework_context_parts)
+        if framework_context_parts
+        else "[No framework reference documents loaded]"
     )
 
     prompt = (
         "<|im_start|>system\n"
-        "You are Hemaya AI, a cybersecurity compliance assistant specializing in "
+        "You are Hemaya AI, an expert cybersecurity compliance assistant specializing in "
         "NCA ECC, ISO 27001, and NIST 800-53 frameworks for Saudi Arabian organizations.\n"
-        "Answer questions based on the organization's actual policy documents provided below.\n"
+        "Answer questions based on the provided context from the organization's actual "
+        "policies and framework reference documents.\n"
         "If the context does not contain enough information, say so clearly rather than guessing.\n"
+        "Reference specific control IDs when relevant (e.g., ECC-2-2-3, A.8.5, IA-2).\n"
         "Respond in the same language the user writes in (Arabic or English).\n"
         "<|im_end|>\n"
         "<|im_start|>user\n"
-        "Context from organization's policies:\n"
-        f"{context}\n\n"
-        f"Question: {message}\n"
+        "ORGANIZATION'S POLICY CONTEXT:\n"
+        f"{policy_context}\n\n"
+        "FRAMEWORK REFERENCE:\n"
+        f"{framework_context}\n\n"
+        f"QUESTION: {message}\n"
         "<|im_end|>\n"
         "<|im_start|>assistant\n"
     )

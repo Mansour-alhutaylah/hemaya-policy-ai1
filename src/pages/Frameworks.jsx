@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
-import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,16 +12,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useToast } from '@/components/ui/use-toast';
 import {
   Shield,
   CheckCircle2,
   AlertTriangle,
   XCircle,
   ArrowRight,
-  ExternalLink,
+  Upload,
   BookOpen,
   FileText,
-  TrendingUp
+  TrendingUp,
+  Loader2,
+  Database,
+  Info
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -43,7 +46,7 @@ const frameworksData = [
     id: 'nca-ecc',
     name: 'NCA ECC',
     fullName: 'National Cybersecurity Authority - Essential Cybersecurity Controls',
-    description: 'Saudi Arabia\'s national cybersecurity framework for critical infrastructure and government entities.',
+    description: "Saudi Arabia's national cybersecurity framework for critical infrastructure and government entities.",
     totalControls: 114,
     domains: 5,
     version: '2.0',
@@ -80,28 +83,58 @@ const frameworksData = [
   },
 ];
 
+const colorClasses = {
+  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
+  blue:    { bg: 'bg-blue-50',    text: 'text-blue-600',    border: 'border-blue-200' },
+  purple:  { bg: 'bg-purple-50',  text: 'text-purple-600',  border: 'border-purple-200' },
+};
+
+async function apiFetch(path, options = {}) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export default function Frameworks() {
   const [selectedFramework, setSelectedFramework] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [uploading, setUploading] = useState(null); // which framework is uploading
+  const [frameworkStatus, setFrameworkStatus] = useState(null);
+  const fileInputRefs = useRef({});
+  const { toast } = useToast();
 
-  const { data: results = [], isLoading } = useQuery({
+  const { data: results = [] } = useQuery({
     queryKey: ['complianceResults'],
     queryFn: () => ComplianceResult.list('-analyzed_at', 100),
   });
 
-  // Calculate stats per framework
+  const { data: fwStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ['frameworkStatus'],
+    queryFn: () => apiFetch('/functions/framework_status'),
+    staleTime: 30_000,
+  });
+
+  const status = fwStatus?.frameworks || {};
+  const allLoaded = fwStatus?.ready === true;
+
   const getFrameworkStats = (frameworkName) => {
     const frameworkResults = results.filter(r => r.framework === frameworkName);
     if (frameworkResults.length === 0) return null;
 
-    const latest = frameworkResults.reduce((prev, curr) => 
+    const latest = frameworkResults.reduce((prev, curr) =>
       new Date(curr.analyzed_at) > new Date(prev.analyzed_at) ? curr : prev
     );
 
-    // Calculate trend from last 5 results
-    const sorted = [...frameworkResults].sort((a, b) => 
-      new Date(b.analyzed_at) - new Date(a.analyzed_at)
-    ).slice(0, 5);
+    const sorted = [...frameworkResults]
+      .sort((a, b) => new Date(b.analyzed_at) - new Date(a.analyzed_at))
+      .slice(0, 5);
 
     const trendData = sorted.reverse().map((r, i) => ({
       name: `Analysis ${i + 1}`,
@@ -116,60 +149,161 @@ export default function Frameworks() {
     };
   };
 
-  const handleViewDetails = (framework) => {
-    setSelectedFramework(framework);
-    setShowDetailDialog(true);
-  };
-
-  const getColorClasses = (color) => {
-    const colors = {
-      emerald: {
-        bg: 'bg-emerald-50',
-        text: 'text-emerald-600',
-        border: 'border-emerald-200',
-        progress: 'bg-emerald-500',
-      },
-      blue: {
-        bg: 'bg-blue-50',
-        text: 'text-blue-600',
-        border: 'border-blue-200',
-        progress: 'bg-blue-500',
-      },
-      purple: {
-        bg: 'bg-purple-50',
-        text: 'text-purple-600',
-        border: 'border-purple-200',
-        progress: 'bg-purple-500',
-      },
-    };
-    return colors[color] || colors.emerald;
+  const handleUpload = async (frameworkName, file) => {
+    if (!file) return;
+    setUploading(frameworkName);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('framework', frameworkName);
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/functions/upload_framework_doc', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Upload failed');
+      }
+      const result = await res.json();
+      toast({
+        title: 'Framework Loaded',
+        description: `${frameworkName}: ${result.chunks_created} chunks indexed from "${result.source}".`,
+      });
+      refetchStatus();
+    } catch (err) {
+      toast({ title: 'Upload Failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setUploading(null);
+    }
   };
 
   return (
     <PageContainer
       title="Compliance Frameworks"
-      subtitle="Manage and monitor compliance against industry standards"
+      subtitle="Upload reference documents and monitor compliance against industry standards"
     >
-      {/* Framework Cards */}
+      {/* ── Framework Knowledge Base banner ── */}
+      <div className={`flex items-start gap-4 p-4 rounded-lg border mb-6 ${allLoaded ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${allLoaded ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+          {allLoaded ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <Info className="w-5 h-5 text-amber-600" />}
+        </div>
+        <div>
+          <p className={`font-semibold ${allLoaded ? 'text-emerald-800' : 'text-amber-800'}`}>
+            {allLoaded ? 'Framework Knowledge Base Ready' : 'Framework Reference Documents Required'}
+          </p>
+          <p className={`text-sm mt-0.5 ${allLoaded ? 'text-emerald-700' : 'text-amber-700'}`}>
+            {allLoaded
+              ? 'All 3 framework documents are loaded. The AI will use them for deep compliance comparison.'
+              : 'Upload the official NCA ECC, ISO 27001, and NIST 800-53 documents below. These are the REFERENCE documents that define what controls SHOULD exist in your policies. Without them, analysis uses only basic control definitions.'}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Framework Upload Cards ── */}
+      <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <Database className="w-4 h-4 text-slate-500" />
+        Framework Knowledge Base — Upload Reference Documents
+      </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
+        {frameworksData.map((fw) => {
+          const cc = colorClasses[fw.color];
+          const fwStat = status[fw.name] || { chunks: 0, documents: 0 };
+          const isLoaded = fwStat.chunks > 0;
+          const isUploading = uploading === fw.name;
+
+          return (
+            <Card key={fw.id} className={`overflow-hidden border-2 ${isLoaded ? cc.border : 'border-slate-200'}`}>
+              <div className={`h-1.5 bg-gradient-to-r ${fw.bgGradient}`} />
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-11 h-11 rounded-xl ${cc.bg} flex items-center justify-center text-2xl`}>
+                    {fw.icon}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-900">{fw.name}</p>
+                    <p className="text-xs text-slate-500">v{fw.version}</p>
+                  </div>
+                  {isLoaded ? (
+                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Loaded
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-slate-500 border-slate-300">
+                      Not Loaded
+                    </Badge>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-500 mb-3 line-clamp-2">{fw.description}</p>
+
+                {isLoaded && (
+                  <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded mb-3">
+                    <Database className="w-3.5 h-3.5" />
+                    <span>{fwStat.chunks.toLocaleString()} chunks · {fwStat.documents} document{fwStat.documents !== 1 ? 's' : ''}</span>
+                  </div>
+                )}
+
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  className="hidden"
+                  ref={el => (fileInputRefs.current[fw.name] = el)}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleUpload(fw.name, file);
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant={isLoaded ? 'outline' : 'default'}
+                  className={`w-full ${!isLoaded ? `bg-gradient-to-r ${fw.bgGradient} text-white border-0 hover:opacity-90` : ''}`}
+                  disabled={isUploading}
+                  onClick={() => fileInputRefs.current[fw.name]?.click()}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      {isLoaded ? 'Replace Document' : 'Upload Reference Document'}
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* ── Compliance Score Cards (existing analysis results) ── */}
+      <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-slate-500" />
+        Analysis Results by Framework
+      </h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {frameworksData.map((framework) => {
           const stats = getFrameworkStats(framework.name);
-          const colorClasses = getColorClasses(framework.color);
+          const cc = colorClasses[framework.color];
           const score = stats?.latest?.compliance_score || 0;
 
           return (
-            <Card 
-              key={framework.id} 
+            <Card
+              key={framework.id}
               className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => handleViewDetails(framework)}
+              onClick={() => { setSelectedFramework(framework); setShowDetailDialog(true); }}
             >
-              {/* Header with gradient */}
               <div className={`h-2 bg-gradient-to-r ${framework.bgGradient}`} />
-              
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-xl ${colorClasses.bg} flex items-center justify-center text-2xl`}>
+                    <div className={`w-12 h-12 rounded-xl ${cc.bg} flex items-center justify-center text-2xl`}>
                       {framework.icon}
                     </div>
                     <div>
@@ -177,34 +311,23 @@ export default function Frameworks() {
                       <p className="text-xs text-slate-500">v{framework.version}</p>
                     </div>
                   </div>
-                  <Badge variant="outline" className={`${colorClasses.text} ${colorClasses.border}`}>
+                  <Badge variant="outline" className={`${cc.text} ${cc.border}`}>
                     {framework.totalControls} Controls
                   </Badge>
                 </div>
               </CardHeader>
-
               <CardContent>
-                <p className="text-sm text-slate-600 mb-4 line-clamp-2">
-                  {framework.description}
-                </p>
+                <p className="text-sm text-slate-600 mb-4 line-clamp-2">{framework.description}</p>
 
                 {stats ? (
                   <div className="space-y-4">
-                    {/* Score Progress */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm text-slate-500">Compliance Score</span>
-                        <span className={`text-lg font-bold ${colorClasses.text}`}>
-                          {Math.round(score)}%
-                        </span>
+                        <span className={`text-lg font-bold ${cc.text}`}>{Math.round(score)}%</span>
                       </div>
-                      <Progress 
-                        value={score} 
-                        className="h-2"
-                      />
+                      <Progress value={score} className="h-2" />
                     </div>
-
-                    {/* Controls Stats */}
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-1 text-emerald-600">
                         <CheckCircle2 className="w-4 h-4" />
@@ -219,15 +342,13 @@ export default function Frameworks() {
                         <span>{stats.latest.controls_missing || 0}</span>
                       </div>
                     </div>
-
-                    {/* Mini Trend Chart */}
                     {stats.trendData.length > 1 && (
                       <div className="h-16">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={stats.trendData}>
-                            <Line 
-                              type="monotone" 
-                              dataKey="score" 
+                            <Line
+                              type="monotone"
+                              dataKey="score"
                               stroke={framework.color === 'emerald' ? '#10b981' : framework.color === 'blue' ? '#3b82f6' : '#8b5cf6'}
                               strokeWidth={2}
                               dot={false}
@@ -241,9 +362,7 @@ export default function Frameworks() {
                   <div className="text-center py-6">
                     <p className="text-sm text-slate-500 mb-3">No analysis data yet</p>
                     <Link to={createPageUrl('Policies')}>
-                      <Button size="sm" variant="outline">
-                        Run Analysis
-                      </Button>
+                      <Button size="sm" variant="outline">Run Analysis</Button>
                     </Link>
                   </div>
                 )}
@@ -253,7 +372,7 @@ export default function Frameworks() {
         })}
       </div>
 
-      {/* Framework Comparison */}
+      {/* ── Framework Comparison Table ── */}
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -267,8 +386,8 @@ export default function Frameworks() {
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Framework</th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Reference Docs</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Total Controls</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Domains</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Latest Score</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Analyses</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Actions</th>
@@ -277,7 +396,8 @@ export default function Frameworks() {
               <tbody>
                 {frameworksData.map((framework) => {
                   const stats = getFrameworkStats(framework.name);
-                  const colorClasses = getColorClasses(framework.color);
+                  const cc = colorClasses[framework.color];
+                  const fwStat = status[framework.name] || { chunks: 0 };
 
                   return (
                     <tr key={framework.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -291,14 +411,21 @@ export default function Frameworks() {
                         </div>
                       </td>
                       <td className="py-4 px-4 text-center">
+                        {fwStat.chunks > 0 ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            {fwStat.chunks} chunks
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-slate-400">Not loaded</Badge>
+                        )}
+                      </td>
+                      <td className="py-4 px-4 text-center">
                         <span className="font-medium">{framework.totalControls}</span>
                       </td>
                       <td className="py-4 px-4 text-center">
-                        <span className="font-medium">{framework.domains}</span>
-                      </td>
-                      <td className="py-4 px-4 text-center">
                         {stats ? (
-                          <Badge className={`${colorClasses.bg} ${colorClasses.text} border-0`}>
+                          <Badge className={`${cc.bg} ${cc.text} border-0`}>
                             {Math.round(stats.latest.compliance_score || 0)}%
                           </Badge>
                         ) : (
@@ -310,7 +437,7 @@ export default function Frameworks() {
                       </td>
                       <td className="py-4 px-4 text-center">
                         <Link to={createPageUrl(`Analyses?framework=${framework.name}`)}>
-                          <Button size="sm" variant="ghost" className={colorClasses.text}>
+                          <Button size="sm" variant="ghost" className={cc.text}>
                             View Results
                             <ArrowRight className="w-4 h-4 ml-1" />
                           </Button>
@@ -325,7 +452,7 @@ export default function Frameworks() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog */}
+      {/* ── Detail Dialog ── */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
@@ -364,7 +491,6 @@ export default function Frameworks() {
                 </Card>
               </div>
 
-              {/* Trend Chart for selected framework */}
               {(() => {
                 const stats = getFrameworkStats(selectedFramework.name);
                 if (stats && stats.trendData.length > 1) {
@@ -378,13 +504,7 @@ export default function Frameworks() {
                             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                             <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
                             <Tooltip />
-                            <Line 
-                              type="monotone" 
-                              dataKey="score" 
-                              stroke="#10b981"
-                              strokeWidth={2}
-                              dot={{ fill: '#10b981' }}
-                            />
+                            <Line type="monotone" dataKey="score" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981' }} />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
@@ -394,16 +514,12 @@ export default function Frameworks() {
                 return null;
               })()}
 
-              <div className="text-xs text-slate-400">
-                Last Updated: {selectedFramework.lastUpdated}
-              </div>
+              <div className="text-xs text-slate-400">Last Updated: {selectedFramework.lastUpdated}</div>
             </div>
           )}
 
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
-              Close
-            </Button>
+            <Button variant="outline" onClick={() => setShowDetailDialog(false)}>Close</Button>
             <Link to={createPageUrl(`Analyses?framework=${selectedFramework?.name}`)}>
               <Button className="bg-emerald-600 hover:bg-emerald-700">
                 View Analysis Results

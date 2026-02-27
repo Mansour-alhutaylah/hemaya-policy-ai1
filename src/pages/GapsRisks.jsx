@@ -25,8 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/components/ui/use-toast';
 import {
   AlertTriangle,
@@ -34,13 +32,12 @@ import {
   Filter,
   Edit,
   Shield,
-  Calendar as CalendarIcon,
   User,
   ArrowUpCircle,
   ArrowDownCircle,
-  Minus
+  Minus,
+  FileText
 } from 'lucide-react';
-import { format } from 'date-fns';
 import {
   PieChart,
   Pie,
@@ -74,8 +71,7 @@ export default function GapsRisks() {
   const [editForm, setEditForm] = useState({
     status: '',
     owner: '',
-    due_date: null,
-    remediation_notes: '',
+    remediation: '',
   });
 
   const { toast } = useToast();
@@ -132,7 +128,7 @@ export default function GapsRisks() {
   const criticalCount = gaps.filter(g => g.severity === 'Critical' && g.status === 'Open').length;
   const highCount = gaps.filter(g => g.severity === 'High' && g.status === 'Open').length;
   const openCount = gaps.filter(g => g.status === 'Open').length;
-  const overdueCount = gaps.filter(g => g.due_date && new Date(g.due_date) < new Date() && g.status !== 'Resolved').length;
+  const overdueCount = 0; // due_date not in schema
 
   // Chart data
   const severityDistribution = [
@@ -154,8 +150,7 @@ export default function GapsRisks() {
     setEditForm({
       status: gap.status || 'Open',
       owner: gap.owner || '',
-      due_date: gap.due_date ? new Date(gap.due_date) : null,
-      remediation_notes: gap.remediation_notes || '',
+      remediation: gap.remediation || '',
     });
     setShowEditDialog(true);
   };
@@ -163,10 +158,7 @@ export default function GapsRisks() {
   const handleSubmitEdit = () => {
     updateGapMutation.mutate({
       id: selectedGap.id,
-      data: {
-        ...editForm,
-        due_date: editForm.due_date ? format(editForm.due_date, 'yyyy-MM-dd') : null,
-      },
+      data: { ...editForm },
     });
   };
 
@@ -222,18 +214,11 @@ export default function GapsRisks() {
       ),
     },
     {
-      header: 'Due Date',
-      accessor: 'due_date',
-      cell: (row) => {
-        if (!row.due_date) return <span className="text-slate-400">-</span>;
-        const isOverdue = new Date(row.due_date) < new Date() && row.status !== 'Resolved';
-        return (
-          <span className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-600'}`}>
-            {format(new Date(row.due_date), 'MMM d, yyyy')}
-            {isOverdue && ' (Overdue)'}
-          </span>
-        );
-      },
+      header: 'Description',
+      accessor: 'description',
+      cell: (row) => (
+        <p className="text-xs text-slate-600 line-clamp-2 max-w-xs">{row.description || '—'}</p>
+      ),
     },
     {
       header: '',
@@ -272,10 +257,9 @@ export default function GapsRisks() {
           icon={AlertTriangle}
         />
         <StatsCard
-          title="Overdue"
-          value={overdueCount}
-          icon={CalendarIcon}
-          variant={overdueCount > 0 ? 'red' : 'default'}
+          title="In Progress"
+          value={gaps.filter(g => g.status === 'In Progress').length}
+          icon={AlertTriangle}
         />
       </div>
 
@@ -408,7 +392,7 @@ export default function GapsRisks() {
             <div className="space-y-4 py-4">
               {/* Gap Info */}
               <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="font-mono">
                     {selectedGap.control_id}
                   </Badge>
@@ -416,7 +400,10 @@ export default function GapsRisks() {
                 </div>
                 <p className="text-sm font-medium">{selectedGap.control_name}</p>
                 {selectedGap.description && (
-                  <p className="text-sm text-slate-600">{selectedGap.description}</p>
+                  <div>
+                    <p className="text-xs font-semibold text-red-600 mb-0.5">Gap identified:</p>
+                    <p className="text-sm text-slate-600">{selectedGap.description}</p>
+                  </div>
                 )}
               </div>
 
@@ -453,36 +440,14 @@ export default function GapsRisks() {
                 </div>
               </div>
 
-              {/* Due Date */}
+              {/* Remediation */}
               <div className="space-y-2">
-                <Label>Due Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left">
-                      <CalendarIcon className="w-4 h-4 mr-2" />
-                      {editForm.due_date 
-                        ? format(editForm.due_date, 'PPP')
-                        : 'Select date'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={editForm.due_date}
-                      onSelect={(date) => setEditForm(prev => ({ ...prev, due_date: date }))}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <Label>Remediation Notes</Label>
+                <Label>Remediation Plan</Label>
                 <Textarea
-                  placeholder="Add notes about remediation progress..."
-                  value={editForm.remediation_notes}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, remediation_notes: e.target.value }))}
-                  rows={3}
+                  placeholder="Describe the remediation steps to close this gap..."
+                  value={editForm.remediation}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, remediation: e.target.value }))}
+                  rows={4}
                 />
               </div>
             </div>

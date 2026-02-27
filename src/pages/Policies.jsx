@@ -41,7 +41,9 @@ import {
   Search,
   Filter,
   CheckCircle2,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Database
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -53,6 +55,8 @@ const AuditLog = api.entities.AuditLog;
 export default function Policies() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [showFrameworkWarning, setShowFrameworkWarning] = useState(false);
+  const [pendingAnalysisPolicy, setPendingAnalysisPolicy] = useState(null);
   const [selectedPolicy, setSelectedPolicy] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -195,19 +199,15 @@ export default function Policies() {
     });
   };
 
-  const handleRunAnalysis = async (policy) => {
+  const doRunAnalysis = async (policy) => {
     try {
-      updatePolicyMutation.mutate({
-        id: policy.id,
-        data: { status: 'processing' },
-      });
+      updatePolicyMutation.mutate({ id: policy.id, data: { status: 'processing' } });
 
       toast({
         title: 'Analysis Started',
-        description: `Analyzing ${policy.file_name} across all frameworks...`,
+        description: `Analyzing ${policy.file_name} across all 3 frameworks (90 controls). This may take a few minutes...`,
       });
 
-      // Call backend function
       const result = await api.functions.invoke('analyze_policy', {
         policy_id: policy.id,
         frameworks: ['NCA ECC', 'ISO 27001', 'NIST 800-53'],
@@ -217,19 +217,42 @@ export default function Policies() {
         queryClient.invalidateQueries({ queryKey: ['policies'] });
         queryClient.invalidateQueries({ queryKey: ['complianceResults'] });
         queryClient.invalidateQueries({ queryKey: ['gaps'] });
-        
+        queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
+
         toast({
           title: 'Analysis Complete',
           description: `Created ${result.mappings_created} mappings and identified ${result.gaps_created} gaps.`,
         });
       }
     } catch (error) {
+      updatePolicyMutation.mutate({ id: policy.id, data: { status: 'uploaded' } });
       toast({
         title: 'Analysis Failed',
         description: error.message || 'Failed to analyze policy',
         variant: 'destructive',
       });
     }
+  };
+
+  const handleRunAnalysis = async (policy) => {
+    // Check if framework reference documents are loaded
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/functions/framework_status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const fwStatus = await res.json();
+        if (!fwStatus.ready) {
+          setPendingAnalysisPolicy(policy);
+          setShowFrameworkWarning(true);
+          return;
+        }
+      }
+    } catch (_) {
+      // If status check fails, proceed anyway
+    }
+    doRunAnalysis(policy);
   };
 
   const handleViewPreview = (policy) => {
@@ -499,6 +522,47 @@ export default function Policies() {
               ) : (
                 'Save Policy'
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Framework Warning Dialog */}
+      <Dialog open={showFrameworkWarning} onOpenChange={setShowFrameworkWarning}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Framework Documents Not Loaded
+            </DialogTitle>
+            <DialogDescription>
+              The AI will use basic control definitions only. For deeper analysis that compares your
+              policy against the full framework requirements, upload reference documents in the
+              Frameworks page first.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg my-2">
+            <Database className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-700">
+              Upload official NCA ECC, ISO 27001, and NIST 800-53 documents in
+              <strong> Frameworks → Upload Reference Document</strong> for best results.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Link to={createPageUrl('Frameworks')}>
+              <Button variant="outline" onClick={() => setShowFrameworkWarning(false)}>
+                Go to Frameworks Page
+              </Button>
+            </Link>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => {
+                setShowFrameworkWarning(false);
+                if (pendingAnalysisPolicy) doRunAnalysis(pendingAnalysisPolicy);
+              }}
+            >
+              <Play className="w-4 h-4 mr-2" />
+              Continue Anyway
             </Button>
           </div>
         </DialogContent>
