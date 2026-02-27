@@ -3,26 +3,31 @@ import { api } from "@/api/apiClient";
 
 const AuthContext = createContext(null);
 
+function getCachedUser() {
+  try {
+    const saved = localStorage.getItem("user");
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem("user");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const hasToken = !!localStorage.getItem("token");
+  const cachedUser = getCachedUser();
 
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    !!localStorage.getItem("token")
-  );
-
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  // Start authenticated immediately if we have both token + cached user.
+  // Only show the loading spinner when we have a token but no cached user
+  // (needs backend verification). No token = no spinner, show login right away.
+  const [user, setUser] = useState(cachedUser);
+  const [isAuthenticated, setIsAuthenticated] = useState(hasToken && !!cachedUser);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(hasToken && !cachedUser);
   const [isLoadingPublicSettings] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = ({ token, user }) => {
@@ -36,12 +41,14 @@ export const AuthProvider = ({ children }) => {
     }
 
     setIsAuthenticated(true);
+    setIsLoadingAuth(false);
     setAuthError(null);
   };
 
   const checkAuth = async () => {
     const token = localStorage.getItem("token");
 
+    // No token — unauthenticated, show login immediately
     if (!token) {
       setIsAuthenticated(false);
       setUser(null);
@@ -49,6 +56,18 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    // Token + cached user — use the cache, skip the backend call.
+    // If the token is expired, the next API call from any page will
+    // return 401 and the user will be redirected to login at that point.
+    const cached = getCachedUser();
+    if (cached) {
+      setUser(cached);
+      setIsAuthenticated(true);
+      setIsLoadingAuth(false);
+      return;
+    }
+
+    // Token exists but no cached user — verify with the backend
     try {
       setIsLoadingAuth(true);
       setAuthError(null);

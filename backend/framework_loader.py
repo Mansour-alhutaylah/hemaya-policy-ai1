@@ -118,14 +118,14 @@ def get_framework_context(
         results = db.execute(
             text("""
                 SELECT chunk_text, control_code, section_title,
-                       1 - (embedding <=> :query_embedding) AS similarity
+                       1 - (embedding <=> cast(:embedding as vector)) AS similarity
                 FROM framework_chunks
                 WHERE framework_name = :framework
-                ORDER BY embedding <=> :query_embedding
+                ORDER BY embedding <=> cast(:embedding as vector)
                 LIMIT :top_k
             """),
             {
-                "query_embedding": embedding_str,
+                "embedding": embedding_str,
                 "framework": framework_name,
                 "top_k": top_k,
             },

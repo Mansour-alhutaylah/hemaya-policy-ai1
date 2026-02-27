@@ -1,9 +1,10 @@
+import json
 import os
-import random
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -21,7 +22,11 @@ from sqlalchemy.orm import Session
 from backend import auth, database, models, schemas
 from backend.database import get_db
 from backend.text_extractor import extract_text
-from backend.rag_engine import run_full_analysis, chat_with_context
+from backend.rag_engine import (
+    run_full_analysis, chat_with_context,
+    run_simulation as rag_run_simulation,
+    generate_ai_insights, explain_mapping,
+)
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
 
@@ -180,9 +185,14 @@ async def upload_file(file: UploadFile = File(...), policy_id: Optional[str] = F
     # Chunk and embed at upload time so analysis only needs to search, not re-embed.
     # policy_id must be passed as a form field by the caller once the Policy row exists.
     if extracted_text and not extracted_text.startswith("[Extraction error") and policy_id:
-        chunks = chunk_text(extracted_text)
-        embeddings = await get_embeddings([c["text"] for c in chunks])
-        store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
+        try:
+            chunks = chunk_text(extracted_text)
+            if chunks:
+                embeddings = await get_embeddings([c["text"] for c in chunks])
+                store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
+        except Exception as e:
+            print(f"⚠️ Embedding skipped: {e}")
+            # Upload still succeeds — embedding can happen later during analysis
 
     return {
         "file_url": f"/uploads/{file_name}",
@@ -274,114 +284,24 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     policy.status = "processing"
     db.commit()
 
-    # Remove previous analysis data for this policy to prevent duplicates on re-run
+    # Remove previous analysis data to prevent duplicates on re-run
+    db.query(models.AIInsight).filter(models.AIInsight.policy_id == policy.id).delete()
     db.query(models.Gap).filter(models.Gap.policy_id == policy.id).delete()
     db.query(models.MappingReview).filter(models.MappingReview.policy_id == policy.id).delete()
     db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
     db.commit()
 
-    ai_results = await run_full_analysis(db, request.policy_id, request.frameworks)
+    # run_full_analysis handles all DB writes (ComplianceResult, Gap,
+    # MappingReview, AIInsight, AuditLog) and updates policy status.
+    results = await run_full_analysis(db, request.policy_id, request.frameworks)
 
-    results = []
-    mappings = []
-    gaps = []
-
-    for fw, fw_data in ai_results.items():
-        for detail in fw_data["details"]:
-            mappings.append(
-                models.MappingReview(
-                    policy_id=policy.id,
-                    control_id=detail["control_code"],
-                    framework=fw,
-                    evidence_snippet=detail.get("evidence", ""),
-                    confidence_score=detail.get("confidence", 0.0),
-                    ai_rationale=detail.get("rationale", ""),
-                    decision="Accepted" if detail["status"] == "Compliant" else "Pending",
-                )
-            )
-
-            if detail["status"] != "Compliant":
-                gaps.append(
-                    models.Gap(
-                        policy_id=policy.id,
-                        framework=fw,
-                        control_id=detail["control_code"],
-                        control_name=detail.get("control_title", detail["control_code"]),
-                        severity=detail.get("priority", detail.get("severity_if_missing", "Medium")),
-                        status="Open",
-                        description=detail.get("gaps", f"Control {detail['control_code']} gap identified"),
-                        remediation=detail.get("recommendation", "Review and implement this control"),
-                    )
-                )
-
-        score = fw_data["score"]
-        status_label = "Compliant" if score >= 80 else "Partially Compliant" if score >= 60 else "Not Compliant"
-        result = models.ComplianceResult(
-            policy_id=policy.id,
-            framework=fw,
-            compliance_score=score,
-            controls_covered=fw_data["compliant"],
-            controls_partial=fw_data["partial"],
-            controls_missing=fw_data["non_compliant"],
-            status=status_label,
-            analyzed_at=datetime.now(timezone.utc),
-            analysis_duration=0,
-            details={"per_control": fw_data["details"]},
-        )
-        db.add(result)
-        results.append(result)
-
-    if mappings:
-        db.add_all(mappings)
-    if gaps:
-        db.add_all(gaps)
-
-    policy.status = "analyzed"
-    policy.last_analyzed_at = datetime.now(timezone.utc)
-    db.commit()
-
-    return {
-        "success": True,
-        "results": serialize(results),
-        "mappings_created": len(mappings),
-        "gaps_created": len(gaps),
-    }
+    return {"success": True, "results": results}
 
 
 @app.post("/api/functions/run_simulation")
 async def run_simulation(request: schemas.RunSimulationRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    results = db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == request.policy_id).all()
-    if not results:
-        return JSONResponse(status_code=404, content={"error": "No results to simulate"})
-
-    controls_selected = len(request.control_ids or [])
-    impact = 1.5 + controls_selected * 0.5
-    controls_resolved = max(3, controls_selected)
-    projected = []
-    for r in results:
-        projected_score = min(100, (r.compliance_score or 0) + impact * 3)
-        projected.append({
-            "framework": r.framework,
-            "current_score": round(r.compliance_score or 0),
-            "projected_score": round(projected_score),
-            "improvement": round(projected_score - (r.compliance_score or 0)),
-            "controls_covered": r.controls_covered,
-            "controls_missing": max(0, (r.controls_missing or 0) - controls_resolved),
-        })
-
-    gaps = db.query(models.Gap).filter(models.Gap.policy_id == request.policy_id).all()
-    gaps_resolved = min(len(gaps), controls_resolved)
-
-    return {
-        "success": True,
-        "current_results": [
-            {"framework": r.framework, "score": round(r.compliance_score or 0)} for r in results
-        ],
-        "projected_results": projected,
-        "controls_implemented": controls_resolved,
-        "gaps_resolved": gaps_resolved,
-        "total_impact": round(sum(p["improvement"] for p in projected) / len(projected)),
-    }
+    result = await rag_run_simulation(db, request.policy_id, request.control_ids or [])
+    return result
 
 
 @app.post("/api/functions/generate_report")
@@ -485,4 +405,32 @@ def framework_status(
             for fw in ["NCA ECC", "ISO 27001", "NIST 800-53"]
         ),
     }
+
+
+@app.get("/api/functions/ai_insights/{policy_id}")
+async def get_ai_insights(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return AI insights for a policy. Powers the AI Insights page."""
+    insights = (
+        db.query(models.AIInsight)
+        .filter(models.AIInsight.policy_id == policy_id)
+        .order_by(models.AIInsight.created_at.desc())
+        .all()
+    )
+    return serialize(insights)
+
+
+@app.post("/api/functions/explain_mapping")
+async def explain_mapping_route(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Generate a detailed XAI explanation for a mapping decision. Powers the Explainability page."""
+    mapping_id = payload.get("mapping_id", "")
+    result = await explain_mapping(db, mapping_id)
+    return result
 

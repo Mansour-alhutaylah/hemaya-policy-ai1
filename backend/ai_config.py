@@ -3,28 +3,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# HuggingFace API token (free at huggingface.co/settings/tokens)
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    import warnings
+    warnings.warn(
+        "OPENAI_API_KEY not set — AI features will fail when invoked. Add it to your .env file.",
+        stacklevel=2,
+    )
 
-# Model endpoints (HuggingFace Inference API)
 MODELS = {
     "llm": {
-        "name": "Qwen/Qwen2.5-3B-Instruct",
-        "endpoint": "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-3B-Instruct",
-        "type": "text-generation",
-        "max_new_tokens": 512,
-        "temperature": 0.1,  # Low temp = deterministic compliance judgments
+        "name": "gpt-4o-mini",
+        "provider": "openai",
+        "temperature": 0.1,
+        "max_tokens": 1500,
     },
     "embeddings": {
-        "name": "BAAI/bge-base-en-v1.5",
-        "endpoint": "https://api-inference.huggingface.co/models/BAAI/bge-base-en-v1.5",
-        "type": "feature-extraction",
-        "dimension": 768,  # BGE-base outputs 768-dimensional vectors
-    },
-    "reranker": {
-        "name": "BAAI/bge-reranker-v2-m3",
-        "endpoint": "https://api-inference.huggingface.co/models/BAAI/bge-reranker-v2-m3",
-        "type": "text-classification",
+        "name": "text-embedding-3-small",
+        "provider": "openai",
+        "dimension": 1536,
     },
 }
 
@@ -32,4 +29,4 @@ MODELS = {
 CHUNK_SIZE = 500       # characters per chunk
 CHUNK_OVERLAP = 100    # overlap between chunks for context continuity
 TOP_K_RETRIEVAL = 10   # how many chunks to retrieve initially
-TOP_K_RERANK = 3       # how many chunks to keep after reranking
+TOP_K_RERANK = 5       # how many chunks to keep after reranking

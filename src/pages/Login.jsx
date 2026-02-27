@@ -33,12 +33,17 @@ export default function Login() {
     setError("");
     setLoading(true);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await safeJson(res);
 
@@ -48,27 +53,30 @@ export default function Login() {
         );
       }
 
-      // ✅ بعض السيرفرات ترجع access_token بدل token
       const token = data?.token || data?.access_token;
       if (!token) throw new Error("Login response missing token/access_token");
 
-      // ✅ user ممكن يرجع داخل data.user
       let user = data?.user || null;
 
-      // ✅ إذا ما رجّع user، نجيبها من /auth/me بعد ما نخزن التوكن
       if (!user) {
         localStorage.setItem("token", token);
         const meRes = await fetch("/api/auth/me", {
           headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8000),
         });
         const meData = await safeJson(meRes);
         if (meRes.ok) user = meData;
       }
 
       login({ token, user });
-      nav("/dashboard");
+      nav("/Dashboard");
     } catch (err) {
-      setError(err?.message || "Unknown error");
+      clearTimeout(timeoutId);
+      if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+        setError("Server is taking too long to respond. The database may be waking up — please try again in a moment.");
+      } else {
+        setError(err?.message || "Unknown error");
+      }
     } finally {
       setLoading(false);
     }

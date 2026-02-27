@@ -1,22 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import List, Optional
 
 import httpx
-import numpy as np
-from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .ai_config import HF_API_TOKEN, MODELS, TOP_K_RETRIEVAL
+from .ai_config import TOP_K_RETRIEVAL
 
 logger = logging.getLogger(__name__)
-
-# BGE recommends this prefix on query strings (NOT on document chunks).
-# It improves retrieval quality for asymmetric search (query vs passage).
-_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 
 # ---------------------------------------------------------------------------
@@ -28,91 +21,53 @@ def _to_pgvector(embedding: List[float]) -> str:
     return "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
 
 
-def _pool_single(raw) -> List[float]:
-    """
-    Normalize one text's HF feature-extraction output to a flat 1-D vector.
-
-    HF Inference API can return any of these shapes for a single text:
-        - List[float]              — already a flat sentence embedding
-        - List[List[float]]        — (seq_len, hidden); mean-pool over tokens
-    Both are handled correctly here.
-    """
-    arr = np.array(raw, dtype=np.float32)
-    if arr.ndim == 1:
-        return arr.tolist()
-    # ndim == 2: (seq_len, hidden_dim) — mean-pool to get sentence vector
-    return arr.mean(axis=0).tolist()
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-async def get_embeddings(
-    texts: List[str],
-    is_query: bool = False,
-) -> List[List[float]]:
+async def get_embeddings(texts: list) -> list:
     """
-    Embed a batch of texts using BGE-base-en-v1.5 via HuggingFace Inference API.
+    Embed a batch of texts using OpenAI text-embedding-3-small (1536 dimensions).
 
     Args:
-        texts:    Strings to embed.
-        is_query: True when embedding a search query (adds BGE instruction
-                  prefix). False for document chunks being indexed.
+        texts: Strings to embed.
 
     Returns:
-        List of 768-dim float vectors, one per input text.
+        List of 1536-dim float vectors, one per input text.
 
     Raises:
-        httpx.HTTPStatusError: on non-2xx response from the HF API.
+        Exception: on non-200 response from the OpenAI API.
     """
+    from .ai_config import OPENAI_API_KEY
+
     if not texts:
         return []
 
-    inputs = (
-        [_QUERY_PREFIX + t for t in texts] if is_query else list(texts)
-    )
+    all_embeddings = []
+    for i in range(0, len(texts), 20):
+        batch = texts[i : i + 20]
+        # OpenAI rejects empty strings — replace with a placeholder
+        batch = [t.strip() if t.strip() else "empty" for t in batch]
 
-    raw: list = []
-    for attempt in range(2):
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    MODELS["embeddings"]["endpoint"],
-                    headers={"Authorization": f"Bearer {HF_API_TOKEN}"},
-                    json={"inputs": inputs, "options": {"wait_for_model": True}},
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": "text-embedding-3-small", "input": batch},
+            )
+            if response.status_code != 200:
+                raise Exception(
+                    f"OpenAI embedding error ({response.status_code}): "
+                    f"{response.text[:500]}"
                 )
-                if response.status_code == 503:
-                    if attempt == 0:
-                        logger.warning("Embedding model returned 503 — waiting 10s before retry")
-                        await asyncio.sleep(10)
-                        continue
-                    raise HTTPException(
-                        status_code=502,
-                        detail="Embedding service unavailable after retry (503)",
-                    )
-                response.raise_for_status()
-                raw = response.json()
-                break
-        except HTTPException:
-            raise
-        except httpx.HTTPStatusError as exc:
-            logger.error("HuggingFace embedding API error: %s", exc)
-            raise HTTPException(
-                status_code=502,
-                detail=f"Embedding model unavailable: {exc.response.status_code}",
-            ) from exc
-        except httpx.RequestError as exc:
-            logger.error("HuggingFace embedding API request failed: %s", exc)
-            raise HTTPException(
-                status_code=502,
-                detail="Could not reach the embedding model. Check your network or HF token.",
-            ) from exc
+            data = response.json()
+            batch_embeddings = [item["embedding"] for item in data["data"]]
+            all_embeddings.extend(batch_embeddings)
 
-    # raw is a list with one entry per input text.
-    # Each entry is either List[float] or List[List[float]] depending on
-    # whether the model returns CLS/mean-pooled or per-token hidden states.
-    return [_pool_single(item) for item in raw]
+    return all_embeddings
 
 
 def store_chunks_with_embeddings(
@@ -128,7 +83,7 @@ def store_chunks_with_embeddings(
         db:         SQLAlchemy session (from get_db()).
         policy_id:  UUID string of the owning policy.
         chunks:     Output of chunker.chunk_text().
-        embeddings: Parallel list of 768-dim vectors from get_embeddings().
+        embeddings: Parallel list of 1536-dim vectors from get_embeddings().
     """
     if len(chunks) != len(embeddings):
         raise ValueError(
@@ -176,7 +131,7 @@ def search_similar_chunks(
 
     Args:
         db:              SQLAlchemy session.
-        query_embedding: 768-dim vector from get_embeddings(is_query=True).
+        query_embedding: 1536-dim vector from get_embeddings().
         policy_id:       Optional — restrict search to a single policy document.
         top_k:           Number of results to return.
 
@@ -189,33 +144,31 @@ def search_similar_chunks(
                 "similarity":  float,   # cosine similarity in [0, 1]
             }
     """
-    vec_str = _to_pgvector(query_embedding)
-    params: dict = {"top_k": top_k, "query_embedding": vec_str}
+    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-    filter_clause = ""
     if policy_id:
-        filter_clause = "WHERE policy_id = :policy_id"
-        params["policy_id"] = policy_id
-
-    # Use a CTE so the vector literal is cast once and reused for both the
-    # ORDER BY and the SELECT — avoids redundant work and repeated casting.
-    rows = db.execute(
-        text(f"""
-            WITH q AS (
-                SELECT :query_embedding::vector AS vec
-            )
-            SELECT
-                chunk_text,
-                chunk_index,
-                policy_id::text,
-                1 - (embedding <=> (SELECT vec FROM q)) AS similarity
-            FROM policy_chunks
-            {filter_clause}
-            ORDER BY embedding <=> (SELECT vec FROM q)
-            LIMIT :top_k
-        """),
-        params,
-    ).fetchall()
+        rows = db.execute(
+            text("""
+                SELECT chunk_text, chunk_index, policy_id,
+                       1 - (embedding <=> cast(:embedding as vector)) AS similarity
+                FROM policy_chunks
+                WHERE policy_id = :policy_id
+                ORDER BY embedding <=> cast(:embedding as vector)
+                LIMIT :top_k
+            """),
+            {"embedding": embedding_str, "policy_id": policy_id, "top_k": top_k},
+        ).fetchall()
+    else:
+        rows = db.execute(
+            text("""
+                SELECT chunk_text, chunk_index, policy_id,
+                       1 - (embedding <=> cast(:embedding as vector)) AS similarity
+                FROM policy_chunks
+                ORDER BY embedding <=> cast(:embedding as vector)
+                LIMIT :top_k
+            """),
+            {"embedding": embedding_str, "top_k": top_k},
+        ).fetchall()
 
     return [
         {
