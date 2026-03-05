@@ -62,6 +62,7 @@ export default function Policies() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [newPolicy, setNewPolicy] = useState({
     file_name: '',
     description: '',
@@ -77,34 +78,6 @@ export default function Policies() {
     queryFn: () => Policy.list('-created_at'),
   });
 
-  const createPolicyMutation = useMutation({
-    mutationFn: async (policyData) => {
-      return Policy.create(policyData);
-    },
-    onSuccess: async (newPolicy) => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] });
-      await AuditLog.create({
-        actor: 'Current User',
-        action: 'policy_upload',
-        target_type: 'policy',
-        target_id: newPolicy.id,
-        details: { filename: newPolicy.file_name },
-      });
-      toast({
-        title: 'Policy Uploaded',
-        description: `${newPolicy.file_name} has been uploaded successfully. Policy ID: ${newPolicy.id}`,
-      });
-      setShowUploadDialog(false);
-      resetForm();
-    },
-    onError: (error) => {
-      toast({
-        title: 'Upload Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
 
   const updatePolicyMutation = useMutation({
     mutationFn: ({ id, data }) => Policy.update(id, data),
@@ -135,44 +108,75 @@ export default function Policies() {
       department: '',
       version: '1.0',
     });
+    setSelectedFile(null);
     setUploadProgress(0);
   };
 
-  const handleFileUpload = async (e) => {
+  // Just store the file locally — the real upload happens on Submit
+  const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
+    setNewPolicy(prev => ({
+      ...prev,
+      file_name: file.name,
+      file_type: file.name.split('.').pop(),
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedFile) {
+      toast({
+        title: 'Missing File',
+        description: 'Please select a policy document.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setUploading(true);
     setUploadProgress(0);
 
-    try {
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => Math.min(prev + 10, 90));
+    }, 300);
 
-      // Upload file
-      const result = await api.integrations.Core.UploadFile({ file });
+    try {
+      const token = localStorage.getItem('token');
+      const form = new FormData();
+      form.append('file', selectedFile);
+      form.append('department', newPolicy.department || 'General');
+      form.append('version', newPolicy.version || '1.0');
+      form.append('description', newPolicy.description || '');
+
+      const res = await fetch('/api/integrations/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      setNewPolicy(prev => ({
-        ...prev,
-        file_name: file.name,
-        file_url: result.file_url,
-        file_type: file.name.split('.').pop(),
-        content_preview: result.content_preview || '',
-      }));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+        throw new Error(err.detail || 'Upload failed');
+      }
 
-      const charCount = result.char_count || 0;
+      const result = await res.json();
+
+      // Refresh policy list with the server-returned status
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
+
       toast({
-        title: 'File Uploaded',
-        description: charCount > 0
-          ? `Extracted ${charCount.toLocaleString()} characters. Complete the form to save.`
-          : 'File uploaded. Complete the form to save.',
+        title: 'Policy Uploaded',
+        description: `${result.file_name} uploaded with ${result.chunks || 0} chunks ready for analysis.`,
       });
+
+      setShowUploadDialog(false);
+      resetForm();
     } catch (error) {
+      clearInterval(progressInterval);
       toast({
         title: 'Upload Failed',
         description: error.message,
@@ -181,22 +185,6 @@ export default function Policies() {
     } finally {
       setUploading(false);
     }
-  };
-
-  const handleSubmit = () => {
-    if (!newPolicy.file_name) {
-      toast({
-        title: 'Missing File',
-        description: 'Please upload a policy document.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    createPolicyMutation.mutate({
-      ...newPolicy,
-      status: 'uploaded',
-    });
   };
 
   const doRunAnalysis = async (policy) => {
@@ -509,15 +497,15 @@ export default function Policies() {
             <Button variant="outline" onClick={() => setShowUploadDialog(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleSubmit}
-              disabled={!newPolicy.file_name || createPolicyMutation.isPending}
+              disabled={!selectedFile || uploading}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
-              {createPolicyMutation.isPending ? (
+              {uploading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
+                  Uploading... {uploadProgress}%
                 </>
               ) : (
                 'Save Policy'
