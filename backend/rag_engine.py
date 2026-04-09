@@ -1,6 +1,7 @@
 """
 Hemaya RAG Engine — Powers all AI features using OpenAI GPT-4o-mini.
 """
+import asyncio
 import json
 import uuid
 import httpx
@@ -8,6 +9,10 @@ from datetime import datetime
 from sqlalchemy import text as sql_text
 from backend.ai_config import OPENAI_API_KEY, MODELS, TOP_K_RETRIEVAL, TOP_K_RERANK
 from backend.vector_store import get_embeddings, search_similar_chunks
+
+# Maximum concurrent LLM calls — keeps us within OpenAI rate limits while
+# still processing controls in parallel instead of one-by-one.
+_LLM_SEMAPHORE = asyncio.Semaphore(5)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -59,18 +64,28 @@ async def rerank_chunks(query: str, chunks: list, top_k: int = TOP_K_RERANK) -> 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async def analyze_control_compliance(
-    db, policy_id: str, control: dict, framework_name: str
+    db, policy_id: str, control: dict, framework_name: str,
+    precomputed_embedding: list = None,
 ) -> dict:
-    """Run full RAG analysis for a single control against a policy."""
+    """Run full RAG analysis for a single control against a policy.
+
+    Args:
+        precomputed_embedding: Optional pre-batched embedding for this control's
+            query string. When provided, no embedding API call is made here,
+            which is the main source of per-control latency.
+    """
 
     control_query = f"{control['control_code']}: {control['title']}"
 
+    # Use pre-computed embedding when available; fall back to on-demand call
+    query_embedding = precomputed_embedding
+
     # Get framework reference
     framework_text = ""
-    query_embedding = None
     try:
         from backend.framework_loader import get_framework_context
-        query_embedding = (await get_embeddings([control_query]))[0]
+        if query_embedding is None:
+            query_embedding = (await get_embeddings([control_query]))[0]
         framework_context = get_framework_context(db, framework_name, query_embedding, top_k=3)
         framework_text = "\n---\n".join([c["text"] for c in framework_context])
     except Exception:
@@ -89,7 +104,7 @@ async def analyze_control_compliance(
             f"Severity if missing: {control.get('severity_if_missing', 'High')}"
         )
 
-    # Get policy text (reuse embedding or create new)
+    # Ensure we have an embedding for policy chunk retrieval
     if query_embedding is None:
         query_embedding = (await get_embeddings([control_query]))[0]
 
@@ -200,16 +215,35 @@ async def run_full_analysis(db, policy_id: str, frameworks: list) -> dict:
             all_results[framework_name] = {"error": f"No controls found for {framework_name}"}
             continue
 
-        framework_results = []
-        for ctrl in controls:
+        # ── Batch-embed all control queries in one API call ──────────────────
+        # Previously: 1 embedding call per control  (~30 serial HTTP requests)
+        # Now:        1 batched call for all controls (get_embeddings chunks at 20)
+        control_queries = [f"{ctrl[1]}: {ctrl[2]}" for ctrl in controls]
+        try:
+            all_ctrl_embeddings = await get_embeddings(control_queries)
+        except Exception as emb_err:
+            print(f"[run_full_analysis] Batch embedding failed for {framework_name}: {emb_err}. Falling back to per-control embedding.")
+            all_ctrl_embeddings = [None] * len(controls)
+
+        # ── Analyse all controls in parallel with a concurrency cap ──────────
+        # Previously: sequential for-loop — each control waited for the previous
+        # Now:        asyncio.gather runs up to 5 LLM calls at the same time
+        async def _run_one(ctrl, embedding):
             control_dict = {
                 "control_code": ctrl[1],
                 "title": ctrl[2],
                 "keywords": ctrl[3],
                 "severity_if_missing": ctrl[4],
             }
-            result = await analyze_control_compliance(db, policy_id, control_dict, framework_name)
-            framework_results.append(result)
+            async with _LLM_SEMAPHORE:
+                return await analyze_control_compliance(
+                    db, policy_id, control_dict, framework_name,
+                    precomputed_embedding=embedding,
+                )
+
+        framework_results = list(await asyncio.gather(
+            *[_run_one(ctrl, emb) for ctrl, emb in zip(controls, all_ctrl_embeddings)]
+        ))
 
         # Calculate scores
         total = len(framework_results)
