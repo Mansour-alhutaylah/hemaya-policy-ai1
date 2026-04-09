@@ -50,23 +50,21 @@ async def call_llm(system, user, force_json=True, temperature=0.0):
         return r.json()["choices"][0]["message"]["content"]
 
 
-# ── Layer 1: Keyword Search ──────────────────────────────────────────────────
+# ── GPT Verification Prompt ──────────────────────────────────────────────────
 
-def keyword_search(text_lower, keywords):
-    """Return (bool found, list matched_keywords)."""
-    matched = [kw for kw in keywords if kw.lower() in text_lower]
-    return len(matched) > 0, matched
+VERIFIER_PROMPT = """You verify if a policy document addresses specific compliance requirements.
+For EACH checkpoint, determine if the policy ADDRESSES the requirement in substance.
 
-
-# ── Layer 2: GPT Verification Prompt ─────────────────────────────────────────
-
-VERIFIER_PROMPT = """You verify cybersecurity policy compliance checkpoints.
-For EACH checkpoint, determine if the policy text provides clear, specific evidence.
-Rules:
-- YES only if there is EXPLICIT evidence (exact quote or clear statement)
-- Generic "best practices" or vague mentions = NO
-- Topic mentioned but details missing = NO
-- Must find SPECIFIC language, not just the topic
+RULES:
+- met=true if the policy ADDRESSES this requirement, even with different wording
+- The policy does NOT need to use the exact same words or terminology
+- "users must authenticate using two verification methods" = MFA = met
+- "Chief Information Security Officer leads the security department" = CISO role exists = met
+- "AES-256 encryption for stored data" = encryption at rest = met
+- met=false ONLY if the topic is genuinely NOT addressed anywhere in the text
+- When in doubt and relevant text exists, lean toward met=true
+- evidence: quote the EXACT text from the policy that addresses this requirement
+- If met=false, evidence should be "No evidence found"
 
 Return ONLY valid JSON:
 {
@@ -145,18 +143,55 @@ async def _auto_embed(db, policy_id):
     return len(chunks)
 
 
+# ── Find relevant sections for a checkpoint ─────────────────────────────────
+
+def _find_relevant_sections(chunk_texts, requirement, keywords):
+    """Score each chunk by relevance to this checkpoint, return top matches."""
+    req_lower = requirement.lower()
+    req_words = [w for w in req_lower.split() if len(w) > 3]
+
+    scored = []
+    for chunk_text in chunk_texts:
+        chunk_lower = chunk_text.lower()
+        score = 0
+        # Keyword matches (highest weight)
+        for kw in keywords:
+            if kw.lower() in chunk_lower:
+                score += 5
+        # Requirement word matches
+        for w in req_words:
+            if w in chunk_lower:
+                score += 2
+        # Only include chunks with at least some relevance
+        if score > 0:
+            scored.append((score, chunk_text))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Take top 8 relevant chunks (more context = better accuracy)
+    top = [c[1] for c in scored[:8]]
+
+    # If fewer than 3 relevant chunks found, send ALL chunks
+    # (small policy or rare topic — let GPT search everything)
+    if len(top) < 3:
+        return "\n---\n".join(chunk_texts)
+
+    return "\n---\n".join(top)
+
+
 # ── Analyze one control (all its checkpoints) ────────────────────────────────
 
-async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, full_text_lower):
+async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, policy_chunk_texts):
     """
-    Three-layer analysis for a single control.
-    Returns a result dict.
+    Analyze one control. For each checkpoint, find the most relevant
+    policy sections and send only those to GPT for verification.
     """
     t0 = time.time()
     framework = checkpoints[0]["framework"]
 
-    # Layer 1: keyword pre-screen per checkpoint
-    kw_results = {}
+    # Build targeted text per checkpoint, then verify all at once
+    # Each checkpoint gets its own relevant section for context
+    per_cp_texts = []
     for cp in checkpoints:
         kw = cp.get("keywords", [])
         if isinstance(kw, str):
@@ -164,37 +199,32 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
                 kw = json.loads(kw)
             except Exception:
                 kw = []
-        found, matched = keyword_search(full_text_lower, kw)
-        kw_results[cp["checkpoint_index"]] = {"found": found, "matched": matched}
-    kw_time = round(time.time() - t0, 2)
+        relevant = _find_relevant_sections(policy_chunk_texts, cp["requirement"], kw)
+        per_cp_texts.append(relevant)
 
-    # Get relevant policy chunks via vector similarity
-    t1 = time.time()
-    chunks = search_similar_chunks(db, embedding, policy_id=policy_id, top_k=20)
-    chunk_text_joined = "\n---\n".join(c["text"] for c in chunks[:15])
-    search_time = round(time.time() - t1, 2)
+    # Combine the most relevant sections (deduplicated) for one GPT call
+    seen = set()
+    combined_sections = []
+    for txt in per_cp_texts:
+        for section in txt.split("\n---\n"):
+            s = section.strip()
+            if s and s not in seen:
+                seen.add(s)
+                combined_sections.append(s)
 
-    # Layer 2: GPT verification (one call per control, covers all checkpoints)
-    # For small policies (<15K chars), send the FULL text so nothing is missed
-    # For large policies, use vector-matched chunks
-    if len(full_text_lower) <= 15000:
-        policy_text_for_gpt = full_text_lower
-    else:
-        policy_text_for_gpt = chunk_text_joined or full_text_lower[:12000]
-    print(f"    [{control_code}] Policy text length: {len(policy_text_for_gpt)} chars")
+    focused_text = "\n---\n".join(combined_sections)
+    print(f"    [{control_code}] Focused text: {len(focused_text)} chars "
+          f"(from {len(policy_chunk_texts)} chunks)")
+
+    # GPT verification with focused text
     t1 = time.time()
-    gpt_results = await verify_checkpoints_gpt(
-        checkpoints,
-        policy_text_for_gpt,
-    )
+    gpt_results = await verify_checkpoints_gpt(checkpoints, focused_text)
     gpt_time = round(time.time() - t1, 2)
 
-    # Build a lookup from GPT results
-    gpt_map = {}
-    for g in gpt_results:
-        gpt_map[g.get("index", 0)] = g
+    # Build lookup
+    gpt_map = {g.get("index", 0): g for g in gpt_results}
 
-    # Layer 3: Deterministic scoring
+    # Deterministic scoring
     sub_requirements = []
     met_count = 0
     total_weight = 0.0
@@ -207,8 +237,7 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
         evidence = gpt.get("evidence", "No evidence found") or "No evidence found"
         w = cp.get("weight", 1.0)
 
-        kw_found = kw_results.get(idx, {}).get("found", False)
-        print(f"      [{control_code}] CP{idx}: kw={kw_found} met={is_met} | {cp['requirement'][:60]}")
+        print(f"      [{control_code}] CP{idx}: met={is_met} | {cp['requirement'][:60]}")
 
         if is_met:
             met_count += 1
@@ -223,7 +252,6 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
             "status": status,
             "policy_evidence": evidence,
             "gap": "None" if is_met else f"Missing: {cp['requirement']}",
-            "keyword_found": kw_results.get(idx, {}).get("found", False),
         })
 
     score = (met_weight / total_weight * 100) if total_weight > 0 else 0
@@ -238,16 +266,14 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
 
     confidence = round(min(score / 100, 0.99), 2)
 
-    # Determine control title from control_library if available
     ctrl = db.execute(sql_text(
         "SELECT title FROM control_library WHERE control_code=:cc LIMIT 1"
     ), {"cc": control_code}).fetchone()
     title = ctrl[0] if ctrl else control_code
 
     total_time = round(time.time() - t0, 2)
-    print(f"    {control_code}: kw={kw_time}s search={search_time}s "
-          f"gpt={gpt_time}s => {overall_status} ({met_count}/{total}) "
-          f"total={total_time}s")
+    print(f"    {control_code}: gpt={gpt_time}s "
+          f"=> {overall_status} ({met_count}/{total}) total={total_time}s")
 
     gaps_text = "; ".join(
         sr["gap"] for sr in sub_requirements if sr["status"] == "Not Met"
@@ -316,11 +342,13 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         print(f"  Auto-embedded {embedded} chunks")
         n = embedded
 
-    # ── Get full policy text for keyword search ──────────────────────────
-    policy_row = db.execute(sql_text(
-        "SELECT content_preview FROM policies WHERE id=:pid"
-    ), {"pid": policy_id}).fetchone()
-    full_text_lower = (policy_row[0] or "").lower() if policy_row else ""
+    # ── Load policy chunk texts for targeted analysis ──────────────────
+    chunk_rows = db.execute(sql_text(
+        "SELECT chunk_text FROM policy_chunks "
+        "WHERE policy_id=:pid ORDER BY chunk_index"
+    ), {"pid": policy_id}).fetchall()
+    policy_chunk_texts = [r[0] for r in chunk_rows if r[0]]
+    print(f"  Loaded {len(policy_chunk_texts)} chunk texts for targeted search")
 
     # ── Framework filter ─────────────────────────────────────────────────
     t1 = time.time()
@@ -417,7 +445,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         async def _run(code, emb):
             async with sem:
                 return await _analyze_control(
-                    db, policy_id, code, controls[code], emb, full_text_lower
+                    db, policy_id, code, controls[code], emb, policy_chunk_texts
                 )
 
         results_list = []
