@@ -22,15 +22,28 @@ from sqlalchemy.orm import Session
 from backend import auth, database, models, schemas
 from backend.database import get_db
 from backend.text_extractor import extract_text
-from backend.rag_engine import (
-    run_full_analysis, chat_with_context,
-    run_simulation, generate_ai_insights, explain_mapping,
+from backend.checkpoint_analyzer import (
+    run_checkpoint_analysis, chat_with_context,
+    run_simulation, generate_insights, explain_mapping,
 )
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
 
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+def startup_seed():
+    """Seed checkpoint data on server start."""
+    from backend.checkpoint_seed import seed_checkpoints
+    db = database.SessionLocal()
+    try:
+        seed_checkpoints(db)
+    except Exception as e:
+        print(f"Seed warning: {e}")
+    finally:
+        db.close()
 
 
 @app.exception_handler(Exception)
@@ -197,12 +210,12 @@ async def upload_policy(
     if not content or content.startswith("[Extraction error"):
         content = ""
 
-    # Save policy row immediately with status='uploaded'
+    # Save policy row with status='processing'
     db.execute(_sql("""
         INSERT INTO policies
         (id, file_name, description, department, version, status,
          file_url, file_type, content_preview, uploaded_at, created_at)
-        VALUES (:id,:fn,:desc,:dept,:ver,'uploaded',:furl,:ft,:prev,:at,:cat)
+        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:at,:cat)
     """), {
         "id": policy_id,
         "fn": original_name,
@@ -217,15 +230,31 @@ async def upload_policy(
     })
     db.commit()
 
-    # Save full content for auto-embedding during analysis
+    # Save full content for keyword search during analysis
     if content:
         db.execute(_sql(
             "UPDATE policies SET content_preview = :content WHERE id = :pid"
         ), {"content": content, "pid": policy_id})
         db.commit()
 
-    # Skip embedding here — it happens automatically during analysis
+    # Chunk and embed the full text
     chunks_count = 0
+    if content:
+        try:
+            chunks = chunk_text(content)
+            if chunks:
+                embeddings = await get_embeddings([c["text"] for c in chunks])
+                store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
+                chunks_count = len(chunks)
+                print(f"  Embedded {chunks_count} chunks for {original_name}")
+        except Exception as e:
+            print(f"  Embedding error (will auto-embed during analysis): {e}")
+
+    # Mark as uploaded
+    db.execute(_sql(
+        "UPDATE policies SET status='uploaded' WHERE id=:pid"
+    ), {"pid": policy_id})
+    db.commit()
     print(f"Policy saved: {original_name}")
 
     # Audit log
@@ -252,6 +281,64 @@ async def upload_policy(
         "content_preview": content[:500] if content else "",
         "status": "uploaded",
         "chunks": chunks_count,
+    }
+
+
+# ━━━ Dashboard Stats ━━━
+@app.get("/api/dashboard/stats")
+def dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+
+    # Latest compliance result per framework
+    rows = db.execute(_t("""
+        SELECT DISTINCT ON (framework)
+               framework, compliance_score,
+               controls_covered, controls_partial, controls_missing
+        FROM compliance_results
+        ORDER BY framework, analyzed_at DESC
+    """)).fetchall()
+
+    framework_scores = [
+        {"framework": r[0], "score": round(r[1] or 0, 1),
+         "covered": r[2] or 0, "partial": r[3] or 0, "missing": r[4] or 0}
+        for r in rows
+    ]
+    security_score = (
+        round(sum(r[1] or 0 for r in rows) / len(rows), 1) if rows else 0
+    )
+
+    # Open gaps
+    open_gaps = db.execute(_t(
+        "SELECT COUNT(*) FROM gaps WHERE status='Open'"
+    )).fetchone()[0]
+
+    # Severity distribution
+    sev_rows = db.execute(_t(
+        "SELECT severity, COUNT(*) FROM gaps WHERE status='Open' "
+        "GROUP BY severity"
+    )).fetchall()
+    severity_distribution = {r[0]: r[1] for r in sev_rows}
+
+    # Controls mapped
+    controls_mapped = sum(r[2] or 0 for r in rows)
+
+    # Status overview
+    status_overview = {
+        "compliant": sum(r[2] or 0 for r in rows),
+        "partial": sum(r[3] or 0 for r in rows),
+        "non_compliant": sum(r[4] or 0 for r in rows),
+    }
+
+    return {
+        "security_score": security_score,
+        "framework_scores": framework_scores,
+        "open_gaps": open_gaps,
+        "severity_distribution": severity_distribution,
+        "controls_mapped": controls_mapped,
+        "status_overview": status_overview,
     }
 
 
@@ -371,9 +458,8 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
     db.commit()
 
-    # run_full_analysis handles all DB writes (ComplianceResult, Gap,
-    # MappingReview, AIInsight, AuditLog) and updates policy status.
-    results = await run_full_analysis(db, request.policy_id, request.frameworks)
+    # Checkpoint-based analysis handles all DB writes and updates policy status.
+    results = await run_checkpoint_analysis(db, request.policy_id, request.frameworks)
 
     return {"success": True, "results": results}
 
