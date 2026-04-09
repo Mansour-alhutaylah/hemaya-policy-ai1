@@ -23,14 +23,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # ── GPT-4o-mini  (temperature=0.0 for deterministic) ────────────────────────
 
-async def call_llm(system, user, force_json=True):
+async def call_llm(system, user, force_json=True, temperature=0.0):
     body = {
         "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "temperature": 0.0,
+        "temperature": temperature,
         "max_tokens": 2000,
     }
     if force_json:
@@ -86,7 +86,7 @@ async def verify_checkpoints_gpt(checkpoints, policy_text):
     user_msg = (
         f"Verify each checkpoint against this policy text:\n\n"
         f"{cp_lines}\n\n"
-        f"POLICY TEXT:\n{policy_text[:8000]}"
+        f"POLICY TEXT:\n{policy_text[:15000]}"
     )
     try:
         raw = await call_llm(VERIFIER_PROMPT, user_msg)
@@ -175,10 +175,17 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
     search_time = round(time.time() - t1, 2)
 
     # Layer 2: GPT verification (one call per control, covers all checkpoints)
+    # For small policies (<15K chars), send the FULL text so nothing is missed
+    # For large policies, use vector-matched chunks
+    if len(full_text_lower) <= 15000:
+        policy_text_for_gpt = full_text_lower
+    else:
+        policy_text_for_gpt = chunk_text_joined or full_text_lower[:12000]
+    print(f"    [{control_code}] Policy text length: {len(policy_text_for_gpt)} chars")
     t1 = time.time()
     gpt_results = await verify_checkpoints_gpt(
         checkpoints,
-        chunk_text_joined or full_text_lower[:8000],
+        policy_text_for_gpt,
     )
     gpt_time = round(time.time() - t1, 2)
 
@@ -199,6 +206,9 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
         is_met = bool(gpt.get("met", False))
         evidence = gpt.get("evidence", "No evidence found") or "No evidence found"
         w = cp.get("weight", 1.0)
+
+        kw_found = kw_results.get(idx, {}).get("found", False)
+        print(f"      [{control_code}] CP{idx}: kw={kw_found} met={is_met} | {cp['requirement'][:60]}")
 
         if is_met:
             met_count += 1
@@ -221,7 +231,7 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
 
     if score >= 80:
         overall_status = "Compliant"
-    elif score > 0:
+    elif score >= 30:
         overall_status = "Partial"
     else:
         overall_status = "Non-Compliant"
@@ -314,18 +324,22 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
     # ── Framework filter ─────────────────────────────────────────────────
     t1 = time.time()
-    loaded = db.execute(sql_text(
-        "SELECT DISTINCT framework_name FROM framework_chunks "
-        "WHERE embedding IS NOT NULL"
-    )).fetchall()
-    loaded_names = [r[0] for r in loaded]
-    if loaded_names:
-        frameworks = [fw for fw in frameworks if fw in loaded_names]
-        if not frameworks:
-            return {
-                "error": "No loaded frameworks match your request. "
-                         "Upload framework documents first."
-            }
+    try:
+        loaded = db.execute(sql_text(
+            "SELECT DISTINCT f.name FROM framework_chunks fc "
+            "JOIN frameworks f ON fc.framework_id = f.id "
+            "WHERE fc.embedding IS NOT NULL"
+        )).fetchall()
+        loaded_names = [r[0] for r in loaded]
+        if loaded_names:
+            frameworks = [fw for fw in frameworks if fw in loaded_names]
+            if not frameworks:
+                return {
+                    "error": "No loaded frameworks match your request. "
+                             "Upload framework documents first."
+                }
+    except Exception:
+        pass  # Continue without filtering if framework_chunks is empty
     print(f"  Framework filter: {round(time.time()-t1, 2)}s -- "
           f"analyzing: {frameworks}")
 
@@ -368,6 +382,25 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
                 "framework": fw,
             }
             controls.setdefault(code, []).append(cp)
+
+        # ── Resolve framework_id and control_id FKs ────────────────────
+        fw_row = db.execute(sql_text(
+            "SELECT id FROM frameworks WHERE name=:fw"
+        ), {"fw": fw}).fetchone()
+        framework_id = fw_row[0] if fw_row else None
+
+        cl_rows = db.execute(sql_text(
+            "SELECT id, control_code FROM control_library "
+            "WHERE framework_id=:fwid"
+        ), {"fwid": framework_id}).fetchall()
+        ctrl_id_map = {r[1]: r[0] for r in cl_rows}  # control_code → control_library.id
+        if not ctrl_id_map:
+            print(f"    WARNING: ctrl_id_map is empty for framework_id={framework_id}")
+            print(f"    Falling back to control_code lookup without framework_id filter")
+            cl_rows = db.execute(sql_text(
+                "SELECT id, control_code FROM control_library"
+            )).fetchall()
+            ctrl_id_map = {r[1]: r[0] for r in cl_rows}
 
         # ── Batch embed all control queries ──────────────────────────────
         control_codes = list(controls.keys())
@@ -415,13 +448,13 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         # ── Save ComplianceResult ────────────────────────────────────────
         db.execute(sql_text("""
             INSERT INTO compliance_results
-            (id, policy_id, framework, compliance_score,
+            (id, policy_id, framework_id, compliance_score,
              controls_covered, controls_partial, controls_missing,
              status, analyzed_at, analysis_duration, details)
-            VALUES (:id,:pid,:fw,:sc,:cov,:par,:mis,
+            VALUES (:id,:pid,:fwid,:sc,:cov,:par,:mis,
                     'completed',:at,:dur,:det)
         """), {
-            "id": str(uuid.uuid4()), "pid": policy_id, "fw": fw,
+            "id": str(uuid.uuid4()), "pid": policy_id, "fwid": framework_id,
             "sc": round(score, 1), "cov": comp, "par": part, "mis": miss,
             "at": datetime.now(timezone.utc), "dur": round(dur, 2),
             "det": json.dumps(results_list),
@@ -439,13 +472,13 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
                 db.execute(sql_text("""
                     INSERT INTO gaps
-                    (id, policy_id, framework, control_id, control_name,
+                    (id, policy_id, framework_id, control_id, control_name,
                      severity, status, description, remediation, created_at)
-                    VALUES (:id,:pid,:fw,:cid,:cn,:sev,'Open',
+                    VALUES (:id,:pid,:fwid,:cid,:cn,:sev,'Open',
                             :desc,:rem,:cat)
                 """), {
-                    "id": str(uuid.uuid4()), "pid": policy_id, "fw": fw,
-                    "cid": r["control_code"], "cn": r["control_title"],
+                    "id": str(uuid.uuid4()), "pid": policy_id, "fwid": framework_id,
+                    "cid": ctrl_id_map.get(r["control_code"]), "cn": r["control_title"],
                     "sev": (recs[0]["priority"] if recs
                             else r.get("severity_if_missing", "High")),
                     "desc": r.get("gaps_detail", "Gap identified"),
@@ -471,12 +504,12 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
             db.execute(sql_text("""
                 INSERT INTO mapping_reviews
-                (id, policy_id, control_id, framework, evidence_snippet,
+                (id, policy_id, control_id, framework_id, evidence_snippet,
                  confidence_score, ai_rationale, decision, created_at)
-                VALUES (:id,:pid,:cid,:fw,:ev,:conf,:rat,:dec,:cat)
+                VALUES (:id,:pid,:cid,:fwid,:ev,:conf,:rat,:dec,:cat)
             """), {
                 "id": str(uuid.uuid4()), "pid": policy_id,
-                "cid": r["control_code"], "fw": fw,
+                "cid": ctrl_id_map.get(r["control_code"]), "fwid": framework_id,
                 "ev": ev, "conf": conf,
                 "rat": r.get("overall_assessment", ""),
                 "dec": dec,
@@ -512,8 +545,8 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
     try:
         db.execute(sql_text("""
             INSERT INTO audit_logs
-            (id, actor, action, target_type, target_id, details, timestamp)
-            VALUES (:id,'system','analyze_policy','policy',:tid,:det,:ts)
+            (id, action, target_type, target_id, details, timestamp)
+            VALUES (:id,'analyze_policy','policy',:tid,:det,:ts)
         """), {
             "id": str(uuid.uuid4()), "tid": policy_id,
             "det": json.dumps({
@@ -550,15 +583,18 @@ async def generate_insights(db, policy_id, results):
             )
 
     gaps = db.execute(sql_text("""
-        SELECT framework, control_id, control_name, severity, description
-        FROM gaps WHERE policy_id=:pid AND status='Open'
-        ORDER BY CASE severity
+        SELECT f.name, cl.control_code, g.control_name, g.severity, g.description
+        FROM gaps g
+        LEFT JOIN frameworks f ON g.framework_id = f.id
+        LEFT JOIN control_library cl ON g.control_id = cl.id
+        WHERE g.policy_id=:pid AND g.status='Open'
+        ORDER BY CASE g.severity
             WHEN 'Critical' THEN 1 WHEN 'High' THEN 2
             WHEN 'Medium' THEN 3 ELSE 4 END
         LIMIT 15
     """), {"pid": policy_id}).fetchall()
     gap_lines = [
-        f"[{g[3]}] {g[0]} {g[1]} {g[2]}: {str(g[4])[:150]}"
+        f"[{g[3]}] {g[0] or 'NCA ECC'} {g[1] or ''} {g[2]}: {str(g[4])[:150]}"
         for g in gaps
     ]
 
@@ -635,28 +671,33 @@ async def chat_with_context(db, message, policy_id=None):
     ctx = ""
     try:
         scores = db.execute(sql_text("""
-            SELECT framework, compliance_score, controls_covered,
-                   controls_partial, controls_missing
-            FROM compliance_results ORDER BY analyzed_at DESC LIMIT 10
+            SELECT f.name, cr.compliance_score, cr.controls_covered,
+                   cr.controls_partial, cr.controls_missing
+            FROM compliance_results cr
+            LEFT JOIN frameworks f ON cr.framework_id = f.id
+            ORDER BY cr.analyzed_at DESC LIMIT 10
         """)).fetchall()
         if scores:
             ctx = "SCORES:\n" + "".join(
-                f"  {s[0]}: {s[1]}% ({s[2]} ok, {s[3]} partial, "
+                f"  {s[0] or 'Unknown'}: {s[1]}% ({s[2]} ok, {s[3]} partial, "
                 f"{s[4]} missing)\n"
                 for s in scores
             )
 
         gps = db.execute(sql_text("""
-            SELECT framework, control_id, control_name, severity,
-                   description, remediation
-            FROM gaps WHERE status='Open'
-            ORDER BY CASE severity
+            SELECT f.name, cl.control_code, g.control_name, g.severity,
+                   g.description, g.remediation
+            FROM gaps g
+            LEFT JOIN frameworks f ON g.framework_id = f.id
+            LEFT JOIN control_library cl ON g.control_id = cl.id
+            WHERE g.status='Open'
+            ORDER BY CASE g.severity
                 WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 ELSE 3 END
             LIMIT 10
         """)).fetchall()
         if gps:
             ctx += "GAPS:\n" + "".join(
-                f"  [{g[3]}] {g[0]} {g[1]}: {str(g[4])[:100]}\n"
+                f"  [{g[3]}] {g[0] or ''} {g[1] or ''}: {str(g[4])[:100]}\n"
                 f"    Fix: {str(g[5])[:100]}\n"
                 for g in gps
             )
@@ -684,6 +725,7 @@ async def chat_with_context(db, message, policy_id=None):
         f"DATA:\n{ctx or '[No analysis yet]'}\n"
         f"QUESTION: {message}",
         force_json=False,
+        temperature=0.3,
     )
 
 
@@ -699,17 +741,20 @@ async def run_simulation(db, policy_id, selected_controls):
         policy_id = p[0]
 
     res = db.execute(sql_text("""
-        SELECT framework, compliance_score, controls_covered,
-               controls_partial, controls_missing
-        FROM compliance_results
-        WHERE policy_id=:pid ORDER BY analyzed_at DESC
+        SELECT f.name, cr.compliance_score, cr.controls_covered,
+               cr.controls_partial, cr.controls_missing
+        FROM compliance_results cr
+        LEFT JOIN frameworks f ON cr.framework_id = f.id
+        WHERE cr.policy_id=:pid ORDER BY cr.analyzed_at DESC
     """), {"pid": policy_id}).fetchall()
     if not res:
         return {"error": "Run analysis first"}
 
-    gaps = db.execute(sql_text(
-        "SELECT framework, control_id FROM gaps "
-        "WHERE policy_id=:pid AND status='Open'"
+    gap_rows = db.execute(sql_text(
+        "SELECT f.name, cl.control_code FROM gaps g "
+        "LEFT JOIN frameworks f ON g.framework_id = f.id "
+        "LEFT JOIN control_library cl ON g.control_id = cl.id "
+        "WHERE g.policy_id=:pid AND g.status='Open'"
     ), {"pid": policy_id}).fetchall()
 
     sim = {}
@@ -719,7 +764,7 @@ async def run_simulation(db, policy_id, selected_controls):
         if not total:
             continue
         fixed = sum(
-            1 for g in gaps
+            1 for g in gap_rows
             if g[0] == fw and g[1] in selected_controls
         )
         proj = (cov + fixed + max(0, par - fixed) * 0.5) / total * 100
@@ -736,9 +781,12 @@ async def run_simulation(db, policy_id, selected_controls):
 
 async def explain_mapping(db, mapping_id):
     m = db.execute(sql_text("""
-        SELECT control_id, framework, evidence_snippet,
-               confidence_score, ai_rationale, decision
-        FROM mapping_reviews WHERE id=:mid
+        SELECT cl.control_code, f.name, mr.evidence_snippet,
+               mr.confidence_score, mr.ai_rationale, mr.decision
+        FROM mapping_reviews mr
+        LEFT JOIN frameworks f ON mr.framework_id = f.id
+        LEFT JOIN control_library cl ON mr.control_id = cl.id
+        WHERE mr.id=:mid
     """), {"mid": mapping_id}).fetchone()
     if not m:
         return {"error": "Not found"}
