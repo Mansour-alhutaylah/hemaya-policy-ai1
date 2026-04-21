@@ -146,36 +146,43 @@ async def _auto_embed(db, policy_id):
 # ── Find relevant sections for a checkpoint ─────────────────────────────────
 
 def _find_relevant_sections(chunk_texts, requirement, keywords):
-    """Score each chunk by relevance to this checkpoint, return top matches."""
-    req_lower = requirement.lower()
-    req_words = [w for w in req_lower.split() if len(w) > 3]
+    """Score each chunk using keyword matching + BM25, return top matches."""
+    from rank_bm25 import BM25Okapi
 
-    scored = []
-    for chunk_text in chunk_texts:
-        chunk_lower = chunk_text.lower()
+    # Signal 1: keyword scoring (semantic)
+    semantic_scores = {}
+    for chunk in chunk_texts:
         score = 0
-        # Keyword matches (highest weight)
         for kw in keywords:
-            if kw.lower() in chunk_lower:
-                score += 5
-        # Requirement word matches
-        for w in req_words:
-            if w in chunk_lower:
-                score += 2
-        # Only include chunks with at least some relevance
-        if score > 0:
-            scored.append((score, chunk_text))
+            if kw.lower() in chunk.lower():
+                score += 3
+        semantic_scores[chunk] = score
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    # Signal 2: BM25 sparse retrieval
+    tokenized = [chunk.lower().split() for chunk in chunk_texts]
+    bm25 = BM25Okapi(tokenized)
+    query = (requirement + " " + " ".join(keywords)).lower().split()
+    bm25_scores = bm25.get_scores(query)
 
-    # Take top 8 relevant chunks (more context = better accuracy)
-    top = [c[1] for c in scored[:8]]
+    # Normalize both to 0-1 range
+    max_sem = max(semantic_scores.values()) or 1
+    max_bm25 = max(bm25_scores) or 1
 
-    # If fewer than 3 relevant chunks found, send ALL chunks
-    # (small policy or rare topic — let GPT search everything)
+    # Combine 50/50
+    combined = []
+    for i, chunk in enumerate(chunk_texts):
+        norm_sem = semantic_scores[chunk] / max_sem
+        norm_bm25 = bm25_scores[i] / max_bm25
+        combined_score = 0.5 * norm_sem + 0.5 * norm_bm25
+        combined.append((combined_score, chunk))
+
+    # Sort best first, take top 8
+    combined.sort(key=lambda x: x[0], reverse=True)
+    top = [c[1] for c in combined[:8]]
+
+    # Fallback: if fewer than 3 relevant chunks, send everything
     if len(top) < 3:
         return "\n---\n".join(chunk_texts)
-
     return "\n---\n".join(top)
 
 
