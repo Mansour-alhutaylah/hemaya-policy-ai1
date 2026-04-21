@@ -1,162 +1,81 @@
-"""
-Framework Knowledge Base Loader
-Processes NCA ECC, ISO 27001, and NIST 800-53 reference documents
-and stores them as searchable chunks for the RAG pipeline.
-"""
-from __future__ import annotations
-
+import os
 import uuid
 from datetime import datetime
-from pathlib import Path
-
 from sqlalchemy import text
 
-from backend.chunker import chunk_text
-from backend.vector_store import get_embeddings
 
-FRAMEWORK_MAPPING = {
-    "NCA ECC": ["nca", "ecc", "essential cybersecurity controls"],
-    "ISO 27001": ["iso", "27001", "information security management"],
-    "NIST 800-53": ["nist", "800-53", "security and privacy controls"],
-}
-
-
-def detect_framework(filename: str, content: str) -> str:
-    """Auto-detect which framework a document belongs to."""
-    filename_lower = filename.lower()
-    content_lower = content[:2000].lower()
-
-    for framework, keywords in FRAMEWORK_MAPPING.items():
-        for kw in keywords:
-            if kw in filename_lower or kw in content_lower:
-                return framework
-    return "Unknown"
-
-
-async def load_framework_document(
-    db,
-    file_path: str,
-    framework_name: str,
-    source_document: str,
-) -> dict:
-    """
-    Process a framework reference document:
-    1. Extract text
-    2. Chunk the text (larger chunks for richer framework context)
-    3. Embed each chunk
-    4. Store in framework_chunks table
-    """
+async def load_framework_document(db, file_path, framework_name, source_document):
     from backend.text_extractor import extract_text
+    from backend.chunker import chunk_text
+    from backend.vector_store import get_embeddings
 
-    ext = Path(file_path).suffix.lower()
-    content = extract_text(file_path, ext)
+    # Pass file extension so extract_text picks the right parser
+    file_ext = os.path.splitext(file_path)[1].lower()
+    try:
+        content = extract_text(file_path, file_ext)
+    except TypeError:
+        content = extract_text(file_path)
 
     if not content or content.startswith("[Extraction error"):
         return {"error": content or "Empty document"}
 
-    # Larger chunks for framework docs (600 chars) so each chunk has rich context
-    chunks = chunk_text(content, chunk_size=600, overlap=150)
+    # Larger chunks for framework docs
+    chunks = chunk_text(content, chunk_size=800, overlap=200)
     if not chunks:
-        return {"error": "No chunks created from document"}
+        return {"error": "No chunks created"}
 
-    chunk_texts = [c["text"] for c in chunks]
-
-    # Process in batches of 20 (HuggingFace input limits)
-    all_embeddings: list = []
-    for i in range(0, len(chunk_texts), 20):
-        batch = chunk_texts[i : i + 20]
-        batch_embeddings = await get_embeddings(batch)
-        all_embeddings.extend(batch_embeddings)
-
-    # Store in framework_chunks table
-    for chunk, embedding in zip(chunks, all_embeddings):
-        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
-        db.execute(
-            text("""
-                INSERT INTO framework_chunks
-                (id, framework_name, chunk_text, embedding, chunk_index,
-                 source_document, created_at)
-                VALUES (:id, :framework, :chunk_text, :embedding, :chunk_index,
-                        :source_doc, :created_at)
-            """),
-            {
-                "id": str(uuid.uuid4()),
-                "framework": framework_name,
-                "chunk_text": chunk["text"],
-                "embedding": embedding_str,
-                "chunk_index": chunk["chunk_index"],
-                "source_doc": source_document,
-                "created_at": datetime.utcnow(),
-            },
-        )
-
+    # Clear old chunks for this framework
+    db.execute(text("DELETE FROM framework_chunks WHERE framework_name = :fw"),
+               {"fw": framework_name})
     db.commit()
 
-    return {
-        "framework": framework_name,
-        "chunks_created": len(chunks),
-        "source": source_document,
-        "status": "loaded",
-    }
+    # Embed all chunks in one batch call
+    chunk_texts = [c["text"] for c in chunks]
+    all_embs = await get_embeddings(chunk_texts)
+
+    stored = 0
+    for chunk, emb in zip(chunks, all_embs):
+        if emb is None:
+            continue
+        emb_str = "[" + ",".join(str(x) for x in emb) + "]"
+        db.execute(text("""
+            INSERT INTO framework_chunks
+            (id, framework_name, chunk_text, embedding, chunk_index, source_document, created_at)
+            VALUES (:id, :fw, :txt, cast(:emb as vector), :idx, :doc, :cat)
+        """), {
+            "id": str(uuid.uuid4()), "fw": framework_name,
+            "txt": chunk["text"], "emb": emb_str,
+            "idx": chunk.get("chunk_index", 0),
+            "doc": source_document, "cat": datetime.utcnow(),
+        })
+        stored += 1
+    db.commit()
+    print(f"Framework {framework_name}: {stored} chunks stored")
+    return {"framework": framework_name, "chunks_created": stored,
+            "source": source_document, "status": "loaded"}
 
 
-def get_framework_context(
-    db,
-    framework_name: str,
-    query_embedding: list,
-    top_k: int = 5,
-) -> list:
-    """
-    Search framework_chunks for relevant reference text.
-    Used during analysis to compare org policy against framework requirements.
-
-    Returns list of dicts: text, control_code, section_title, similarity
-    """
-    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
+def get_framework_context(db, framework_name, query_embedding, top_k=5):
+    emb_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
     try:
-        results = db.execute(
-            text("""
-                SELECT chunk_text, control_code, section_title,
-                       1 - (embedding <=> cast(:embedding as vector)) AS similarity
-                FROM framework_chunks
-                WHERE framework_name = :framework
-                ORDER BY embedding <=> cast(:embedding as vector)
-                LIMIT :top_k
-            """),
-            {
-                "embedding": embedding_str,
-                "framework": framework_name,
-                "top_k": top_k,
-            },
-        ).fetchall()
+        results = db.execute(text("""
+            SELECT chunk_text, control_code, section_title,
+                   1 - (embedding <=> cast(:emb as vector)) AS similarity
+            FROM framework_chunks
+            WHERE framework_name = :fw AND embedding IS NOT NULL
+            ORDER BY embedding <=> cast(:emb as vector)
+            LIMIT :top_k
+        """), {"emb": emb_str, "fw": framework_name, "top_k": top_k}).fetchall()
     except Exception:
-        # Table may not exist yet — return empty list gracefully
         return []
-
-    return [
-        {
-            "text": r[0],
-            "control_code": r[1],
-            "section_title": r[2],
-            "similarity": float(r[3]) if r[3] is not None else 0.0,
-        }
-        for r in results
-    ]
+    return [{"text": r[0], "control_code": r[1],
+             "section_title": r[2], "similarity": float(r[3])} for r in results]
 
 
-def get_framework_stats(db) -> dict:
-    """Get stats about loaded framework documents."""
-    try:
-        results = db.execute(
-            text("""
-                SELECT framework_name, COUNT(*) AS chunk_count,
-                       COUNT(DISTINCT source_document) AS doc_count
-                FROM framework_chunks
-                GROUP BY framework_name
-            """)
-        ).fetchall()
-    except Exception:
-        return {}
-
-    return {r[0]: {"chunks": int(r[1]), "documents": int(r[2])} for r in results}
+def get_framework_stats(db):
+    results = db.execute(text("""
+        SELECT framework_name, COUNT(*) as chunks,
+               COUNT(DISTINCT source_document) as docs
+        FROM framework_chunks GROUP BY framework_name
+    """)).fetchall()
+    return {r[0]: {"chunks": r[1], "documents": r[2]} for r in results}

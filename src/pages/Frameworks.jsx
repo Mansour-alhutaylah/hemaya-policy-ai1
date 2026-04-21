@@ -153,19 +153,37 @@ export default function Frameworks() {
     if (!file) return;
     setUploading(frameworkName);
     try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        return;
+      }
+
       const form = new FormData();
       form.append('file', file);
       form.append('framework', frameworkName);
-      const token = localStorage.getItem('token');
+
       const res = await fetch('/api/functions/upload_framework_doc', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
+
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        return;
+      }
+
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || 'Upload failed');
+        let msg = 'Upload failed';
+        try { msg = JSON.parse(text)?.detail || text; } catch { msg = text; }
+        throw new Error(msg || 'Upload failed');
       }
+
       const result = await res.json();
       toast({
         title: 'Framework Loaded',

@@ -24,8 +24,7 @@ from backend.database import get_db
 from backend.text_extractor import extract_text
 from backend.rag_engine import (
     run_full_analysis, chat_with_context,
-    run_simulation as rag_run_simulation,
-    generate_ai_insights, explain_mapping,
+    run_simulation, generate_ai_insights, explain_mapping,
 )
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
@@ -160,9 +159,19 @@ def update_me(settings: Dict[str, Any], current_user: models.User = Depends(get_
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".xlsx", ".xls"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
-# File upload (used by policy upload flow)
+# Policy upload — creates policy row, embeds chunks, returns policy id
 @app.post("/api/integrations/upload")
-async def upload_file(file: UploadFile = File(...), policy_id: Optional[str] = Form(None), current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def upload_policy(
+    file: UploadFile = File(...),
+    department: str = Form("General"),
+    version: str = Form("1.0"),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _sql
+
+    policy_id = str(uuid.uuid4())
     original_name = file.filename or "upload"
     ext = Path(original_name).suffix.lower()
 
@@ -172,33 +181,104 @@ async def upload_file(file: UploadFile = File(...), policy_id: Optional[str] = F
             detail=f"File type '{ext}' not supported. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
 
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
+    raw = await file.read()
+    if len(raw) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 50 MB limit")
 
     file_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{original_name}"
     dest = UPLOAD_DIR / file_name
-    dest.write_bytes(content)
+    dest.write_bytes(raw)
 
-    extracted_text = extract_text(dest, ext)
+    # Extract text
+    try:
+        content = extract_text(str(dest), ext)
+    except TypeError:
+        content = extract_text(str(dest))
+    if not content or content.startswith("[Extraction error"):
+        content = ""
 
-    # Chunk and embed at upload time so analysis only needs to search, not re-embed.
-    # policy_id must be passed as a form field by the caller once the Policy row exists.
-    if extracted_text and not extracted_text.startswith("[Extraction error") and policy_id:
-        try:
-            chunks = chunk_text(extracted_text)
-            if chunks:
-                embeddings = await get_embeddings([c["text"] for c in chunks])
-                store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
-        except Exception as e:
-            print(f"⚠️ Embedding skipped: {e}")
-            # Upload still succeeds — embedding can happen later during analysis
+    # Save policy row immediately with status='uploaded'
+    db.execute(_sql("""
+        INSERT INTO policies
+        (id, file_name, description, department, version, status,
+         file_url, file_type, content_preview, uploaded_at, created_at)
+        VALUES (:id,:fn,:desc,:dept,:ver,'uploaded',:furl,:ft,:prev,:at,:cat)
+    """), {
+        "id": policy_id,
+        "fn": original_name,
+        "desc": description or original_name,
+        "dept": department,
+        "ver": version,
+        "furl": f"/uploads/{file_name}",
+        "ft": ext.replace(".", "").upper(),
+        "prev": content[:500] if content else "",
+        "at": datetime.now(timezone.utc),
+        "cat": datetime.now(timezone.utc),
+    })
+    db.commit()
+
+    # Save full content for auto-embedding during analysis
+    if content:
+        db.execute(_sql(
+            "UPDATE policies SET content_preview = :content WHERE id = :pid"
+        ), {"content": content, "pid": policy_id})
+        db.commit()
+
+    # Skip embedding here — it happens automatically during analysis
+    chunks_count = 0
+    print(f"Policy saved: {original_name}")
+
+    # Audit log
+    try:
+        db.execute(_sql("""
+            INSERT INTO audit_logs
+            (id, actor, action, target_type, target_id, details, timestamp)
+            VALUES (:id,:actor,'upload_policy','policy',:tid,:det,:ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "actor": current_user.email if hasattr(current_user, "email") else "system",
+            "tid": policy_id,
+            "det": json.dumps({"file_name": original_name, "chunks": chunks_count}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
 
     return {
+        "id": policy_id,
+        "file_name": original_name,
         "file_url": f"/uploads/{file_name}",
-        "content_preview": extracted_text,
-        "char_count": len(extracted_text),
+        "content_preview": content[:500] if content else "",
+        "status": "uploaded",
+        "chunks": chunks_count,
     }
+
+
+# Dedicated Audit Trail route — avoids JSON/datetime serialization crashes
+# Must be defined BEFORE the generic /api/entities/{entity} route
+@app.get("/api/entities/audit_logs")
+def get_audit_logs(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _text
+    results = db.execute(_text("""
+        SELECT id, actor, action, target_type, target_id,
+               details::text AS details, timestamp
+        FROM audit_logs
+        ORDER BY timestamp DESC
+        LIMIT 100
+    """)).fetchall()
+    return [
+        {
+            "id": r[0], "actor": r[1], "action": r[2],
+            "target_type": r[3], "target_id": r[4],
+            "details": r[5],
+            "timestamp": r[6].isoformat() if r[6] else None,
+        }
+        for r in results
+    ]
 
 
 # Generic Entity Routes
@@ -299,8 +379,12 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
 
 
 @app.post("/api/functions/run_simulation")
-async def run_simulation(request: schemas.RunSimulationRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    result = await rag_run_simulation(db, request.policy_id, request.control_ids or [])
+async def run_simulation_route(request: Dict[str, Any], db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    result = await run_simulation(
+        db,
+        request.get("policy_id"),
+        request.get("selected_controls", request.get("control_ids", [])),
+    )
     return result
 
 
