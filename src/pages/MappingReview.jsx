@@ -45,7 +45,7 @@ const MappingReview = api.entities.MappingReview;
 const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
 
-const CONFIDENCE_THRESHOLD = 0.6;
+// Confidence thresholds: High >= 0.8, Medium >= 0.5, Low/Needs Review < 0.5
 
 export default function MappingReviewPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,15 +100,17 @@ export default function MappingReviewPage() {
     const matchesSearch = mapping.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       mapping.evidence_snippet?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || mapping.decision === statusFilter;
-    const matchesConfidence = confidenceFilter === 'all' || 
-      (confidenceFilter === 'low' && (mapping.confidence_score || 0) < CONFIDENCE_THRESHOLD) ||
-      (confidenceFilter === 'high' && (mapping.confidence_score || 0) >= CONFIDENCE_THRESHOLD);
+    const cs = mapping.confidence_score || 0;
+    const matchesConfidence = confidenceFilter === 'all' ||
+      (confidenceFilter === 'needs_review' && cs < 0.5) ||
+      (confidenceFilter === 'low' && cs >= 0.5 && cs < 0.8) ||
+      (confidenceFilter === 'high' && cs >= 0.8);
     const matchesPolicyId = !policyIdFilter || mapping.policy_id === policyIdFilter;
     return matchesSearch && matchesStatus && matchesConfidence && matchesPolicyId;
   });
 
   const pendingCount = mappings.filter(m => m.decision === 'Pending').length;
-  const lowConfidenceCount = mappings.filter(m => (m.confidence_score || 0) < CONFIDENCE_THRESHOLD).length;
+  const lowConfidenceCount = mappings.filter(m => (m.confidence_score || 0) < 0.5).length;
 
   const handleReview = (mapping) => {
     setSelectedMapping(mapping);
@@ -138,10 +140,10 @@ export default function MappingReviewPage() {
     });
   };
 
-  const getConfidenceColor = (score) => {
-    if (score >= 0.8) return 'text-emerald-600 bg-emerald-50';
-    if (score >= 0.6) return 'text-amber-600 bg-amber-50';
-    return 'text-red-600 bg-red-50';
+  const getConfidenceBadge = (score) => {
+    if (score >= 0.8) return { color: 'text-emerald-600 bg-emerald-50', label: 'High' };
+    if (score >= 0.5) return { color: 'text-amber-600 bg-amber-50', label: 'Medium' };
+    return { color: 'text-red-600 bg-red-50', label: 'Low' };
   };
 
   const columns = [
@@ -153,7 +155,7 @@ export default function MappingReviewPage() {
           <Badge variant="outline" className="font-mono text-xs">
             {row.control_id}
           </Badge>
-          {(row.confidence_score || 0) < CONFIDENCE_THRESHOLD && (
+          {(row.confidence_score || 0) < 0.5 && (
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           )}
         </div>
@@ -182,9 +184,11 @@ export default function MappingReviewPage() {
       accessor: 'confidence_score',
       cell: (row) => {
         const score = row.confidence_score || 0;
+        const badge = getConfidenceBadge(score);
         return (
-          <div className={`inline-flex items-center px-2 py-1 rounded ${getConfidenceColor(score)}`}>
-            <span className="text-sm font-medium">{Math.round(score * 100)}%</span>
+          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${badge.color}`}>
+            <span className="text-sm font-medium">{badge.label}</span>
+            <span className="text-xs opacity-75">{Math.round(score * 100)}%</span>
           </div>
         );
       },
@@ -247,7 +251,7 @@ export default function MappingReviewPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-red-700">{lowConfidenceCount}</p>
-              <p className="text-sm text-red-600">Low Confidence</p>
+              <p className="text-sm text-red-600">Needs Review</p>
             </div>
           </CardContent>
         </Card>
@@ -297,8 +301,9 @@ export default function MappingReviewPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Confidence</SelectItem>
-            <SelectItem value="low">Low (&lt;60%)</SelectItem>
-            <SelectItem value="high">High (≥60%)</SelectItem>
+            <SelectItem value="needs_review">Needs Review (&lt;50%)</SelectItem>
+            <SelectItem value="low">Medium (50-80%)</SelectItem>
+            <SelectItem value="high">High (80%+)</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -333,14 +338,13 @@ export default function MappingReviewPage() {
           {selectedMapping && (
             <div className="space-y-6 py-4">
               {/* Confidence Warning */}
-              {(selectedMapping.confidence_score || 0) < CONFIDENCE_THRESHOLD && (
+              {(selectedMapping.confidence_score || 0) < 0.5 && (
                 <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
                   <div>
-                    <p className="font-medium text-amber-800">Low Confidence Mapping</p>
+                    <p className="font-medium text-amber-800">Needs Review - Low Confidence</p>
                     <p className="text-sm text-amber-700">
-                      This mapping has a confidence score below {CONFIDENCE_THRESHOLD * 100}%. 
-                      Please review carefully.
+                      This mapping has low confidence. The AI found ambiguous or conflicting evidence across multiple passes. Please review carefully.
                     </p>
                   </div>
                 </div>
@@ -362,9 +366,16 @@ export default function MappingReviewPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Confidence Score</p>
-                  <div className={`inline-flex items-center px-2 py-1 rounded mt-1 ${getConfidenceColor(selectedMapping.confidence_score || 0)}`}>
-                    <span className="font-medium">{Math.round((selectedMapping.confidence_score || 0) * 100)}%</span>
-                  </div>
+                  {(() => {
+                    const s = selectedMapping.confidence_score || 0;
+                    const b = getConfidenceBadge(s);
+                    return (
+                      <div className={`inline-flex items-center gap-1 px-2 py-1 rounded mt-1 ${b.color}`}>
+                        <span className="font-medium">{b.label}</span>
+                        <span className="text-sm opacity-75">{Math.round(s * 100)}%</span>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Policy</p>

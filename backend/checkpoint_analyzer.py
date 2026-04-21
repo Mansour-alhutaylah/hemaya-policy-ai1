@@ -65,12 +65,17 @@ RULES:
 - When in doubt and relevant text exists, lean toward met=true
 - evidence: quote the EXACT text from the policy that addresses this requirement
 - If met=false, evidence should be "No evidence found"
+- confidence: how certain you are about this verdict (0.0 to 1.0)
+  0.9-1.0: Requirement explicitly addressed with mandatory language (shall/must)
+  0.7-0.9: Requirement addressed but some ambiguity in wording
+  0.5-0.7: Related content exists but does not directly match
+  0.0-0.5: No clear evidence found
 
 Return ONLY valid JSON:
 {
   "checkpoints": [
-    {"index": 1, "met": true, "evidence": "exact quote from policy"},
-    {"index": 2, "met": false, "evidence": "No evidence found"}
+    {"index": 1, "met": true, "confidence": 0.95, "evidence": "exact quote from policy"},
+    {"index": 2, "met": false, "confidence": 0.1, "evidence": "No evidence found"}
   ]
 }"""
 
@@ -145,8 +150,9 @@ async def _auto_embed(db, policy_id):
 
 # ── Find relevant sections for a checkpoint ─────────────────────────────────
 
-def _find_relevant_sections(chunk_texts, requirement, keywords):
-    """Score each chunk using keyword matching + BM25, return top matches."""
+def _find_relevant_sections(chunk_texts, requirement, keywords, offset=0):
+    """Score each chunk using keyword matching + BM25, return (text, quality_score).
+    offset: skip top N chunks (used for second-pass retrieval)."""
     from rank_bm25 import BM25Okapi
 
     # Signal 1: keyword scoring (semantic)
@@ -176,29 +182,36 @@ def _find_relevant_sections(chunk_texts, requirement, keywords):
         combined_score = 0.5 * norm_sem + 0.5 * norm_bm25
         combined.append((combined_score, chunk))
 
-    # Sort best first, take top 8
+    # Sort best first
     combined.sort(key=lambda x: x[0], reverse=True)
-    top = [c[1] for c in combined[:8]]
+
+    # Apply offset for second-pass retrieval
+    selected = combined[offset:offset + 8]
+    top = [c[1] for c in selected]
+
+    # Retrieval quality = best combined score (0.0 to 1.0)
+    quality = selected[0][0] if selected else 0.0
 
     # Fallback: if fewer than 3 relevant chunks, send everything
     if len(top) < 3:
-        return "\n---\n".join(chunk_texts)
-    return "\n---\n".join(top)
+        return "\n---\n".join(chunk_texts), quality
+    return "\n---\n".join(top), quality
 
 
 # ── Analyze one control (all its checkpoints) ────────────────────────────────
 
 async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, policy_chunk_texts):
     """
-    Analyze one control. For each checkpoint, find the most relevant
-    policy sections and send only those to GPT for verification.
+    Analyze one control with 3-signal confidence:
+      Signal 1: GPT self-reported confidence
+      Signal 2: Retrieval quality (top BM25+keyword score)
+      Signal 3: Inter-run agreement (two GPT passes with different context)
     """
     t0 = time.time()
     framework = checkpoints[0]["framework"]
 
-    # Build targeted text per checkpoint, then verify all at once
-    # Each checkpoint gets its own relevant section for context
-    per_cp_texts = []
+    # ── Retrieve relevant sections for each checkpoint ───────────────
+    per_cp_kw = []
     for cp in checkpoints:
         kw = cp.get("keywords", [])
         if isinstance(kw, str):
@@ -206,45 +219,93 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
                 kw = json.loads(kw)
             except Exception:
                 kw = []
-        relevant = _find_relevant_sections(policy_chunk_texts, cp["requirement"], kw)
-        per_cp_texts.append(relevant)
+        per_cp_kw.append(kw)
 
-    # Combine the most relevant sections (deduplicated) for one GPT call
-    seen = set()
-    combined_sections = []
-    for txt in per_cp_texts:
-        for section in txt.split("\n---\n"):
-            s = section.strip()
-            if s and s not in seen:
-                seen.add(s)
-                combined_sections.append(s)
+    # Run 1: top 8 chunks (offset=0)
+    retrieval_qualities_1 = []
+    per_cp_texts_1 = []
+    for i, cp in enumerate(checkpoints):
+        text_1, quality_1 = _find_relevant_sections(
+            policy_chunk_texts, cp["requirement"], per_cp_kw[i], offset=0)
+        per_cp_texts_1.append(text_1)
+        retrieval_qualities_1.append(quality_1)
 
-    focused_text = "\n---\n".join(combined_sections)
-    print(f"    [{control_code}] Focused text: {len(focused_text)} chars "
-          f"(from {len(policy_chunk_texts)} chunks)")
+    # Run 2: next 8 chunks (offset=4, overlapping for diversity)
+    per_cp_texts_2 = []
+    for i, cp in enumerate(checkpoints):
+        text_2, _ = _find_relevant_sections(
+            policy_chunk_texts, cp["requirement"], per_cp_kw[i], offset=4)
+        per_cp_texts_2.append(text_2)
 
-    # GPT verification with focused text
+    # Deduplicate and build focused text for each run
+    def _build_focused(per_cp_texts):
+        seen = set()
+        sections = []
+        for txt in per_cp_texts:
+            for s in txt.split("\n---\n"):
+                s = s.strip()
+                if s and s not in seen:
+                    seen.add(s)
+                    sections.append(s)
+        return "\n---\n".join(sections)
+
+    focused_1 = _build_focused(per_cp_texts_1)
+    focused_2 = _build_focused(per_cp_texts_2)
+    print(f"    [{control_code}] Run1: {len(focused_1)} chars, "
+          f"Run2: {len(focused_2)} chars")
+
+    # ── Dual GPT verification ────────────────────────────────────────
     t1 = time.time()
-    gpt_results = await verify_checkpoints_gpt(checkpoints, focused_text)
+    gpt_run1, gpt_run2 = await asyncio.gather(
+        verify_checkpoints_gpt(checkpoints, focused_1),
+        verify_checkpoints_gpt(checkpoints, focused_2),
+    )
     gpt_time = round(time.time() - t1, 2)
 
-    # Build lookup
-    gpt_map = {g.get("index", 0): g for g in gpt_results}
+    gpt_map1 = {g.get("index", 0): g for g in gpt_run1}
+    gpt_map2 = {g.get("index", 0): g for g in gpt_run2}
 
-    # Deterministic scoring
+    # ── Score each checkpoint with 3-signal confidence ───────────────
     sub_requirements = []
     met_count = 0
     total_weight = 0.0
     met_weight = 0.0
+    cp_confidences = []
 
-    for cp in checkpoints:
+    for i, cp in enumerate(checkpoints):
         idx = cp["checkpoint_index"]
-        gpt = gpt_map.get(idx, {"met": False, "evidence": "No evidence found"})
-        is_met = bool(gpt.get("met", False))
-        evidence = gpt.get("evidence", "No evidence found") or "No evidence found"
         w = cp.get("weight", 1.0)
 
-        print(f"      [{control_code}] CP{idx}: met={is_met} | {cp['requirement'][:60]}")
+        r1 = gpt_map1.get(idx, {"met": False, "confidence": 0.1, "evidence": "No evidence found"})
+        r2 = gpt_map2.get(idx, {"met": False, "confidence": 0.1, "evidence": "No evidence found"})
+
+        met_1 = bool(r1.get("met", False))
+        met_2 = bool(r2.get("met", False))
+        gpt_conf_1 = float(r1.get("confidence", 0.5))
+        gpt_conf_2 = float(r2.get("confidence", 0.5))
+
+        # Use run1 as primary verdict
+        is_met = met_1
+        evidence = r1.get("evidence", "No evidence found") or "No evidence found"
+
+        # Signal 1: GPT self-reported confidence (average of both runs)
+        sig_gpt = (gpt_conf_1 + gpt_conf_2) / 2.0
+
+        # Signal 2: retrieval quality (how well chunks matched)
+        sig_retrieval = retrieval_qualities_1[i] if i < len(retrieval_qualities_1) else 0.0
+
+        # Signal 3: inter-run agreement
+        sig_agreement = 1.0 if met_1 == met_2 else 0.3
+
+        # Combine: 50% GPT + 30% retrieval + 20% agreement
+        cp_confidence = round(
+            0.5 * sig_gpt + 0.3 * sig_retrieval + 0.2 * sig_agreement, 2)
+
+        cp_confidences.append(cp_confidence)
+
+        print(f"      [{control_code}] CP{idx}: met={is_met} "
+              f"conf={cp_confidence} (gpt={sig_gpt:.2f} ret={sig_retrieval:.2f} "
+              f"agr={sig_agreement:.1f}) | {cp['requirement'][:50]}")
 
         if is_met:
             met_count += 1
@@ -259,6 +320,7 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
             "status": status,
             "policy_evidence": evidence,
             "gap": "None" if is_met else f"Missing: {cp['requirement']}",
+            "confidence": cp_confidence,
         })
 
     score = (met_weight / total_weight * 100) if total_weight > 0 else 0
@@ -271,7 +333,8 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
     else:
         overall_status = "Non-Compliant"
 
-    confidence = round(min(score / 100, 0.99), 2)
+    # Control-level confidence = average of checkpoint confidences
+    confidence = round(sum(cp_confidences) / len(cp_confidences), 2) if cp_confidences else 0.5
 
     ctrl = db.execute(sql_text(
         "SELECT title FROM control_library WHERE control_code=:cc LIMIT 1"
@@ -280,7 +343,8 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
 
     total_time = round(time.time() - t0, 2)
     print(f"    {control_code}: gpt={gpt_time}s "
-          f"=> {overall_status} ({met_count}/{total}) total={total_time}s")
+          f"=> {overall_status} ({met_count}/{total}) conf={confidence} "
+          f"total={total_time}s")
 
     gaps_text = "; ".join(
         sr["gap"] for sr in sub_requirements if sr["status"] == "Not Met"
