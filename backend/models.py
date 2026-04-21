@@ -42,7 +42,6 @@ class Policy(Base):
     file_url = Column(String, nullable=True)
     file_type = Column(String, nullable=True)
     content_preview = Column(Text, nullable=True)
-    framework_code = Column(String, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), default=_now)
     last_analyzed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
@@ -56,7 +55,7 @@ class ControlLibrary(Base):
     __tablename__ = "control_library"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    framework = Column(String, index=True)
+    framework_id = Column(String, ForeignKey("frameworks.id"), index=True)
     control_code = Column(String)
     title = Column(String)
     keywords = Column(JSON)
@@ -69,7 +68,7 @@ class ComplianceResult(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     policy_id = Column(String, ForeignKey("policies.id"))
-    framework = Column(String)
+    framework_id = Column(String, ForeignKey("frameworks.id"))
     compliance_score = Column(Float)
     controls_covered = Column(Integer, default=0)
     controls_partial = Column(Integer, default=0)
@@ -87,14 +86,15 @@ class Gap(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     policy_id = Column(String, ForeignKey("policies.id"))
-    framework = Column(String)
-    control_id = Column(String)
+    framework_id = Column(String, ForeignKey("frameworks.id"))
+    control_id = Column(String, ForeignKey("control_library.id"))
     control_name = Column(String)
     severity = Column(String, default="Medium")
     status = Column(String, default="Open")
     description = Column(Text, nullable=True)
     remediation = Column(Text, nullable=True)
-    owner = Column(String, nullable=True)
+    remediation_notes = Column(Text, nullable=True)
+    owner_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     policy = relationship("Policy", back_populates="gaps")
@@ -105,14 +105,14 @@ class MappingReview(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     policy_id = Column(String, ForeignKey("policies.id"))
-    control_id = Column(String)
-    framework = Column(String)
+    control_id = Column(String, ForeignKey("control_library.id"))
+    framework_id = Column(String, ForeignKey("frameworks.id"))
     evidence_snippet = Column(Text, nullable=True)
     confidence_score = Column(Float, default=0)
     ai_rationale = Column(Text, nullable=True)
     decision = Column(String, default="Pending")
     review_notes = Column(Text, nullable=True)
-    reviewer = Column(String, nullable=True)
+    reviewer_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
@@ -137,7 +137,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    actor = Column(String)
+    actor_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     action = Column(String)
     target_type = Column(String)
     target_id = Column(String)

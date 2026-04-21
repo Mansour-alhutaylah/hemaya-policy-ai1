@@ -46,7 +46,6 @@ class PolicyBase(BaseModel):
     file_url: Optional[str] = None
     file_type: Optional[str] = None
     content_preview: Optional[str] = None
-    framework_code: Optional[str] = None
 
 
 class PolicyCreate(PolicyBase):
@@ -66,7 +65,7 @@ class Policy(PolicyBase):
 class ComplianceResult(BaseModel):
     id: str
     policy_id: str
-    framework: str
+    framework_id: Optional[str] = None
     compliance_score: float
     controls_covered: int
     controls_partial: int
@@ -83,7 +82,7 @@ class ComplianceResult(BaseModel):
 class Gap(BaseModel):
     id: str
     policy_id: str
-    framework: Optional[str] = None
+    framework_id: Optional[str] = None
     control_id: Optional[str] = None
     control_name: Optional[str] = None
     severity: Optional[str] = None
@@ -91,8 +90,7 @@ class Gap(BaseModel):
     description: Optional[str] = None
     remediation: Optional[str] = None
     remediation_notes: Optional[str] = None
-    owner: Optional[str] = None
-    due_date: Optional[str] = None
+    owner_id: Optional[Any] = None
     created_at: datetime
 
     class Config:
@@ -102,14 +100,14 @@ class Gap(BaseModel):
 class MappingReview(BaseModel):
     id: str
     policy_id: str
-    control_id: str
-    framework: Optional[str] = None
+    control_id: Optional[str] = None
+    framework_id: Optional[str] = None
     evidence_snippet: Optional[str] = None
     confidence_score: Optional[float] = 0
     ai_rationale: Optional[str] = None
     decision: Optional[str] = None
     review_notes: Optional[str] = None
-    reviewer: Optional[str] = None
+    reviewer_id: Optional[Any] = None
     reviewed_at: Optional[datetime] = None
     created_at: datetime
 
@@ -134,7 +132,7 @@ class Report(BaseModel):
 
 class AuditLog(BaseModel):
     id: str
-    actor: Optional[str] = None
+    actor_id: Optional[Any] = None
     action: Optional[str] = None
     target_type: Optional[str] = None
     target_id: Optional[str] = None
