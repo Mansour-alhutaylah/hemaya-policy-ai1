@@ -463,34 +463,7 @@ def seed_checkpoints(db):
     """))
     db.commit()
 
-    count = db.execute(sql_text(
-        "SELECT COUNT(*) FROM control_checkpoints"
-    )).fetchone()[0]
-
-    if count >= len(CHECKPOINTS):
-        print(f"  Already seeded ({count} checkpoints). Skipping.")
-        return
-
-    # Clear and re-seed
-    db.execute(sql_text("DELETE FROM control_checkpoints"))
-
-    for fw, code, idx, req, kw, weight in CHECKPOINTS:
-        db.execute(sql_text("""
-            INSERT INTO control_checkpoints
-            (id, framework, control_code, checkpoint_index,
-             requirement, keywords, weight)
-            VALUES (:id, :fw, :code, :idx, :req, :kw, :weight)
-        """), {
-            "id": str(uuid.uuid4()),
-            "fw": fw, "code": code, "idx": idx,
-            "req": req, "kw": json.dumps(kw), "weight": weight,
-        })
-
-    db.commit()
-    codes = set(c[1] for c in CHECKPOINTS)
-    print(f"  Seeded {len(CHECKPOINTS)} checkpoints across {len(codes)} controls.")
-
-    # Ensure "NCA ECC" exists in frameworks table (FK target)
+    # Ensure "NCA ECC" exists in frameworks table FIRST (FK target)
     fw_row = db.execute(sql_text(
         "SELECT id FROM frameworks WHERE name='NCA ECC'"
     )).fetchone()
@@ -505,6 +478,36 @@ def seed_checkpoints(db):
         ), {"id": nca_fw_id})
         db.commit()
         print(f"  Created 'NCA ECC' framework (id={nca_fw_id[:8]}...)")
+
+    count = db.execute(sql_text(
+        "SELECT COUNT(*) FROM control_checkpoints"
+    )).fetchone()[0]
+
+    if count >= len(CHECKPOINTS):
+        print(f"  Already seeded ({count} checkpoints). Skipping.")
+        return
+
+    # Clear and re-seed
+    db.execute(sql_text("DELETE FROM control_checkpoints"))
+
+    # Build framework name → id map for FK
+    fw_id_map = {"NCA ECC": nca_fw_id}
+
+    for fw, code, idx, req, kw, weight in CHECKPOINTS:
+        db.execute(sql_text("""
+            INSERT INTO control_checkpoints
+            (id, framework, control_code, checkpoint_index,
+             requirement, keywords, weight)
+            VALUES (:id, :fw, :code, :idx, :req, :kw, :weight)
+        """), {
+            "id": str(uuid.uuid4()),
+            "fw": fw_id_map.get(fw, fw), "code": code, "idx": idx,
+            "req": req, "kw": json.dumps(kw), "weight": weight,
+        })
+
+    db.commit()
+    codes = set(c[1] for c in CHECKPOINTS)
+    print(f"  Seeded {len(CHECKPOINTS)} checkpoints across {len(codes)} controls.")
 
     # Seed control_library with framework_id FK
     existing = db.execute(sql_text(
@@ -540,14 +543,14 @@ def ensure_control_library_sync(db):
     that don't have a matching entry. Runs on every startup."""
     from datetime import datetime
 
+    # cp.framework now stores framework_id (UUID), not name
     missing = db.execute(sql_text("""
         SELECT DISTINCT cp.framework, cp.control_code
         FROM control_checkpoints cp
         WHERE NOT EXISTS (
             SELECT 1 FROM control_library cl
-            JOIN frameworks f ON cl.framework_id = f.id
             WHERE cl.control_code = cp.control_code
-            AND f.name = cp.framework
+            AND cl.framework_id = cp.framework
         )
     """)).fetchall()
 
@@ -556,21 +559,12 @@ def ensure_control_library_sync(db):
 
     print(f"  Syncing {len(missing)} missing control_library entries...")
 
-    for fw_name, control_code in missing:
-        fw = db.execute(sql_text(
-            "SELECT id FROM frameworks WHERE name = :n"
-        ), {"n": fw_name}).fetchone()
-
-        if not fw:
-            continue
-
-        framework_id = fw[0]
-
+    for fw_id, control_code in missing:
         # Check race condition
         exists = db.execute(sql_text(
             "SELECT id FROM control_library "
             "WHERE control_code = :cc AND framework_id = :fid"
-        ), {"cc": control_code, "fid": framework_id}).fetchone()
+        ), {"cc": control_code, "fid": fw_id}).fetchone()
 
         if exists:
             continue
@@ -578,12 +572,18 @@ def ensure_control_library_sync(db):
         # Use checkpoint requirement as title, checkpoint keywords as keywords
         cp_row = db.execute(sql_text("""
             SELECT requirement, keywords FROM control_checkpoints
-            WHERE framework = :fw AND control_code = :cc
+            WHERE framework = :fwid AND control_code = :cc
             LIMIT 1
-        """), {"fw": fw_name, "cc": control_code}).fetchone()
+        """), {"fwid": fw_id, "cc": control_code}).fetchone()
 
         title = CONTROL_TITLES.get(control_code, cp_row[0] if cp_row else control_code)
         keywords = cp_row[1] if cp_row else []
+
+        # Get framework name for logging
+        fw_name_row = db.execute(sql_text(
+            "SELECT name FROM frameworks WHERE id = :fid"
+        ), {"fid": fw_id}).fetchone()
+        fw_display = fw_name_row[0] if fw_name_row else fw_id[:8]
 
         db.execute(sql_text("""
             INSERT INTO control_library
@@ -595,10 +595,10 @@ def ensure_control_library_sync(db):
             "cc": control_code,
             "title": title,
             "kw": json.dumps(keywords if isinstance(keywords, list) else []),
-            "fid": framework_id,
+            "fid": fw_id,
             "cat": datetime.utcnow(),
         })
-        print(f"    Created: {control_code} in {fw_name}")
+        print(f"    Created: {control_code} in {fw_display}")
 
     db.commit()
     print(f"  Synced {len(missing)} control_library entries")

@@ -450,11 +450,17 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
         # ── Load checkpoints for this framework ──────────────────────────
         t1 = time.time()
+        # Resolve framework_id first for checkpoint lookup
+        fw_row = db.execute(sql_text(
+            "SELECT id FROM frameworks WHERE name=:fw"
+        ), {"fw": fw}).fetchone()
+        framework_id = fw_row[0] if fw_row else None
+
         rows = db.execute(sql_text(
             "SELECT control_code, checkpoint_index, requirement, keywords, weight "
-            "FROM control_checkpoints WHERE framework=:fw "
+            "FROM control_checkpoints WHERE framework=:fwid "
             "ORDER BY control_code, checkpoint_index"
-        ), {"fw": fw}).fetchall()
+        ), {"fwid": framework_id}).fetchall()
         print(f"    Load checkpoints: {round(time.time()-t1, 2)}s -- "
               f"{len(rows)} checkpoints")
 
@@ -482,12 +488,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
             }
             controls.setdefault(code, []).append(cp)
 
-        # ── Resolve framework_id and control_id FKs ────────────────────
-        fw_row = db.execute(sql_text(
-            "SELECT id FROM frameworks WHERE name=:fw"
-        ), {"fw": fw}).fetchone()
-        framework_id = fw_row[0] if fw_row else None
-
+        # ── Resolve control_id FKs ────────────────────────────────────
         cl_rows = db.execute(sql_text(
             "SELECT id, control_code FROM control_library "
             "WHERE framework_id=:fwid"

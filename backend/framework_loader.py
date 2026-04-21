@@ -188,10 +188,10 @@ Rules:
 async def generate_checkpoints_for_framework(db, framework_name, framework_id, full_text):
     """Use GPT to generate YES/NO checkpoints for each control."""
 
-    # Check if checkpoints already exist
+    # Check if checkpoints already exist (framework column stores framework_id)
     existing = db.execute(text(
-        "SELECT COUNT(*) FROM control_checkpoints WHERE framework = :fw"
-    ), {"fw": framework_name}).fetchone()[0]
+        "SELECT COUNT(*) FROM control_checkpoints WHERE framework = :fwid"
+    ), {"fwid": framework_id}).fetchone()[0]
 
     if existing > 0:
         print(f"    {existing} checkpoints already exist for {framework_name}, skipping")
@@ -284,7 +284,7 @@ Rules:
                     VALUES (:id, :fw, :cc, :idx, :req, :kw, 1.0)
                 """), {
                     "id": str(uuid.uuid4()),
-                    "fw": framework_name,
+                    "fw": framework_id,
                     "cc": cc,
                     "idx": item.get("index", 1),
                     "req": req,
