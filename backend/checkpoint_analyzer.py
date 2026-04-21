@@ -87,9 +87,9 @@ async def verify_checkpoints_gpt(checkpoints, policy_text):
         for cp in checkpoints
     )
     user_msg = (
-        f"Verify each checkpoint against this policy text:\n\n"
+        f"Verify each checkpoint against this policy evidence:\n\n"
         f"{cp_lines}\n\n"
-        f"POLICY TEXT:\n{policy_text[:15000]}"
+        f"POLICY EVIDENCE:\n{policy_text[:15000]}"
     )
     try:
         raw = await call_llm(VERIFIER_PROMPT, user_msg)
@@ -150,37 +150,50 @@ async def _auto_embed(db, policy_id):
 
 # ── Find relevant sections for a checkpoint ─────────────────────────────────
 
-def _find_relevant_sections(chunk_texts, requirement, keywords, offset=0):
-    """Score each chunk using keyword matching + BM25, return (text, quality_score).
-    offset: skip top N chunks (used for second-pass retrieval)."""
+def _find_relevant_sections(chunks, requirement, keywords, offset=0):
+    """Score each chunk using keyword matching + BM25 + classification bonus.
+    chunks: list of {"text": str, "classification": str} or plain strings.
+    offset: skip top N chunks (used for second-pass retrieval).
+    Returns (joined_text, quality_score)."""
     from rank_bm25 import BM25Okapi
 
-    # Signal 1: keyword scoring (semantic)
-    semantic_scores = {}
-    for chunk in chunk_texts:
+    # Normalize input: accept both dicts and plain strings
+    if chunks and isinstance(chunks[0], str):
+        chunks = [{"text": c, "classification": "descriptive"} for c in chunks]
+
+    texts = [c["text"] for c in chunks]
+
+    # Signal 1: keyword scoring + classification bonus
+    semantic_scores = []
+    for c in chunks:
         score = 0
         for kw in keywords:
-            if kw.lower() in chunk.lower():
+            if kw.lower() in c["text"].lower():
                 score += 3
-        semantic_scores[chunk] = score
+        # Bonus for mandatory sentences (shall/must)
+        if c.get("classification") == "mandatory":
+            score += 4
+        elif c.get("classification") == "advisory":
+            score += 1
+        semantic_scores.append(score)
 
     # Signal 2: BM25 sparse retrieval
-    tokenized = [chunk.lower().split() for chunk in chunk_texts]
+    tokenized = [t.lower().split() for t in texts]
     bm25 = BM25Okapi(tokenized)
     query = (requirement + " " + " ".join(keywords)).lower().split()
     bm25_scores = bm25.get_scores(query)
 
     # Normalize both to 0-1 range
-    max_sem = max(semantic_scores.values()) or 1
+    max_sem = max(semantic_scores) or 1
     max_bm25 = max(bm25_scores) or 1
 
     # Combine 50/50
     combined = []
-    for i, chunk in enumerate(chunk_texts):
-        norm_sem = semantic_scores[chunk] / max_sem
+    for i, txt in enumerate(texts):
+        norm_sem = semantic_scores[i] / max_sem
         norm_bm25 = bm25_scores[i] / max_bm25
         combined_score = 0.5 * norm_sem + 0.5 * norm_bm25
-        combined.append((combined_score, chunk))
+        combined.append((combined_score, txt))
 
     # Sort best first
     combined.sort(key=lambda x: x[0], reverse=True)
@@ -194,18 +207,19 @@ def _find_relevant_sections(chunk_texts, requirement, keywords, offset=0):
 
     # Fallback: if fewer than 3 relevant chunks, send everything
     if len(top) < 3:
-        return "\n---\n".join(chunk_texts), quality
+        return "\n---\n".join(texts), quality
     return "\n---\n".join(top), quality
 
 
 # ── Analyze one control (all its checkpoints) ────────────────────────────────
 
-async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, policy_chunk_texts):
+async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, policy_chunks):
     """
     Analyze one control with 3-signal confidence:
       Signal 1: GPT self-reported confidence
       Signal 2: Retrieval quality (top BM25+keyword score)
       Signal 3: Inter-run agreement (two GPT passes with different context)
+    policy_chunks: list of {"text": str, "classification": str}
     """
     t0 = time.time()
     framework = checkpoints[0]["framework"]
@@ -226,7 +240,7 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
     per_cp_texts_1 = []
     for i, cp in enumerate(checkpoints):
         text_1, quality_1 = _find_relevant_sections(
-            policy_chunk_texts, cp["requirement"], per_cp_kw[i], offset=0)
+            policy_chunks, cp["requirement"], per_cp_kw[i], offset=0)
         per_cp_texts_1.append(text_1)
         retrieval_qualities_1.append(quality_1)
 
@@ -234,10 +248,14 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
     per_cp_texts_2 = []
     for i, cp in enumerate(checkpoints):
         text_2, _ = _find_relevant_sections(
-            policy_chunk_texts, cp["requirement"], per_cp_kw[i], offset=4)
+            policy_chunks, cp["requirement"], per_cp_kw[i], offset=4)
         per_cp_texts_2.append(text_2)
 
-    # Deduplicate and build focused text for each run
+    # Build a lookup from chunk text -> classification
+    cls_map = {c["text"].strip(): c.get("classification", "descriptive")
+               for c in policy_chunks}
+
+    # Deduplicate and build focused text with classification labels
     def _build_focused(per_cp_texts):
         seen = set()
         sections = []
@@ -246,7 +264,8 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
                 s = s.strip()
                 if s and s not in seen:
                     seen.add(s)
-                    sections.append(s)
+                    label = cls_map.get(s, "descriptive")
+                    sections.append(f"[{label}] {s}")
         return "\n---\n".join(sections)
 
     focused_1 = _build_focused(per_cp_texts_1)
@@ -414,12 +433,24 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         n = embedded
 
     # ── Load policy chunk texts for targeted analysis ──────────────────
-    chunk_rows = db.execute(sql_text(
-        "SELECT chunk_text FROM policy_chunks "
-        "WHERE policy_id=:pid ORDER BY chunk_index"
-    ), {"pid": policy_id}).fetchall()
-    policy_chunk_texts = [r[0] for r in chunk_rows if r[0]]
-    print(f"  Loaded {len(policy_chunk_texts)} chunk texts for targeted search")
+    try:
+        chunk_rows = db.execute(sql_text(
+            "SELECT chunk_text, COALESCE(classification, 'descriptive') "
+            "FROM policy_chunks "
+            "WHERE policy_id=:pid ORDER BY chunk_index"
+        ), {"pid": policy_id}).fetchall()
+        policy_chunks = [{"text": r[0], "classification": r[1]}
+                         for r in chunk_rows if r[0]]
+    except Exception:
+        db.rollback()
+        # classification column may not exist yet — fall back
+        chunk_rows = db.execute(sql_text(
+            "SELECT chunk_text FROM policy_chunks "
+            "WHERE policy_id=:pid ORDER BY chunk_index"
+        ), {"pid": policy_id}).fetchall()
+        policy_chunks = [{"text": r[0], "classification": "descriptive"}
+                         for r in chunk_rows if r[0]]
+    print(f"  Loaded {len(policy_chunks)} chunk texts for targeted search")
 
     # ── Framework filter ─────────────────────────────────────────────────
     t1 = time.time()
@@ -517,7 +548,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         async def _run(code, emb):
             async with sem:
                 return await _analyze_control(
-                    db, policy_id, code, controls[code], emb, policy_chunk_texts
+                    db, policy_id, code, controls[code], emb, policy_chunks
                 )
 
         results_list = []
