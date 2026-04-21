@@ -22,15 +22,28 @@ from sqlalchemy.orm import Session
 from backend import auth, database, models, schemas
 from backend.database import get_db
 from backend.text_extractor import extract_text
-from backend.rag_engine import (
-    run_full_analysis, chat_with_context,
-    run_simulation, generate_ai_insights, explain_mapping,
+from backend.checkpoint_analyzer import (
+    run_checkpoint_analysis, chat_with_context,
+    run_simulation, generate_insights, explain_mapping,
 )
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
 
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+def startup_seed():
+    """Seed checkpoint data on server start."""
+    from backend.checkpoint_seed import seed_checkpoints
+    db = database.SessionLocal()
+    try:
+        seed_checkpoints(db)
+    except Exception as e:
+        print(f"Seed warning: {e}")
+    finally:
+        db.close()
 
 
 @app.exception_handler(Exception)
@@ -197,12 +210,12 @@ async def upload_policy(
     if not content or content.startswith("[Extraction error"):
         content = ""
 
-    # Save policy row immediately with status='uploaded'
+    # Save policy row with status='processing'
     db.execute(_sql("""
         INSERT INTO policies
         (id, file_name, description, department, version, status,
          file_url, file_type, content_preview, uploaded_at, created_at)
-        VALUES (:id,:fn,:desc,:dept,:ver,'uploaded',:furl,:ft,:prev,:at,:cat)
+        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:at,:cat)
     """), {
         "id": policy_id,
         "fn": original_name,
@@ -217,26 +230,42 @@ async def upload_policy(
     })
     db.commit()
 
-    # Save full content for auto-embedding during analysis
+    # Save full content for keyword search during analysis
     if content:
         db.execute(_sql(
             "UPDATE policies SET content_preview = :content WHERE id = :pid"
         ), {"content": content, "pid": policy_id})
         db.commit()
 
-    # Skip embedding here — it happens automatically during analysis
+    # Chunk and embed the full text
     chunks_count = 0
+    if content:
+        try:
+            chunks = chunk_text(content)
+            if chunks:
+                embeddings = await get_embeddings([c["text"] for c in chunks])
+                store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
+                chunks_count = len(chunks)
+                print(f"  Embedded {chunks_count} chunks for {original_name}")
+        except Exception as e:
+            print(f"  Embedding error (will auto-embed during analysis): {e}")
+
+    # Mark as uploaded
+    db.execute(_sql(
+        "UPDATE policies SET status='uploaded' WHERE id=:pid"
+    ), {"pid": policy_id})
+    db.commit()
     print(f"Policy saved: {original_name}")
 
     # Audit log
     try:
         db.execute(_sql("""
             INSERT INTO audit_logs
-            (id, actor, action, target_type, target_id, details, timestamp)
-            VALUES (:id,:actor,'upload_policy','policy',:tid,:det,:ts)
+            (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id,:aid,'upload_policy','policy',:tid,:det,:ts)
         """), {
             "id": str(uuid.uuid4()),
-            "actor": current_user.email if hasattr(current_user, "email") else "system",
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
             "tid": policy_id,
             "det": json.dumps({"file_name": original_name, "chunks": chunks_count}),
             "ts": datetime.now(timezone.utc),
@@ -255,29 +284,199 @@ async def upload_policy(
     }
 
 
-# Dedicated Audit Trail route — avoids JSON/datetime serialization crashes
-# Must be defined BEFORE the generic /api/entities/{entity} route
-@app.get("/api/entities/audit_logs")
-def get_audit_logs(
+# ━━━ Dashboard Stats ━━━
+@app.get("/api/dashboard/stats")
+def dashboard_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    from sqlalchemy import text as _text
-    results = db.execute(_text("""
-        SELECT id, actor, action, target_type, target_id,
-               details::text AS details, timestamp
-        FROM audit_logs
-        ORDER BY timestamp DESC
-        LIMIT 100
+    from sqlalchemy import text as _t
+
+    # Latest compliance result per framework
+    rows = db.execute(_t("""
+        SELECT DISTINCT ON (f.name)
+               f.name, cr.compliance_score,
+               cr.controls_covered, cr.controls_partial, cr.controls_missing
+        FROM compliance_results cr
+        LEFT JOIN frameworks f ON cr.framework_id = f.id
+        ORDER BY f.name, cr.analyzed_at DESC
     """)).fetchall()
+
+    framework_scores = [
+        {"framework": r[0] or "Unknown", "score": round(r[1] or 0, 1),
+         "covered": r[2] or 0, "partial": r[3] or 0, "missing": r[4] or 0}
+        for r in rows
+    ]
+    security_score = (
+        round(sum(r[1] or 0 for r in rows) / len(rows), 1) if rows else 0
+    )
+
+    # Open gaps
+    open_gaps = db.execute(_t(
+        "SELECT COUNT(*) FROM gaps WHERE status='Open'"
+    )).fetchone()[0]
+
+    # Severity distribution
+    sev_rows = db.execute(_t(
+        "SELECT severity, COUNT(*) FROM gaps WHERE status='Open' "
+        "GROUP BY severity"
+    )).fetchall()
+    severity_distribution = {r[0]: r[1] for r in sev_rows}
+
+    # Controls mapped
+    controls_mapped = sum(r[2] or 0 for r in rows)
+
+    # Status overview
+    status_overview = {
+        "compliant": sum(r[2] or 0 for r in rows),
+        "partial": sum(r[3] or 0 for r in rows),
+        "non_compliant": sum(r[4] or 0 for r in rows),
+    }
+
+    return {
+        "security_score": security_score,
+        "framework_scores": framework_scores,
+        "open_gaps": open_gaps,
+        "severity_distribution": severity_distribution,
+        "controls_mapped": controls_mapped,
+        "status_overview": status_overview,
+    }
+
+
+# ━━━ Dedicated entity routes (raw SQL, correct column names) ━━━
+# Must be defined BEFORE the generic /api/entities/{entity} route
+
+@app.get("/api/entities/AuditLog")
+@app.get("/api/entities/audit_logs")
+def get_audit_logs(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    limit = int(params.get("limit", 100))
+    rows = db.execute(_t("""
+        SELECT al.id, u.email AS actor, al.action, al.target_type,
+               al.target_id, al.details::text AS details, al.timestamp
+        FROM audit_logs al
+        LEFT JOIN users u ON al.actor_id = u.id
+        ORDER BY al.timestamp DESC
+        LIMIT :lim
+    """), {"lim": limit}).fetchall()
     return [
-        {
-            "id": r[0], "actor": r[1], "action": r[2],
-            "target_type": r[3], "target_id": r[4],
-            "details": r[5],
-            "timestamp": r[6].isoformat() if r[6] else None,
-        }
-        for r in results
+        {"id": r[0], "actor": r[1] or "system", "action": r[2],
+         "target_type": r[3], "target_id": r[4], "details": r[5],
+         "timestamp": r[6].isoformat() if r[6] else None}
+        for r in rows
+    ]
+
+
+@app.get("/api/entities/ComplianceResult")
+def get_compliance_results(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    limit = int(params.get("limit", 100))
+    policy_id = params.get("policy_id")
+    where = "WHERE cr.policy_id = :pid" if policy_id else ""
+    rows = db.execute(_t(f"""
+        SELECT cr.id, cr.policy_id, f.name AS framework,
+               cr.compliance_score, cr.controls_covered,
+               cr.controls_partial, cr.controls_missing,
+               cr.status, cr.analyzed_at, cr.analysis_duration,
+               cr.details::text AS details
+        FROM compliance_results cr
+        LEFT JOIN frameworks f ON cr.framework_id = f.id
+        {where}
+        ORDER BY cr.analyzed_at DESC
+        LIMIT :lim
+    """), {"lim": limit, "pid": policy_id}).fetchall()
+    return [
+        {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
+         "compliance_score": r[3], "controls_covered": r[4],
+         "controls_partial": r[5], "controls_missing": r[6],
+         "status": r[7],
+         "analyzed_at": r[8].isoformat() if r[8] else None,
+         "analysis_duration": r[9], "details": r[10]}
+        for r in rows
+    ]
+
+
+@app.get("/api/entities/Gap")
+def get_gaps(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    limit = int(params.get("limit", 100))
+    policy_id = params.get("policy_id")
+    status_filter = params.get("status")
+    where_parts = []
+    if policy_id:
+        where_parts.append("g.policy_id = :pid")
+    if status_filter:
+        where_parts.append("g.status = :st")
+    where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+    rows = db.execute(_t(f"""
+        SELECT g.id, g.policy_id, f.name AS framework,
+               cl.control_code AS control_id, g.control_name,
+               g.severity, g.status, g.description, g.remediation,
+               g.created_at
+        FROM gaps g
+        LEFT JOIN frameworks f ON g.framework_id = f.id
+        LEFT JOIN control_library cl ON g.control_id = cl.id
+        {where}
+        ORDER BY g.created_at DESC
+        LIMIT :lim
+    """), {"lim": limit, "pid": policy_id, "st": status_filter}).fetchall()
+    return [
+        {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
+         "control_id": r[3] or "", "control_name": r[4],
+         "severity": r[5], "status": r[6],
+         "description": r[7], "remediation": r[8],
+         "created_at": r[9].isoformat() if r[9] else None}
+        for r in rows
+    ]
+
+
+@app.get("/api/entities/MappingReview")
+def get_mapping_reviews(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    limit = int(params.get("limit", 100))
+    policy_id = params.get("policy_id")
+    where = "WHERE mr.policy_id = :pid" if policy_id else ""
+    rows = db.execute(_t(f"""
+        SELECT mr.id, mr.policy_id, f.name AS framework,
+               cl.control_code AS control_id,
+               mr.evidence_snippet, mr.confidence_score,
+               mr.ai_rationale, mr.decision, mr.review_notes,
+               mr.reviewed_at, mr.created_at
+        FROM mapping_reviews mr
+        LEFT JOIN frameworks f ON mr.framework_id = f.id
+        LEFT JOIN control_library cl ON mr.control_id = cl.id
+        {where}
+        ORDER BY mr.created_at DESC
+        LIMIT :lim
+    """), {"lim": limit, "pid": policy_id}).fetchall()
+    return [
+        {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
+         "control_id": r[3] or "", "evidence_snippet": r[4],
+         "confidence_score": r[5], "ai_rationale": r[6],
+         "decision": r[7], "review_notes": r[8],
+         "reviewed_at": r[9].isoformat() if r[9] else None,
+         "created_at": r[10].isoformat() if r[10] else None}
+        for r in rows
     ]
 
 
@@ -371,9 +570,8 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
     db.commit()
 
-    # run_full_analysis handles all DB writes (ComplianceResult, Gap,
-    # MappingReview, AIInsight, AuditLog) and updates policy status.
-    results = await run_full_analysis(db, request.policy_id, request.frameworks)
+    # Checkpoint-based analysis handles all DB writes and updates policy status.
+    results = await run_checkpoint_analysis(db, request.policy_id, request.frameworks)
 
     return {"success": True, "results": results}
 
@@ -406,14 +604,17 @@ async def generate_report(request: schemas.GenerateReportRequest, db: Session = 
     )
     db.add(report)
 
-    audit = models.AuditLog(
-        actor=current_user.email,
-        action="report_generate",
-        target_type="report",
-        target_id=report.id,
-        details={"report_type": request.report_type, "format": request.format},
-    )
-    db.add(audit)
+    from sqlalchemy import text as _audit_sql
+    db.execute(_audit_sql("""
+        INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+        VALUES (:id, :aid, 'report_generate', 'report', :tid, :det, :ts)
+    """), {
+        "id": str(uuid.uuid4()),
+        "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+        "tid": report.id,
+        "det": json.dumps({"report_type": request.report_type, "format": request.format}),
+        "ts": datetime.now(timezone.utc),
+    })
     db.commit()
     db.refresh(report)
 

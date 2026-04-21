@@ -14,3 +14,4 @@ python-docx
 openpyxl
 chardet
 watchfiles
+rank_bm25==0.2.2

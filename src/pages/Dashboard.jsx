@@ -40,24 +40,26 @@ import {
 import { format } from 'date-fns';
 
 const Policy = api.entities.Policy;
-const ComplianceResult = api.entities.ComplianceResult;
-const Gap = api.entities.Gap;
 const AuditLog = api.entities.AuditLog;
 
+async function fetchDashboardStats() {
+  const token = localStorage.getItem('token');
+  const res = await fetch('/api/dashboard/stats', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export default function Dashboard() {
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: fetchDashboardStats,
+  });
+
   const { data: policies = [], isLoading: policiesLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at', 10),
-  });
-
-  const { data: results = [], isLoading: resultsLoading } = useQuery({
-    queryKey: ['complianceResults'],
-    queryFn: () => ComplianceResult.list('-analyzed_at', 50),
-  });
-
-  const { data: gaps = [], isLoading: gapsLoading } = useQuery({
-    queryKey: ['gaps'],
-    queryFn: () => Gap.list('-created_at', 50),
   });
 
   const { data: auditLogs = [], isLoading: logsLoading } = useQuery({
@@ -65,38 +67,29 @@ export default function Dashboard() {
     queryFn: () => AuditLog.list('-timestamp', 10),
   });
 
-  const isLoading = policiesLoading || resultsLoading || gapsLoading;
+  const isLoading = statsLoading || policiesLoading;
 
-  // Calculate stats
-  const frameworkCount = 3; // NCA ECC, ISO 27001, NIST 800-53
-  const openGaps = gaps.filter(g => g.status === 'Open').length;
-  const totalControls = results.reduce((acc, r) => acc + (r.controls_covered || 0), 0);
-  
-  // Calculate average compliance score
-  const latestResults = {};
-  results.forEach(r => {
-    if (!latestResults[r.framework] || new Date(r.analyzed_at) > new Date(latestResults[r.framework].analyzed_at)) {
-      latestResults[r.framework] = r;
-    }
-  });
-  const avgScore = Object.values(latestResults).length > 0
-    ? Math.round(Object.values(latestResults).reduce((acc, r) => acc + (r.compliance_score || 0), 0) / Object.values(latestResults).length)
-    : 0;
+  // Stats from backend
+  const frameworkCount = 3;
+  const avgScore = stats?.security_score || 0;
+  const openGaps = stats?.open_gaps || 0;
+  const totalControls = stats?.controls_mapped || 0;
 
-  // Chart data
-  const complianceByFramework = Object.values(latestResults).map(r => ({
+  // Chart data from backend
+  const complianceByFramework = (stats?.framework_scores || []).map(r => ({
     framework: r.framework,
-    score: Math.round(r.compliance_score || 0),
-    covered: r.controls_covered || 0,
-    partial: r.controls_partial || 0,
-    missing: r.controls_missing || 0,
+    score: Math.round(r.score || 0),
+    covered: r.covered || 0,
+    partial: r.partial || 0,
+    missing: r.missing || 0,
   }));
 
+  const sevDist = stats?.severity_distribution || {};
   const riskData = [
-    { name: 'Mitigate', value: gaps.filter(g => g.status === 'In Progress').length || 4, color: '#3b82f6' },
-    { name: 'Accept', value: gaps.filter(g => g.status === 'Deferred').length || 2, color: '#10b981' },
-    { name: 'Transfer', value: 1, color: '#f59e0b' },
-    { name: 'Avoid', value: gaps.filter(g => g.status === 'Resolved').length || 3, color: '#8b5cf6' },
+    { name: 'Critical', value: sevDist['Critical'] || 0, color: '#ef4444' },
+    { name: 'High', value: sevDist['High'] || 0, color: '#f59e0b' },
+    { name: 'Medium', value: sevDist['Medium'] || 0, color: '#3b82f6' },
+    { name: 'Low', value: sevDist['Low'] || 0, color: '#10b981' },
   ];
 
   const controlsData = complianceByFramework.map(item => ({
@@ -164,14 +157,14 @@ export default function Dashboard() {
         />
         <StatsCard
           title="Controls Mapped"
-          value={totalControls || 142}
+          value={totalControls}
           icon={FileCheck}
           trend="up"
           trendValue="+12"
         />
         <StatsCard
           title="Open Gaps"
-          value={openGaps || 8}
+          value={openGaps}
           icon={AlertTriangle}
           variant={openGaps > 10 ? 'red' : 'default'}
           trend="down"
@@ -179,7 +172,7 @@ export default function Dashboard() {
         />
         <StatsCard
           title="Policies Analyzed"
-          value={policies.length || 5}
+          value={policies.length}
           icon={FileText}
           subtitle="This month"
         />
@@ -200,11 +193,7 @@ export default function Dashboard() {
               <Skeleton className="h-64 w-full" />
             ) : (
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={complianceByFramework.length > 0 ? complianceByFramework : [
-                  { framework: 'NCA ECC', score: 72 },
-                  { framework: 'ISO 27001', score: 68 },
-                  { framework: 'NIST 800-53', score: 58 },
-                ]}>
+                <BarChart data={complianceByFramework}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="framework" tick={{ fontSize: 12 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
@@ -229,7 +218,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-600" />
-              Risk Treatment Methodology
+              Gap Severity Distribution
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -288,11 +277,7 @@ export default function Dashboard() {
               <Skeleton className="h-64 w-full" />
             ) : (
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={controlsData.length > 0 ? controlsData : [
-                  { name: 'NCA', Covered: 45, Partial: 20, Missing: 15 },
-                  { name: 'ISO', Covered: 38, Partial: 25, Missing: 12 },
-                  { name: 'NIST', Covered: 52, Partial: 18, Missing: 22 },
-                ]}>
+                <BarChart data={controlsData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />

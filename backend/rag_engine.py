@@ -277,8 +277,9 @@ async def run_full_analysis(db, policy_id, frameworks):
     # FILTER: Only analyze frameworks with uploaded documents
     t1 = time.time()
     loaded = db.execute(sql_text(
-        "SELECT DISTINCT framework_name FROM framework_chunks "
-        "WHERE embedding IS NOT NULL"
+        "SELECT DISTINCT f.name FROM framework_chunks fc "
+        "JOIN frameworks f ON fc.framework_id = f.id "
+        "WHERE fc.embedding IS NOT NULL"
     )).fetchall()
     loaded_names = [r[0] for r in loaded]
     if loaded_names:
