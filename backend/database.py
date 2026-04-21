@@ -3,6 +3,8 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
+
 
 load_dotenv()
 
@@ -15,9 +17,7 @@ if not SQLALCHEMY_DATABASE_URL:
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     pool_pre_ping=True,       # detect stale connections
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=15,          # fail after 15s waiting for a pool slot
+    poolclass=NullPool,
     connect_args={"connect_timeout": 10},  # fail after 10s if TCP hangs
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
