@@ -10,22 +10,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Bell, FileBarChart, Search, LogOut, User, Settings, ChevronDown } from "lucide-react";
+import { LogOut, Settings, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/AuthContext";
 
-export default function Topbar({ onGenerateReport }) {
+export default function Topbar() {
   const { user: ctxUser, logout: ctxLogout } = useAuth();
   const [user, setUser] = useState(ctxUser || null);
-
-  const [notifications] = useState([
-    { id: 1, title: "Analysis Complete", message: "Security Policy v2.1 analysis finished", time: "5m ago", unread: true },
-    { id: 2, title: "New Gap Identified", message: "Critical gap found in NCA ECC compliance", time: "1h ago", unread: true },
-    { id: 3, title: "Report Ready", message: "Q4 Compliance Report is ready to download", time: "2h ago", unread: false },
-  ]);
 
   useEffect(() => {
     if (ctxUser) setUser(ctxUser);
@@ -51,8 +43,6 @@ export default function Topbar({ onGenerateReport }) {
     };
     loadUser();
   }, [ctxUser]);
-
-  const unreadCount = notifications.filter((n) => n.unread).length;
 
   const handleLogout = () => {
     if (typeof ctxLogout === "function") return ctxLogout();
@@ -91,71 +81,9 @@ export default function Topbar({ onGenerateReport }) {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-30">
-      {/* Search */}
-      <div className="flex items-center gap-4 flex-1 max-w-xl">
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            placeholder="Search policies, frameworks, reports..."
-            className="pl-10 bg-slate-50 border-slate-200 focus:bg-white"
-          />
-        </div>
-      </div>
-
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-end px-6 sticky top-0 z-30">
       {/* Actions */}
       <div className="flex items-center gap-3">
-        {/* Generate Report Button */}
-        <Button
-          onClick={onGenerateReport}
-          className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-md shadow-emerald-500/20"
-        >
-          <FileBarChart className="w-4 h-4 mr-2" />
-          Generate Report
-        </Button>
-
-        {/* Notifications */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-5 h-5 text-slate-600" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel className="flex items-center justify-between">
-              Notifications
-              <Badge variant="secondary" className="text-xs">
-                {unreadCount} new
-              </Badge>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications.map((notification) => (
-              <DropdownMenuItem
-                key={notification.id}
-                className="flex flex-col items-start py-3 cursor-pointer"
-              >
-                <div className="flex items-center gap-2 w-full">
-                  <span className={`font-medium text-sm ${notification.unread ? "text-slate-900" : "text-slate-600"}`}>
-                    {notification.title}
-                  </span>
-                  {notification.unread && <span className="w-2 h-2 bg-emerald-500 rounded-full ml-auto" />}
-                </div>
-                <span className="text-xs text-slate-500 mt-0.5">{notification.message}</span>
-                <span className="text-[10px] text-slate-400 mt-1">{notification.time}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="justify-center text-emerald-600 font-medium">
-              View all notifications
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -167,10 +95,10 @@ export default function Topbar({ onGenerateReport }) {
               </Avatar>
 
               <div className="flex flex-col items-start">
-                <span className="text-sm font-medium text-slate-700">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   {displayName}
                 </span>
-                <span className="text-[10px] text-slate-500 capitalize">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 capitalize">
                   {displayRole}
                 </span>
               </div>
@@ -182,11 +110,6 @@ export default function Topbar({ onGenerateReport }) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-
-            <DropdownMenuItem>
-              <User className="w-4 h-4 mr-2" />
-              Profile
-            </DropdownMenuItem>
 
             <Link to={createPageUrl("Settings")}>
               <DropdownMenuItem>

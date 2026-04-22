@@ -346,6 +346,51 @@ def dashboard_stats(
 # ━━━ Dedicated entity routes (raw SQL, correct column names) ━━━
 # Must be defined BEFORE the generic /api/entities/{entity} route
 
+@app.get("/api/entities/Policy")
+def get_policies(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """List policies with uploader email resolved via the upload audit-log entry."""
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    limit = int(params.get("limit", 100))
+    status_filter = params.get("status")
+
+    where = "WHERE p.status = :st" if status_filter else ""
+    rows = db.execute(_t(f"""
+        SELECT p.id, p.file_name, p.description, p.department, p.version,
+               p.status, p.file_url, p.file_type, p.content_preview,
+               p.framework_code, p.uploaded_at, p.last_analyzed_at, p.created_at,
+               u.email AS uploaded_by
+        FROM policies p
+        LEFT JOIN LATERAL (
+            SELECT actor_id
+            FROM audit_logs
+            WHERE action = 'upload_policy' AND target_id = p.id
+            ORDER BY timestamp ASC
+            LIMIT 1
+        ) al ON TRUE
+        LEFT JOIN users u ON u.id = al.actor_id
+        {where}
+        ORDER BY p.created_at DESC
+        LIMIT :lim
+    """), {"lim": limit, "st": status_filter}).fetchall()
+
+    return [
+        {"id": r[0], "file_name": r[1], "description": r[2],
+         "department": r[3], "version": r[4], "status": r[5],
+         "file_url": r[6], "file_type": r[7], "content_preview": r[8],
+         "framework_code": r[9],
+         "uploaded_at": r[10].isoformat() if r[10] else None,
+         "last_analyzed_at": r[11].isoformat() if r[11] else None,
+         "created_at": r[12].isoformat() if r[12] else None,
+         "uploaded_by": r[13]}
+        for r in rows
+    ]
+
+
 @app.get("/api/entities/AuditLog")
 @app.get("/api/entities/audit_logs")
 def get_audit_logs(
@@ -540,6 +585,80 @@ def create_or_update_entity(entity: str, payload: Dict[str, Any], db: Session = 
     return serialize(item)
 
 
+@app.delete("/api/entities/Report/{item_id}")
+def delete_report(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    report = db.query(models.Report).filter(models.Report.id == item_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Remove the stored file, if it was persisted under /uploads/reports/
+    if report.download_url and report.download_url.startswith("/uploads/reports/"):
+        fname = report.download_url.rsplit("/", 1)[-1]
+        try:
+            file_path = REPORTS_DIR / fname
+            if file_path.is_file():
+                file_path.unlink()
+        except Exception as _e:
+            print(f"Report file cleanup warning: {_e}")
+
+    db.delete(report)
+    db.commit()
+
+    try:
+        from sqlalchemy import text as _audit_sql
+        db.execute(_audit_sql("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'report_delete', 'report', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": item_id,
+            "det": json.dumps({"download_url": report.download_url}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    return {"ok": True}
+
+
+@app.delete("/api/entities/Policy/{item_id}")
+def delete_policy(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    policy = db.query(models.Policy).filter(models.Policy.id == item_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Clean children that are not declared as cascade relationships on Policy.
+    db.query(models.AIInsight).filter(models.AIInsight.policy_id == item_id).delete(synchronize_session=False)
+    db.query(models.Report).filter(models.Report.policy_id == item_id).delete(synchronize_session=False)
+
+    # Vector embeddings live in a raw table with an FK to policies.id.
+    delete_policy_chunks(db, item_id)
+
+    # cascade="all, delete-orphan" handles ComplianceResult, Gap, MappingReview.
+    db.delete(policy)
+    db.commit()
+
+    try:
+        from sqlalchemy import text as _audit_sql
+        db.execute(_audit_sql("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'policy_delete', 'policy', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": item_id,
+            "det": json.dumps({"file_name": policy.file_name}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    return {"ok": True}
+
+
 @app.delete("/api/entities/{entity}/{item_id}")
 def delete_entity(entity: str, item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     model = ENTITY_MAP.get(entity)
@@ -706,6 +825,171 @@ async def get_ai_insights(
         .all()
     )
     return serialize(insights)
+
+
+REPORTS_DIR = UPLOAD_DIR / "reports"
+REPORTS_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/api/functions/save_report")
+async def save_report(
+    file: UploadFile = File(...),
+    policy_id: str = Form(...),
+    format: str = Form("PDF"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Persist a generated report file and create a Report DB row."""
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty report file")
+    if len(raw) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Report exceeds 50 MB limit")
+
+    fmt = (format or "PDF").upper()
+    ext = Path(file.filename or "").suffix.lower() or (".pdf" if fmt == "PDF" else ".csv")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    stored_name = f"{ts}_{uuid.uuid4().hex[:8]}{ext}"
+    dest = REPORTS_DIR / stored_name
+    dest.write_bytes(raw)
+
+    report = models.Report(
+        policy_id=policy.id,
+        report_type="Compliance Report",
+        format=fmt,
+        status="Completed",
+        download_url=f"/uploads/reports/{stored_name}",
+        frameworks_included=[],
+        generated_at=datetime.now(timezone.utc),
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    try:
+        from sqlalchemy import text as _audit_sql
+        db.execute(_audit_sql("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'report_generate', 'report', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": report.id,
+            "det": json.dumps({"policy_id": policy_id, "format": fmt, "file_name": file.filename}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    return serialize(report)
+
+
+@app.get("/api/functions/policy_report_data/{policy_id}")
+def policy_report_data(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Aggregate all available analysis data for a single policy, for report generation."""
+    from sqlalchemy import text as _t
+
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    results = db.execute(_t("""
+        SELECT cr.id, f.name AS framework, cr.compliance_score,
+               cr.controls_covered, cr.controls_partial, cr.controls_missing,
+               cr.status, cr.analyzed_at, cr.analysis_duration
+        FROM compliance_results cr
+        LEFT JOIN frameworks f ON cr.framework_id = f.id
+        WHERE cr.policy_id = :pid
+        ORDER BY cr.analyzed_at DESC
+    """), {"pid": policy_id}).fetchall()
+
+    gaps = db.execute(_t("""
+        SELECT g.id, f.name AS framework, cl.control_code AS control_id,
+               g.control_name, g.severity, g.status, g.description,
+               g.remediation, g.created_at
+        FROM gaps g
+        LEFT JOIN frameworks f ON g.framework_id = f.id
+        LEFT JOIN control_library cl ON g.control_id = cl.id
+        WHERE g.policy_id = :pid
+        ORDER BY
+            CASE g.severity
+                WHEN 'Critical' THEN 0 WHEN 'High' THEN 1
+                WHEN 'Medium' THEN 2 WHEN 'Low' THEN 3 ELSE 4
+            END,
+            g.created_at DESC
+    """), {"pid": policy_id}).fetchall()
+
+    mappings = db.execute(_t("""
+        SELECT mr.id, f.name AS framework, cl.control_code AS control_id,
+               mr.evidence_snippet, mr.confidence_score,
+               mr.ai_rationale, mr.decision, mr.reviewed_at
+        FROM mapping_reviews mr
+        LEFT JOIN frameworks f ON mr.framework_id = f.id
+        LEFT JOIN control_library cl ON mr.control_id = cl.id
+        WHERE mr.policy_id = :pid
+        ORDER BY mr.confidence_score DESC NULLS LAST
+    """), {"pid": policy_id}).fetchall()
+
+    insights = (
+        db.query(models.AIInsight)
+        .filter(models.AIInsight.policy_id == policy_id)
+        .order_by(models.AIInsight.created_at.desc())
+        .all()
+    )
+
+    return {
+        "policy": {
+            "id": policy.id,
+            "file_name": policy.file_name,
+            "description": policy.description,
+            "department": policy.department,
+            "version": policy.version,
+            "status": policy.status,
+            "file_type": policy.file_type,
+            "content_preview": policy.content_preview,
+            "uploaded_at": policy.uploaded_at.isoformat() if policy.uploaded_at else None,
+            "last_analyzed_at": policy.last_analyzed_at.isoformat() if policy.last_analyzed_at else None,
+        },
+        "compliance_results": [
+            {"id": r[0], "framework": r[1] or "Unknown", "compliance_score": r[2] or 0,
+             "controls_covered": r[3] or 0, "controls_partial": r[4] or 0,
+             "controls_missing": r[5] or 0, "status": r[6],
+             "analyzed_at": r[7].isoformat() if r[7] else None,
+             "analysis_duration": r[8] or 0}
+            for r in results
+        ],
+        "gaps": [
+            {"id": r[0], "framework": r[1] or "Unknown", "control_id": r[2] or "",
+             "control_name": r[3], "severity": r[4], "status": r[5],
+             "description": r[6], "remediation": r[7],
+             "created_at": r[8].isoformat() if r[8] else None}
+            for r in gaps
+        ],
+        "mappings": [
+            {"id": r[0], "framework": r[1] or "Unknown", "control_id": r[2] or "",
+             "evidence_snippet": r[3], "confidence_score": r[4] or 0,
+             "ai_rationale": r[5], "decision": r[6],
+             "reviewed_at": r[7].isoformat() if r[7] else None}
+            for r in mappings
+        ],
+        "insights": [
+            {"id": i.id, "insight_type": i.insight_type, "title": i.title,
+             "description": i.description, "priority": i.priority,
+             "confidence": i.confidence, "status": i.status,
+             "created_at": i.created_at.isoformat() if i.created_at else None}
+            for i in insights
+        ],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @app.post("/api/functions/explain_mapping")

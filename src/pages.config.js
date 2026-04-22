@@ -55,6 +55,7 @@ import Dashboard from './pages/Dashboard';
 import Explainability from './pages/Explainability';
 import Frameworks from './pages/Frameworks';
 import GapsRisks from './pages/GapsRisks';
+import Home from './pages/Home';
 import MappingReview from './pages/MappingReview';
 import Policies from './pages/Policies';
 import Reports from './pages/Reports';
@@ -64,6 +65,7 @@ import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "Home": Home,
     "AIAssistant": AIAssistant,
     "AIInsights": AIInsights,
     "Analyses": Analyses,
@@ -80,7 +82,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "Dashboard",
+    mainPage: "Home",
     Pages: PAGES,
     Layout: __Layout,
 };

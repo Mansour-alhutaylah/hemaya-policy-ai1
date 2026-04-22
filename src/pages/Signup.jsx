@@ -75,7 +75,7 @@ export default function Signup() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border p-6">
         <h1 className="text-2xl font-semibold">Sign up</h1>
-        <p className="text-slate-500 mt-1">Create your Hemaya account</p>
+        <p className="text-slate-500 mt-1">Create your Himaya account</p>
 
         {error && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

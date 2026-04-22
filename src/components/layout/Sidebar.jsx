@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { cn } from '@/lib/utils';
 import {
+  Home,
   LayoutDashboard,
   FileText,
   BarChart3,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 
 const navigationItems = [
+  { name: 'Home', icon: Home, page: 'Home' },
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
   { name: 'Policies', icon: FileText, page: 'Policies' },
   { name: 'Analyses', icon: BarChart3, page: 'Analyses' },
@@ -44,7 +46,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-slate-900 text-white transition-all duration-300 flex flex-col",
+        "fixed left-0 top-0 z-40 h-screen bg-slate-900 dark:bg-slate-950 text-white transition-all duration-300 flex flex-col",
         collapsed ? "w-20" : "w-64"
       )}
     >
@@ -55,18 +57,18 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </div>
         {!collapsed && (
           <div className="flex flex-col">
-            <span className="font-bold text-lg tracking-tight">Hemaya</span>
+            <span className="font-bold text-lg tracking-tight">Himaya</span>
             <span className="text-[10px] text-slate-400 uppercase tracking-widest">AI Compliance</span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
-        <ul className="space-y-1">
+      <nav dir="rtl" className="flex-1 overflow-y-auto py-4 px-3">
+        <ul dir="ltr" className="space-y-1">
           {navigationItems.map((item) => {
-            const isActive = currentPath === `/${item.page}` || 
-              (item.page === 'Dashboard' && currentPath === '/');
+            const isActive = currentPath === `/${item.page}` ||
+              (item.page === 'Home' && currentPath === '/');
             
             return (
               <li key={item.name}>

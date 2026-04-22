@@ -1,7 +1,13 @@
-import React, { createContext, useState, useContext, useEffect } from "react";
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from "react";
 import { api } from "@/api/apiClient";
 
 const AuthContext = createContext(null);
+
+// Inactivity-based session timeout. Reset on any mouse/keyboard/scroll/touch activity.
+// Chosen over absolute expiry because the JWT already enforces absolute server-side,
+// and inactivity matches the UX cue exposed by the Settings page.
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const ACTIVITY_THROTTLE_MS = 5 * 1000;
 
 function getCachedUser() {
   try {
@@ -99,15 +105,54 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback((reason) => {
     setUser(null);
     setIsAuthenticated(false);
 
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
+    if (reason === "inactivity") {
+      try {
+        sessionStorage.setItem("logout_reason", "inactivity");
+      } catch {
+        // storage may be unavailable
+      }
+    }
+
     window.location.href = "/login";
-  };
+  }, []);
+
+  // ── Inactivity auto-logout (15 min) ──────────────────────────────────────
+  const inactivityTimerRef = useRef(null);
+  const lastActivityRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+
+    const resetTimer = () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = setTimeout(() => {
+        logout("inactivity");
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityRef.current < ACTIVITY_THROTTLE_MS) return;
+      lastActivityRef.current = now;
+      resetTimer();
+    };
+
+    const events = ["mousedown", "keydown", "scroll", "touchstart", "mousemove"];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    resetTimer();
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [isAuthenticated, logout]);
 
   return (
     <AuthContext.Provider
