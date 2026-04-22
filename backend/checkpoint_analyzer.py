@@ -80,8 +80,35 @@ Return ONLY valid JSON:
 }"""
 
 
-async def verify_checkpoints_gpt(checkpoints, policy_text):
+async def verify_checkpoints_gpt(checkpoints, policy_text, db=None):
     """GPT verifies each checkpoint as binary YES/NO with evidence quote."""
+
+    # Few-shot examples from verified corrections (if available)
+    examples_str = ""
+    if db:
+        try:
+            for cp in checkpoints:
+                cp_id = cp.get("checkpoint_id")
+                if not cp_id:
+                    continue
+                examples = db.execute(sql_text(
+                    "SELECT policy_text, correct_verdict, reason "
+                    "FROM checkpoint_examples "
+                    "WHERE checkpoint_id = :cid LIMIT 3"
+                ), {"cid": cp_id}).fetchall()
+                for ex in examples:
+                    verdict = "MET" if ex[1] else "NOT MET"
+                    examples_str += (
+                        f"\nExample for CP{cp['checkpoint_index']}: "
+                        f"'{ex[0][:200]}' -> {verdict} ({ex[2]})"
+                    )
+        except Exception:
+            pass
+
+    prompt = VERIFIER_PROMPT
+    if examples_str:
+        prompt += f"\n\nLearn from these verified examples:{examples_str}"
+
     cp_lines = "\n".join(
         f"CHECKPOINT {cp['checkpoint_index']}: {cp['requirement']}"
         for cp in checkpoints
@@ -92,7 +119,7 @@ async def verify_checkpoints_gpt(checkpoints, policy_text):
         f"POLICY EVIDENCE:\n{policy_text[:15000]}"
     )
     try:
-        raw = await call_llm(VERIFIER_PROMPT, user_msg)
+        raw = await call_llm(prompt, user_msg)
         data = json.loads(raw)
         return data.get("checkpoints", [])
     except Exception as e:
@@ -276,8 +303,8 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
     # ── Dual GPT verification ────────────────────────────────────────
     t1 = time.time()
     gpt_run1, gpt_run2 = await asyncio.gather(
-        verify_checkpoints_gpt(checkpoints, focused_1),
-        verify_checkpoints_gpt(checkpoints, focused_2),
+        verify_checkpoints_gpt(checkpoints, focused_1, db=db),
+        verify_checkpoints_gpt(checkpoints, focused_2, db=db),
     )
     gpt_time = round(time.time() - t1, 2)
 
@@ -488,7 +515,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         framework_id = fw_row[0] if fw_row else None
 
         rows = db.execute(sql_text(
-            "SELECT control_code, checkpoint_index, requirement, keywords, weight "
+            "SELECT id, control_code, checkpoint_index, requirement, keywords, weight "
             "FROM control_checkpoints WHERE framework=:fwid "
             "ORDER BY control_code, checkpoint_index"
         ), {"fwid": framework_id}).fetchall()
@@ -502,19 +529,20 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
         # Group by control_code
         controls = {}
         for r in rows:
-            code = r[0]
-            kw = r[3]
+            code = r[1]
+            kw = r[4]
             if isinstance(kw, str):
                 try:
                     kw = json.loads(kw)
                 except Exception:
                     kw = []
             cp = {
+                "checkpoint_id": r[0],
                 "control_code": code,
-                "checkpoint_index": r[1],
-                "requirement": r[2],
+                "checkpoint_index": r[2],
+                "requirement": r[3],
                 "keywords": kw,
-                "weight": r[4] or 1.0,
+                "weight": r[5] or 1.0,
                 "framework": fw,
             }
             controls.setdefault(code, []).append(cp)
@@ -641,7 +669,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
             """), {
                 "id": str(uuid.uuid4()), "pid": policy_id,
                 "cid": ctrl_id_map.get(r["control_code"]), "fwid": framework_id,
-                "ev": ev, "conf": conf,
+                "ev": ev, "conf": float(conf),
                 "rat": r.get("overall_assessment", ""),
                 "dec": dec,
                 "cat": datetime.now(timezone.utc),
@@ -769,7 +797,7 @@ async def generate_insights(db, policy_id, results):
             "ti": ins.get("title", ""),
             "de": ins.get("description", ""),
             "pr": ins.get("priority", "Medium"),
-            "co": ins.get("confidence", 0.8),
+            "co": float(ins.get("confidence", 0.8)),
             "ca": datetime.now(timezone.utc),
         })
     db.commit()
