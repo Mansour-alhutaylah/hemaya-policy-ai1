@@ -29,6 +29,9 @@ dist-ssr
 venv
 backend/venv
 
+# Runtime-uploaded policy documents and generated reports
+backend/uploads/*
+!backend/uploads/.gitkeep
 
 .env
 *.pyc

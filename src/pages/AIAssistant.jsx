@@ -27,7 +27,7 @@ export default function AIAssistant() {
     {
       id: 1,
       role: 'assistant',
-      content: "Hello! I'm your AI Compliance Assistant for Hemaya. I can help you understand your compliance status, explain control mappings, suggest improvements, and answer questions about NCA ECC, ISO 27001, and NIST 800-53 frameworks.\n\nHow can I assist you today?",
+      content: "Hello! I'm your AI Compliance Assistant for Himaya. I can help you understand your compliance status, explain control mappings, suggest improvements, and answer questions about NCA ECC, ISO 27001, and NIST 800-53 frameworks.\n\nHow can I assist you today?",
       type: 'greeting'
     }
   ]);

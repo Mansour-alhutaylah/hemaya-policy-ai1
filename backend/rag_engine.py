@@ -538,7 +538,7 @@ async def chat_with_context(db, message, policy_id=None):
     except Exception:
         pass
 
-    system = """You are Hemaya AI, senior cybersecurity compliance advisor for Saudi organizations.
+    system = """You are Himaya AI, senior cybersecurity compliance advisor for Saudi organizations.
 NCA ECC, ISO 27001, NIST 800-53 expert.
 - Reference specific control IDs (ECC-2-2-3, A.8.5, IA-2)
 - Quote actual policy text when relevant

@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -31,37 +28,31 @@ import {
   Download,
   Plus,
   Search,
-  Filter,
   FileText,
   FileSpreadsheet,
-  FilePieChart,
   Loader2,
   Calendar,
-  Shield
+  Trash2,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import {
+  buildPolicyReport,
+  fetchPolicyReportData,
+  persistReport,
+  triggerBrowserDownload,
+  downloadFromUrl,
+} from '@/lib/policyReport';
 
 const Report = api.entities.Report;
 const Policy = api.entities.Policy;
-const AuditLog = api.entities.AuditLog;
-
-const reportTypeConfig = {
-  'Executive Summary': { icon: FileText, color: 'bg-blue-100 text-blue-700' },
-  'Detailed Analysis': { icon: FilePieChart, color: 'bg-purple-100 text-purple-700' },
-  'Gap Report': { icon: FileBarChart, color: 'bg-amber-100 text-amber-700' },
-  'Compliance Certificate': { icon: Shield, color: 'bg-emerald-100 text-emerald-700' },
-};
 
 export default function Reports() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [reportConfig, setReportConfig] = useState({
     policy_id: '',
-    report_type: 'Executive Summary',
     format: 'PDF',
-    frameworks_included: ['NCA ECC', 'ISO 27001', 'NIST 800-53'],
   });
 
   const { toast } = useToast();
@@ -74,8 +65,43 @@ export default function Reports() {
 
   const { data: policies = [] } = useQuery({
     queryKey: ['policies'],
-    queryFn: () => Policy.filter({ status: 'analyzed' }),
+    queryFn: () => Policy.list('-created_at'),
   });
+
+  const deleteReportMutation = useMutation({
+    mutationFn: (id) => Report.delete(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['reports'] });
+      const previous = queryClient.getQueryData(['reports']);
+      queryClient.setQueryData(['reports'], (old = []) => old.filter(r => r.id !== id));
+      return { previous };
+    },
+    onError: (error, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(['reports'], context.previous);
+      toast({
+        title: 'Delete Failed',
+        description: error?.message || 'Could not delete the report.',
+        variant: 'destructive',
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Report Deleted',
+        description: 'The report and its file have been removed.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+    },
+  });
+
+  const handleDelete = (report) => {
+    const policyName = policyMap[report.policy_id]?.file_name || 'this report';
+    if (window.confirm(`Delete this ${report.format || 'report'} for "${policyName}"? The stored file will also be removed.`)) {
+      deleteReportMutation.mutate(report.id);
+    }
+  };
 
   const policyMap = policies.reduce((acc, p) => {
     acc[p.id] = p;
@@ -84,20 +110,9 @@ export default function Reports() {
 
   const filteredReports = reports.filter(report => {
     const policy = policyMap[report.policy_id];
-    const matchesSearch = policy?.file_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.report_type?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === 'all' || report.report_type === typeFilter;
-    return matchesSearch && matchesType;
+    const haystack = `${policy?.file_name || ''} ${report.format || ''} ${report.report_type || ''}`.toLowerCase();
+    return haystack.includes(searchQuery.toLowerCase());
   });
-
-  const toggleFramework = (framework) => {
-    setReportConfig(prev => ({
-      ...prev,
-      frameworks_included: prev.frameworks_included.includes(framework)
-        ? prev.frameworks_included.filter(f => f !== framework)
-        : [...prev.frameworks_included, framework],
-    }));
-  };
 
   const handleGenerateReport = async () => {
     if (!reportConfig.policy_id) {
@@ -110,48 +125,59 @@ export default function Reports() {
     }
 
     setGenerating(true);
-    
     try {
-      const result = await api.functions.invoke('generate_report', {
-        policy_id: reportConfig.policy_id,
-        report_type: reportConfig.report_type,
+      const fmt = reportConfig.format.toLowerCase();
+      const data = await fetchPolicyReportData(reportConfig.policy_id);
+      const { blob, filename, mime } = await buildPolicyReport(data, fmt);
+
+      await persistReport({
+        blob,
+        filename,
+        mime,
+        policyId: reportConfig.policy_id,
         format: reportConfig.format,
-        frameworks_included: reportConfig.frameworks_included,
       });
 
-      if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['reports'] });
-        toast({
-          title: 'Report Generated',
-          description: 'Your report is ready for download.',
-        });
-        setShowGenerateDialog(false);
-      }
+      triggerBrowserDownload(blob, filename);
+
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+
+      toast({
+        title: 'Report Generated',
+        description: `${reportConfig.format} report saved and downloaded.`,
+      });
+      setShowGenerateDialog(false);
+      setReportConfig({ policy_id: '', format: 'PDF' });
     } catch (error) {
       toast({
         title: 'Generation Failed',
-        description: error.message || 'Failed to generate report',
+        description: error?.message || 'Failed to generate report',
         variant: 'destructive',
       });
     }
-    
     setGenerating(false);
   };
 
   const handleDownload = (report) => {
-    // TODO: Implement actual download from backend
-    toast({
-      title: 'Download Started',
-      description: `Downloading ${report.report_type}...`,
-    });
+    if (!report.download_url) {
+      toast({
+        title: 'Download Unavailable',
+        description: 'This report file is no longer available.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const policyName = policyMap[report.policy_id]?.file_name || 'policy';
+    const ext = (report.format || 'pdf').toLowerCase();
+    const filename = `himaya_report_${policyName}.${ext === 'pdf' ? 'pdf' : ext}`;
+    downloadFromUrl(report.download_url, filename);
   };
 
-  const getFormatIcon = (format) => {
-    switch (format) {
-      case 'Excel':
-        return <FileSpreadsheet className="w-4 h-4 text-green-600" />;
+  const getFormatIcon = (fmt) => {
+    switch ((fmt || '').toUpperCase()) {
       case 'CSV':
-        return <FileText className="w-4 h-4 text-slate-600" />;
+        return <FileSpreadsheet className="w-4 h-4 text-green-600" />;
       default:
         return <FileText className="w-4 h-4 text-red-600" />;
     }
@@ -160,24 +186,22 @@ export default function Reports() {
   const columns = [
     {
       header: 'Report',
-      accessor: 'report_type',
-      cell: (row) => {
-        const config = reportTypeConfig[row.report_type] || reportTypeConfig['Executive Summary'];
-        const Icon = config.icon;
-        return (
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg ${config.color} flex items-center justify-center`}>
-              <Icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-medium text-slate-900">{row.report_type}</p>
-              <p className="text-xs text-slate-500">
-                {policyMap[row.policy_id]?.file_name || 'Unknown Policy'}
-              </p>
-            </div>
+      accessor: 'policy_id',
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+            <FileBarChart className="w-5 h-5 text-emerald-600" />
           </div>
-        );
-      },
+          <div>
+            <p className="font-medium text-slate-900 dark:text-slate-100">
+              {policyMap[row.policy_id]?.file_name || 'Unknown Policy'}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {row.report_type || 'Compliance Report'}
+            </p>
+          </div>
+        </div>
+      ),
     },
     {
       header: 'Format',
@@ -185,20 +209,7 @@ export default function Reports() {
       cell: (row) => (
         <div className="flex items-center gap-2">
           {getFormatIcon(row.format)}
-          <span className="text-sm">{row.format}</span>
-        </div>
-      ),
-    },
-    {
-      header: 'Frameworks',
-      accessor: 'frameworks_included',
-      cell: (row) => (
-        <div className="flex flex-wrap gap-1">
-          {(row.frameworks_included || []).map((fw) => (
-            <Badge key={fw} variant="outline" className="text-xs">
-              {fw.split(' ')[0]}
-            </Badge>
-          ))}
+          <span className="text-sm">{(row.format || 'PDF').toUpperCase()}</span>
         </div>
       ),
     },
@@ -206,32 +217,45 @@ export default function Reports() {
       header: 'Generated',
       accessor: 'generated_at',
       cell: (row) => (
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           <Calendar className="w-4 h-4" />
-          {row.generated_at 
+          {row.generated_at
             ? format(new Date(row.generated_at), 'MMM d, yyyy HH:mm')
-            : format(new Date(row.created_at), 'MMM d, yyyy HH:mm')}
+            : row.created_at
+              ? format(new Date(row.created_at), 'MMM d, yyyy HH:mm')
+              : '—'}
         </div>
       ),
     },
     {
       header: 'Status',
       accessor: 'status',
-      cell: (row) => <StatusBadge status={row.status || 'completed'} />,
+      cell: (row) => <StatusBadge status={row.status || 'Completed'} />,
     },
     {
       header: '',
       accessor: 'actions',
       cell: (row) => (
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => handleDownload(row)}
-          disabled={row.status === 'Generating'}
-        >
-          <Download className="w-4 h-4 mr-1" />
-          Download
-        </Button>
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDownload(row)}
+            disabled={!row.download_url || row.status === 'Generating'}
+          >
+            <Download className="w-4 h-4 mr-1" />
+            Download
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDelete(row)}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+            aria-label="Delete report"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -241,7 +265,7 @@ export default function Reports() {
       title="Reports"
       subtitle="Generate and download compliance reports"
       actions={
-        <Button 
+        <Button
           onClick={() => setShowGenerateDialog(true)}
           className="bg-emerald-600 hover:bg-emerald-700"
         >
@@ -250,28 +274,6 @@ export default function Reports() {
         </Button>
       }
     >
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {Object.entries(reportTypeConfig).map(([type, config]) => {
-          const Icon = config.icon;
-          const count = reports.filter(r => r.report_type === type).length;
-          return (
-            <Card key={type} className="shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setTypeFilter(type)}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-lg ${config.color} flex items-center justify-center`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{count}</p>
-                  <p className="text-xs text-slate-500">{type}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
@@ -283,19 +285,6 @@ export default function Reports() {
             className="pl-10"
           />
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-48">
-            <Filter className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Report Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="Executive Summary">Executive Summary</SelectItem>
-            <SelectItem value="Detailed Analysis">Detailed Analysis</SelectItem>
-            <SelectItem value="Gap Report">Gap Report</SelectItem>
-            <SelectItem value="Compliance Certificate">Compliance Certificate</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Table */}
@@ -315,7 +304,10 @@ export default function Reports() {
       />
 
       {/* Generate Dialog */}
-      <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
+      <Dialog
+        open={showGenerateDialog}
+        onOpenChange={(open) => !generating && setShowGenerateDialog(open)}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -323,24 +315,23 @@ export default function Reports() {
               Generate Compliance Report
             </DialogTitle>
             <DialogDescription>
-              Create a comprehensive compliance report for your analyzed policies
+              Create a branded compliance report for one of your policies.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Policy Selection */}
             <div className="space-y-2">
               <Label>Select Policy</Label>
-              <Select 
-                value={reportConfig.policy_id} 
+              <Select
+                value={reportConfig.policy_id}
                 onValueChange={(value) => setReportConfig(prev => ({ ...prev, policy_id: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose an analyzed policy..." />
+                  <SelectValue placeholder="Choose a policy..." />
                 </SelectTrigger>
                 <SelectContent>
                   {policies.length === 0 ? (
-                    <SelectItem value={null} disabled>No analyzed policies available</SelectItem>
+                    <SelectItem value="__none" disabled>No policies available</SelectItem>
                   ) : (
                     policies.map((policy) => (
                       <SelectItem key={policy.id} value={policy.id}>
@@ -352,70 +343,37 @@ export default function Reports() {
               </Select>
             </div>
 
-            {/* Report Type */}
-            <div className="space-y-2">
-              <Label>Report Type</Label>
-              <Select 
-                value={reportConfig.report_type} 
-                onValueChange={(value) => setReportConfig(prev => ({ ...prev, report_type: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Executive Summary">Executive Summary</SelectItem>
-                  <SelectItem value="Detailed Analysis">Detailed Analysis</SelectItem>
-                  <SelectItem value="Gap Report">Gap Report</SelectItem>
-                  <SelectItem value="Compliance Certificate">Compliance Certificate</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Format */}
             <div className="space-y-2">
               <Label>Format</Label>
-              <Select 
-                value={reportConfig.format} 
+              <Select
+                value={reportConfig.format}
                 onValueChange={(value) => setReportConfig(prev => ({ ...prev, format: value }))}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="PDF">PDF Document</SelectItem>
-                  <SelectItem value="Excel">Excel Spreadsheet</SelectItem>
-                  <SelectItem value="CSV">CSV Export</SelectItem>
+                  <SelectItem value="PDF">PDF — Branded report with cover, charts and findings</SelectItem>
+                  <SelectItem value="CSV">CSV — Tabular export for spreadsheets</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            {/* Frameworks */}
-            <div className="space-y-2">
-              <Label>Include Frameworks</Label>
-              <div className="space-y-2">
-                {['NCA ECC', 'ISO 27001', 'NIST 800-53'].map(framework => (
-                  <div key={framework} className="flex items-center gap-2">
-                    <Checkbox
-                      id={framework}
-                      checked={reportConfig.frameworks_included.includes(framework)}
-                      onCheckedChange={() => toggleFramework(framework)}
-                    />
-                    <Label htmlFor={framework} className="font-normal cursor-pointer">
-                      {framework}
-                    </Label>
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Includes policy details, compliance results, findings, gaps, mapped evidence and AI insights from the database.
+              </p>
             </div>
           </div>
 
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowGenerateDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowGenerateDialog(false)}
+              disabled={generating}
+            >
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleGenerateReport}
-              disabled={generating || !reportConfig.policy_id || reportConfig.frameworks_included.length === 0}
+              disabled={generating || !reportConfig.policy_id}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               {generating ? (

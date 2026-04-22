@@ -8,7 +8,6 @@ import EmptyState from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +32,7 @@ import { useToast } from '@/components/ui/use-toast';
 import {
   Upload,
   FileText,
+  FileBarChart,
   MoreVertical,
   Play,
   Eye,
@@ -43,11 +43,18 @@ import {
   CheckCircle2,
   Loader2,
   AlertTriangle,
-  Database
+  Database,
+  Download
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import {
+  fetchPolicyReportData,
+  buildPolicyReport,
+  persistReport,
+  triggerBrowserDownload,
+} from '@/lib/policyReport';
 
 const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
@@ -58,6 +65,10 @@ export default function Policies() {
   const [showFrameworkWarning, setShowFrameworkWarning] = useState(false);
   const [pendingAnalysisPolicy, setPendingAnalysisPolicy] = useState(null);
   const [selectedPolicy, setSelectedPolicy] = useState(null);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportPolicy, setReportPolicy] = useState(null);
+  const [reportFormat, setReportFormat] = useState('pdf');
+  const [reportGenerating, setReportGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [uploading, setUploading] = useState(false);
@@ -65,8 +76,6 @@ export default function Policies() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [newPolicy, setNewPolicy] = useState({
     file_name: '',
-    description: '',
-    department: '',
     version: '1.0',
   });
 
@@ -92,20 +101,36 @@ export default function Policies() {
 
   const deletePolicyMutation = useMutation({
     mutationFn: (id) => Policy.delete(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['policies'] });
+      const previous = queryClient.getQueryData(['policies']);
+      queryClient.setQueryData(['policies'], (old = []) => old.filter(p => p.id !== id));
+      return { previous };
+    },
+    onError: (error, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(['policies'], context.previous);
+      toast({
+        title: 'Delete Failed',
+        description: error?.message || 'Could not delete the policy.',
+        variant: 'destructive',
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] });
       toast({
         title: 'Policy Deleted',
         description: 'Policy has been removed.',
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 
   const resetForm = () => {
     setNewPolicy({
       file_name: '',
-      description: '',
-      department: '',
       version: '1.0',
     });
     setSelectedFile(null);
@@ -145,9 +170,7 @@ export default function Policies() {
       const token = localStorage.getItem('token');
       const form = new FormData();
       form.append('file', selectedFile);
-      form.append('department', newPolicy.department || 'General');
       form.append('version', newPolicy.version || '1.0');
-      form.append('description', newPolicy.description || '');
 
       const res = await fetch('/api/integrations/upload', {
         method: 'POST',
@@ -248,6 +271,47 @@ export default function Policies() {
     setShowPreviewDialog(true);
   };
 
+  const openReportDialog = (policy) => {
+    setReportPolicy(policy);
+    setReportFormat('pdf');
+    setShowReportDialog(true);
+  };
+
+  const handleGenerateReport = async () => {
+    if (!reportPolicy) return;
+    setReportGenerating(true);
+    try {
+      const data = await fetchPolicyReportData(reportPolicy.id);
+      const { blob, filename, mime } = await buildPolicyReport(data, reportFormat);
+      await persistReport({
+        blob,
+        filename,
+        mime,
+        policyId: reportPolicy.id,
+        format: reportFormat.toUpperCase(),
+      });
+      triggerBrowserDownload(blob, filename);
+
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+
+      toast({
+        title: 'Report Generated',
+        description: `${reportFormat.toUpperCase()} report for ${reportPolicy.file_name} saved and downloaded.`,
+      });
+      setShowReportDialog(false);
+      setReportPolicy(null);
+    } catch (error) {
+      toast({
+        title: 'Report Failed',
+        description: error?.message || 'Could not generate the report.',
+        variant: 'destructive',
+      });
+    } finally {
+      setReportGenerating(false);
+    }
+  };
+
   const filteredPolicies = policies.filter(policy => {
     const matchesSearch = policy.file_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       policy.description?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -272,13 +336,6 @@ export default function Policies() {
       ),
     },
     {
-      header: 'Department',
-      accessor: 'department',
-      cell: (row) => (
-        <span className="text-sm text-slate-600">{row.department || 'General'}</span>
-      ),
-    },
-    {
       header: 'Uploaded',
       accessor: 'created_date',
       cell: (row) => (
@@ -287,7 +344,7 @@ export default function Policies() {
             {row.created_at ? format(new Date(row.created_at), 'MMM d, yyyy') : '-'}
           </p>
           <p className="text-xs text-slate-500">
-            {row.created_by || 'Unknown'}
+            {row.uploaded_by || '—'}
           </p>
         </div>
       ),
@@ -333,14 +390,22 @@ export default function Policies() {
                 View Results
               </DropdownMenuItem>
             </Link>
-            <DropdownMenuItem 
+            <DropdownMenuItem onClick={() => openReportDialog(row)}>
+              <FileBarChart className="w-4 h-4 mr-2" />
+              Generate Report
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onClick={() => updatePolicyMutation.mutate({ id: row.id, data: { status: 'archived' } })}
             >
               <Archive className="w-4 h-4 mr-2" />
               Archive
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => deletePolicyMutation.mutate(row.id)}
+            <DropdownMenuItem
+              onClick={() => {
+                if (window.confirm(`Delete "${row.file_name}"? This removes it permanently along with its analyses.`)) {
+                  deletePolicyMutation.mutate(row.id);
+                }
+              }}
               className="text-red-600"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -454,42 +519,12 @@ export default function Policies() {
             </div>
 
             <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                placeholder="Brief description of the policy..."
-                value={newPolicy.description}
-                onChange={(e) => setNewPolicy(prev => ({ ...prev, description: e.target.value }))}
+              <Label>Version</Label>
+              <Input
+                placeholder="1.0"
+                value={newPolicy.version}
+                onChange={(e) => setNewPolicy(prev => ({ ...prev, version: e.target.value }))}
               />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Select 
-                  value={newPolicy.department} 
-                  onValueChange={(value) => setNewPolicy(prev => ({ ...prev, department: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="IT Security">IT Security</SelectItem>
-                    <SelectItem value="Compliance">Compliance</SelectItem>
-                    <SelectItem value="Operations">Operations</SelectItem>
-                    <SelectItem value="HR">HR</SelectItem>
-                    <SelectItem value="General">General</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Version</Label>
-                <Input
-                  placeholder="1.0"
-                  value={newPolicy.version}
-                  onChange={(e) => setNewPolicy(prev => ({ ...prev, version: e.target.value }))}
-                />
-              </div>
             </div>
           </div>
 
@@ -509,6 +544,70 @@ export default function Policies() {
                 </>
               ) : (
                 'Save Policy'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate Report Dialog */}
+      <Dialog open={showReportDialog} onOpenChange={(open) => !reportGenerating && setShowReportDialog(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileBarChart className="w-5 h-5 text-emerald-600" />
+              Generate Report
+            </DialogTitle>
+            <DialogDescription>
+              Export a branded compliance report for{' '}
+              <span className="font-medium text-slate-700 dark:text-slate-200">
+                {reportPolicy?.file_name || 'this policy'}
+              </span>
+              .
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <Select value={reportFormat} onValueChange={setReportFormat}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pdf">PDF — Branded report with cover, charts and findings</SelectItem>
+                  <SelectItem value="csv">CSV — Tabular export for spreadsheets</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Includes policy details, compliance results, findings, gaps, mapped evidence and AI insights from the database.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowReportDialog(false)}
+              disabled={reportGenerating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleGenerateReport}
+              disabled={reportGenerating}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {reportGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Generate {reportFormat.toUpperCase()}
+                </>
               )}
             </Button>
           </div>
@@ -578,13 +677,9 @@ export default function Policies() {
                   <p className="font-medium">{selectedPolicy.version || '1.0'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Department</p>
-                  <p className="font-medium">{selectedPolicy.department || 'General'}</p>
-                </div>
-                <div>
                   <p className="text-sm text-slate-500">Upload Date</p>
                   <p className="font-medium">
-                    {selectedPolicy.created_at 
+                    {selectedPolicy.created_at
                       ? format(new Date(selectedPolicy.created_at), 'MMM d, yyyy HH:mm')
                       : '-'}
                   </p>

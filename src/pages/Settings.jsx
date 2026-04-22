@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/apiClient';
+import { useAuth } from '@/lib/AuthContext';
+import { useTheme } from '@/lib/ThemeContext';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +20,6 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import {
-  Settings as SettingsIcon,
   User,
   Bell,
   Shield,
@@ -27,64 +28,69 @@ import {
   Globe,
   Save,
   Key,
-  Users,
-  Building,
   Mail,
+  Phone,
   Loader2
 } from 'lucide-react';
 
 export default function Settings() {
-  const [user, setUser] = useState(null);
+  const { user: ctxUser, login } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const [user, setUser] = useState(ctxUser || null);
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
-    // Profile
-    organization: '',
-    department: '',
-    
     // Notifications
     emailNotifications: true,
     analysisComplete: true,
     gapAlerts: true,
     weeklyDigest: true,
-    
+
     // Security
     twoFactorAuth: false,
     sessionTimeout: '30',
-    
+
     // Compliance
     defaultFramework: 'all',
     autoAnalysis: false,
     confidenceThreshold: '0.6',
-    
+
     // Display
     language: 'en',
     dateFormat: 'MM/dd/yyyy',
-    theme: 'light',
+    theme,
   });
 
   const { toast } = useToast();
 
   useEffect(() => {
+    let cancelled = false;
     const loadUser = async () => {
       try {
         const userData = await api.auth.me();
+        if (cancelled) return;
         setUser(userData);
-        // Load any saved settings from user data
-        if (userData.settings) {
-          setSettings(prev => ({ ...prev, ...userData.settings }));
+        const token = localStorage.getItem('token');
+        if (token) login({ token, user: userData });
+        if (userData?.settings) {
+          setSettings(prev => ({ ...prev, ...userData.settings, theme: userData.settings.theme || prev.theme }));
         }
-      } catch (e) {
-        // User not logged in
+      } catch {
+        // fall back to cached ctx user
       }
     };
     loadUser();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      // Save settings to user profile
       await api.auth.updateMe({ settings });
+      // Commit theme only on explicit save so the UI doesn't preview on dropdown change.
+      if (settings.theme && settings.theme !== theme) {
+        setTheme(settings.theme);
+      }
       toast({
         title: 'Settings Saved',
         description: 'Your preferences have been updated successfully.',
@@ -102,6 +108,8 @@ export default function Settings() {
   const updateSetting = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
+
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email || '';
 
   return (
     <PageContainer
@@ -123,7 +131,7 @@ export default function Settings() {
       }
     >
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="bg-slate-100">
+        <TabsList className="bg-slate-100 dark:bg-slate-800">
           <TabsTrigger value="profile" className="gap-2">
             <User className="w-4 h-4" />
             Profile
@@ -155,63 +163,44 @@ export default function Settings() {
                 Profile Information
               </CardTitle>
               <CardDescription>
-                Manage your personal and organization details
+                Your account details on file
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Full Name</Label>
-                  <Input 
-                    value={user?.full_name || ''} 
-                    disabled 
-                    className="bg-slate-50"
+                  <Input
+                    value={fullName}
+                    disabled
+                    className="bg-slate-50 dark:bg-slate-800"
                   />
-                  <p className="text-xs text-slate-500">Contact support to change your name</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Contact support to change your name</p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label>Email Address</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input 
-                      value={user?.email || ''} 
-                      disabled 
-                      className="pl-10 bg-slate-50"
+                    <Input
+                      value={user?.email || ''}
+                      disabled
+                      className="pl-10 bg-slate-50 dark:bg-slate-800"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Organization</Label>
+                  <Label>Phone</Label>
                   <div className="relative">
-                    <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input 
-                      placeholder="Your organization name"
-                      value={settings.organization}
-                      onChange={(e) => updateSetting('organization', e.target.value)}
-                      className="pl-10"
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      value={user?.phone || ''}
+                      disabled
+                      className="pl-10 bg-slate-50 dark:bg-slate-800"
+                      placeholder="Not provided"
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select 
-                    value={settings.department} 
-                    onValueChange={(value) => updateSetting('department', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="it_security">IT Security</SelectItem>
-                      <SelectItem value="compliance">Compliance</SelectItem>
-                      <SelectItem value="risk_management">Risk Management</SelectItem>
-                      <SelectItem value="audit">Internal Audit</SelectItem>
-                      <SelectItem value="executive">Executive</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
 
@@ -223,7 +212,7 @@ export default function Settings() {
                   <Badge className="bg-emerald-100 text-emerald-700 capitalize">
                     {user?.role || 'User'}
                   </Badge>
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
                     Contact your administrator to change your role
                   </span>
                 </div>
@@ -454,7 +443,6 @@ export default function Settings() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="ar">العربية (Arabic)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -491,7 +479,7 @@ export default function Settings() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark (Coming Soon)</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
                     <SelectItem value="system">System Default</SelectItem>
                   </SelectContent>
                 </Select>
