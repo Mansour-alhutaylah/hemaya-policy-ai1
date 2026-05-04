@@ -22,7 +22,11 @@ from sqlalchemy.orm import Session
 
 from backend import auth, database, models, schemas
 from backend.database import get_db
-from backend.email_utils import send_otp_email, send_password_reset_email
+from backend.email_utils import (
+    send_otp_email,
+    send_password_reset_email,
+    EmailDeliveryError,
+)
 from backend.text_extractor import extract_text
 from backend.checkpoint_analyzer import (
     run_checkpoint_analysis, chat_with_context,
@@ -188,7 +192,10 @@ async def register(user: schemas.RegisterRequest, db: Session = Depends(get_db))
     db.add(token)
     db.commit()
 
-    await send_otp_email(new_user.email, otp)
+    try:
+        await send_otp_email(new_user.email, otp)
+    except EmailDeliveryError as e:
+        raise HTTPException(status_code=503, detail=e.public_message)
 
     return {"message": "Registration successful. Please check your email for the verification code."}
 
@@ -395,7 +402,19 @@ async def resend_otp(req: schemas.ResendOTPRequest, db: Session = Depends(get_db
     db.add(new_token)
     db.commit()
 
-    await send_otp_email(user.email, otp)
+    try:
+        await send_otp_email(user.email, otp)
+    except EmailDeliveryError as e:
+        # Roll the token back so the user can request again immediately.
+        try:
+            db.query(models.OTPToken).filter(
+                models.OTPToken.id == new_token.id
+            ).delete()
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=503, detail=e.public_message)
+
     return {"message": "Verification code resent. Please check your email."}
 
 
@@ -431,7 +450,21 @@ async def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depe
     db.add(token)
     db.commit()
 
-    await send_password_reset_email(user.email, otp)
+    try:
+        await send_password_reset_email(user.email, otp)
+    except EmailDeliveryError as e:
+        # Roll back the token so the user can retry without hitting the
+        # 60-second cooldown. Surface a friendly message instead of the
+        # raw SMTP exception.
+        try:
+            db.query(models.PasswordResetToken).filter(
+                models.PasswordResetToken.id == token.id
+            ).delete()
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=503, detail=e.public_message)
+
     return generic_response
 
 
