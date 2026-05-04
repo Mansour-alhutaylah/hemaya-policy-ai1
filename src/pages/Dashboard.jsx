@@ -15,7 +15,6 @@ import {
   TrendingUp,
   Upload,
   BarChart3,
-  ArrowRight,
   Clock,
   CheckCircle2,
   FileText
@@ -301,18 +300,10 @@ export default function Dashboard() {
         {/* Recent Activity */}
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Clock className="w-5 h-5 text-slate-600" />
-                Recent Activity
-              </CardTitle>
-              <Link to={createPageUrl('AuditTrail')}>
-                <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700">
-                  View all
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
-              </Link>
-            </div>
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <Clock className="w-5 h-5 text-slate-600" />
+              Recent Activity
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {logsLoading ? (

@@ -50,7 +50,6 @@
 import AIAssistant from './pages/AIAssistant';
 import AIInsights from './pages/AIInsights';
 import Analyses from './pages/Analyses';
-import AuditTrail from './pages/AuditTrail';
 import Dashboard from './pages/Dashboard';
 import Explainability from './pages/Explainability';
 import Frameworks from './pages/Frameworks';
@@ -69,7 +68,6 @@ export const PAGES = {
     "AIAssistant": AIAssistant,
     "AIInsights": AIInsights,
     "Analyses": Analyses,
-    "AuditTrail": AuditTrail,
     "Dashboard": Dashboard,
     "Explainability": Explainability,
     "Frameworks": Frameworks,

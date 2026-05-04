@@ -14,7 +14,6 @@ import {
   FileBarChart,
   Lightbulb,
   Brain,
-  History,
   FlaskConical,
   MessageSquare,
   Settings,
@@ -26,9 +25,7 @@ import {
 
 const ADMIN_EMAIL = 'himayaadmin@gmail.com';
 
-// Pages that must only appear in the sidebar for the admin account.
-const ADMIN_ONLY_NAV_PAGES = new Set(['AuditTrail']);
-
+// Audit Trail / Activity Logs lives in the Admin panel only — no entry here.
 const navigationItems = [
   { name: 'Home', icon: Home, page: 'Home' },
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
@@ -40,7 +37,6 @@ const navigationItems = [
   { name: 'Reports', icon: FileBarChart, page: 'Reports' },
   { name: 'AI Insights', icon: Lightbulb, page: 'AIInsights', badge: 'NEW' },
   { name: 'Explainability', icon: Brain, page: 'Explainability' },
-  { name: 'Audit Trail', icon: History, page: 'AuditTrail' },
   { name: 'Simulation', icon: FlaskConical, page: 'Simulation', badge: 'BETA' },
   { name: 'AI Assistant', icon: MessageSquare, page: 'AIAssistant' },
   { name: 'Settings', icon: Settings, page: 'Settings' },
@@ -51,9 +47,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const currentPath = location.pathname;
   const { user } = useAuth();
   const isAdmin = user?.email === ADMIN_EMAIL;
-  const visibleNav = navigationItems.filter(
-    (item) => isAdmin || !ADMIN_ONLY_NAV_PAGES.has(item.page)
-  );
+  const visibleNav = navigationItems;
 
   return (
     <aside

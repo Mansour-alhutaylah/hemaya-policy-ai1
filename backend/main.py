@@ -1605,6 +1605,135 @@ def admin_get_framework(
     }
 
 
+@app.post("/api/admin/frameworks")
+def admin_create_framework(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Create a new framework. Name is required and must be unique."""
+    name = (payload.get("name") or "").strip()
+    description = (payload.get("description") or "").strip() or None
+    if not name:
+        raise HTTPException(status_code=400, detail="Framework name is required")
+    existing = db.query(models.Framework).filter(models.Framework.name == name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A framework named '{name}' already exists")
+    fw = models.Framework(name=name, description=description)
+    db.add(fw)
+    db.commit()
+    db.refresh(fw)
+    return {"id": fw.id, "name": fw.name, "description": fw.description, "controls": 0, "checkpoints": 0}
+
+
+@app.patch("/api/admin/frameworks/{framework_id}")
+def admin_update_framework(
+    framework_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Update framework metadata (name and/or description)."""
+    fw = db.query(models.Framework).filter(models.Framework.id == framework_id).first()
+    if not fw:
+        raise HTTPException(status_code=404, detail="Framework not found")
+
+    new_name = payload.get("name")
+    if new_name is not None:
+        new_name = new_name.strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Framework name cannot be empty")
+        if new_name != fw.name:
+            clash = (
+                db.query(models.Framework)
+                .filter(models.Framework.name == new_name, models.Framework.id != framework_id)
+                .first()
+            )
+            if clash:
+                raise HTTPException(status_code=409, detail=f"A framework named '{new_name}' already exists")
+            # Keep policies that reference this framework by name in sync.
+            from sqlalchemy import text as _t
+            db.execute(
+                _t("UPDATE policies SET framework_code = :new WHERE framework_code = :old"),
+                {"new": new_name, "old": fw.name},
+            )
+            fw.name = new_name
+
+    if "description" in payload:
+        desc = payload.get("description")
+        fw.description = (desc or "").strip() or None
+
+    db.commit()
+    db.refresh(fw)
+    return {"id": fw.id, "name": fw.name, "description": fw.description}
+
+
+@app.delete("/api/admin/frameworks/{framework_id}")
+def admin_delete_framework(
+    framework_id: str,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Delete a framework and its dependent corpus.
+
+    Refuses if any policy is still linked to this framework via
+    framework_code, so we never orphan analysis data.
+    """
+    from sqlalchemy import text as _t
+
+    fw = db.query(models.Framework).filter(models.Framework.id == framework_id).first()
+    if not fw:
+        raise HTTPException(status_code=404, detail="Framework not found")
+
+    policy_count = db.execute(
+        _t("SELECT COUNT(*) FROM policies WHERE framework_code = :name"),
+        {"name": fw.name},
+    ).fetchone()[0]
+    if policy_count and policy_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot delete '{fw.name}': {policy_count} policy/policies are still linked to "
+                "this framework. Reassign or remove those policies first."
+            ),
+        )
+
+    # Cascade dependent rows that don't have ON DELETE CASCADE in the schema.
+    try:
+        db.execute(_t("DELETE FROM control_checkpoints WHERE framework = :fwid"), {"fwid": framework_id})
+        db.execute(_t("DELETE FROM framework_chunks WHERE framework_id = :fwid"), {"fwid": framework_id})
+        db.execute(_t("DELETE FROM control_library WHERE framework_id = :fwid"), {"fwid": framework_id})
+        # Also clear analysis rows that reference the framework so deletion succeeds.
+        db.execute(_t("DELETE FROM mapping_reviews WHERE framework_id = :fwid"), {"fwid": framework_id})
+        db.execute(_t("DELETE FROM gaps WHERE framework_id = :fwid"), {"fwid": framework_id})
+        db.execute(_t("DELETE FROM compliance_results WHERE framework_id = :fwid"), {"fwid": framework_id})
+    except Exception as _e:
+        # If a table doesn't exist in this deployment, fall through; the
+        # framework delete itself will still succeed if the FK isn't enforced.
+        print(f"Framework dependency cleanup warning: {_e}")
+        db.rollback()
+
+    db.delete(fw)
+    db.commit()
+
+    try:
+        db.execute(_t("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'framework_delete', 'framework', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": None,
+            "tid": framework_id,
+            "det": json.dumps({"name": fw.name}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    return {"ok": True}
+
+
 @app.post("/api/admin/frameworks/{framework_id}/controls")
 def admin_add_control(
     framework_id: str,

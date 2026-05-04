@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/components/ui/use-toast';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { downloadAuditTrailPdf } from '@/lib/auditReport';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -630,6 +632,7 @@ function PoliciesSection() {
 // ─────────────────────────────────────────────────────────
 
 function FrameworksSection() {
+  const { toast } = useToast();
   const [frameworks, setFrameworks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -644,6 +647,15 @@ function FrameworksSection() {
   const [ctrlForm, setCtrlForm] = useState({ control_code: '', title: '', severity_if_missing: 'Medium' });
   const [ctrlSaving, setCtrlSaving] = useState(false);
 
+  // Add / Edit framework modal state
+  const [editFw, setEditFw] = useState(null);       // null = closed; {} = adding; {id,...} = editing
+  const [fwForm, setFwForm] = useState({ name: '', description: '' });
+  const [fwSaving, setFwSaving] = useState(false);
+
+  // Delete confirmation
+  const [deleteFw, setDeleteFw] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const loadFrameworks = () => {
     setLoading(true);
     setError(null);
@@ -654,6 +666,66 @@ function FrameworksSection() {
   };
 
   useEffect(loadFrameworks, []);
+
+  const openAdd = () => {
+    setEditFw({}); // empty object = add mode
+    setFwForm({ name: '', description: '' });
+  };
+
+  const openEdit = (fw) => {
+    setEditFw(fw);
+    setFwForm({ name: fw.name || '', description: fw.description || '' });
+  };
+
+  const saveFramework = async () => {
+    const name = fwForm.name.trim();
+    if (!name) return;
+    setFwSaving(true);
+    try {
+      if (editFw && editFw.id) {
+        await adminApi.patch(`/admin/frameworks/${editFw.id}`, {
+          name,
+          description: fwForm.description,
+        });
+        toast({ title: 'Framework Updated', description: `'${name}' has been saved.` });
+      } else {
+        await adminApi.post('/admin/frameworks', {
+          name,
+          description: fwForm.description,
+        });
+        toast({ title: 'Framework Added', description: `'${name}' is now available.` });
+      }
+      setEditFw(null);
+      loadFrameworks();
+    } catch (e) {
+      toast({
+        title: 'Save Failed',
+        description: e.message || 'Could not save the framework.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFwSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteFw) return;
+    setDeleting(true);
+    try {
+      await adminApi.delete(`/admin/frameworks/${deleteFw.id}`);
+      toast({ title: 'Framework Deleted', description: `'${deleteFw.name}' was removed.` });
+      setDeleteFw(null);
+      loadFrameworks();
+    } catch (e) {
+      toast({
+        title: 'Delete Failed',
+        description: e.message || 'Could not delete the framework.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const openView = (fw) => {
     setViewFw(fw);
@@ -686,7 +758,18 @@ function FrameworksSection() {
 
   return (
     <div>
-      <SectionHeader title="Framework Management" subtitle="Compliance framework definitions" />
+      <div className="flex items-start justify-between mb-6 gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white">Framework Management</h2>
+          <p className="text-slate-400 text-sm mt-1">Compliance framework definitions</p>
+        </div>
+        <Button
+          onClick={openAdd}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+        >
+          <Plus className="w-4 h-4 mr-1.5" /> Add Framework
+        </Button>
+      </div>
       {error && <div className="mb-4"><ErrorMsg msg={error} /></div>}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {loading
@@ -708,6 +791,22 @@ function FrameworksSection() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
                     <Shield className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEdit(fw)}
+                      className="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                      title="Edit framework"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteFw(fw)}
+                      className="p-1.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+                      title="Delete framework"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
                 <h3 className="text-white font-bold text-lg">{fw.name}</h3>
@@ -737,6 +836,81 @@ function FrameworksSection() {
               </div>
             ))}
       </div>
+
+      {/* ── Add / Edit Framework Modal ── */}
+      <Dialog open={!!editFw} onOpenChange={open => !open && !fwSaving && setEditFw(null)}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {editFw && editFw.id ? `Edit ${editFw.name}` : 'Add Framework'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-slate-400 text-xs mb-1 block">Name *</label>
+              <Input
+                placeholder="e.g. PCI DSS 4.0"
+                value={fwForm.name}
+                onChange={e => setFwForm(f => ({ ...f, name: e.target.value }))}
+                className="bg-slate-900 border-slate-600 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs mb-1 block">Description</label>
+              <Textarea
+                placeholder="Short description shown next to the framework name."
+                value={fwForm.description}
+                onChange={e => setFwForm(f => ({ ...f, description: e.target.value }))}
+                className="bg-slate-900 border-slate-600 text-white min-h-[80px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-slate-400" onClick={() => setEditFw(null)} disabled={fwSaving}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={fwSaving || !fwForm.name.trim()}
+              onClick={saveFramework}
+            >
+              {fwSaving
+                ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving…</>
+                : editFw && editFw.id ? 'Save Changes' : 'Add Framework'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Framework Confirmation ── */}
+      <Dialog open={!!deleteFw} onOpenChange={open => !open && !deleting && setDeleteFw(null)}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Delete {deleteFw?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-400 text-sm py-2">
+            This permanently removes the framework, its {deleteFw?.controls || 0} control
+            {deleteFw?.controls === 1 ? '' : 's'}, {deleteFw?.checkpoints || 0} checkpoint
+            {deleteFw?.checkpoints === 1 ? '' : 's'}, and any reference document chunks linked to it.
+            Policies that are still linked to this framework will block the deletion until they
+            are reassigned or removed.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" className="text-slate-400" onClick={() => setDeleteFw(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={deleting}
+              onClick={confirmDelete}
+            >
+              {deleting
+                ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Deleting…</>
+                : <><Trash2 className="w-4 h-4 mr-1" /> Delete Framework</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── View Framework Modal ── */}
       <Dialog open={!!viewFw} onOpenChange={open => !open && setViewFw(null)}>
@@ -957,10 +1131,12 @@ function AnalysesSection() {
 // ─────────────────────────────────────────────────────────
 
 function LogsSection() {
+  const { toast } = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     // Real API call → GET /api/admin/activity-logs
@@ -982,9 +1158,55 @@ function LogsSection() {
   const enriched = logs.map(l => ({ ...l, _status: logStatus(l.action) }));
   const filtered = filter === 'all' ? enriched : enriched.filter(l => l._status === filter);
 
+  const handleExportPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      // The admin endpoint returns actor_name; the audit PDF helper expects "actor".
+      const exportable = filtered.map(l => ({
+        id: l.id,
+        timestamp: l.timestamp,
+        action: l.action,
+        actor: l.actor_name || 'system',
+        target_type: l.target_type,
+        target_id: l.target_id,
+        details: l.details,
+      }));
+      await downloadAuditTrailPdf(exportable, {
+        action: filter !== 'all' ? filter : undefined,
+      });
+      toast({
+        title: 'Audit Trail Exported',
+        description: `${exportable.length} record${exportable.length === 1 ? '' : 's'} exported to PDF.`,
+      });
+    } catch (e) {
+      toast({
+        title: 'Export Failed',
+        description: e?.message || 'Could not generate the audit PDF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
-      <SectionHeader title="Activity Logs" subtitle="Full audit trail of system events" />
+      <div className="flex items-start justify-between mb-6 gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white">Activity Logs</h2>
+          <p className="text-slate-400 text-sm mt-1">Full audit trail of system events</p>
+        </div>
+        <Button
+          onClick={handleExportPdf}
+          disabled={exporting || loading}
+          className="bg-slate-700 hover:bg-slate-600 text-white border border-slate-600 flex-shrink-0"
+        >
+          {exporting
+            ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Generating PDF…</>
+            : <><Download className="w-4 h-4 mr-1.5" /> Export PDF</>}
+        </Button>
+      </div>
 
       {error && <div className="mb-4"><ErrorMsg msg={error} /></div>}
 

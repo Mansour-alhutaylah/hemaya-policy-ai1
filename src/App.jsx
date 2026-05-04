@@ -19,12 +19,10 @@ const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
-// Mirrors backend ADMIN_EMAIL + Sidebar admin check.
+// Mirrors backend ADMIN_EMAIL + Sidebar admin check. Reusable when admin-only
+// user-app pages are added in future (Audit Trail now lives in /admin only).
 const ADMIN_EMAIL = "himayaadmin@gmail.com";
-
-// Pages that must only be reachable by the admin account. Direct URL access
-// for non-admins is redirected to /Dashboard so they don't see a 404 dead-end.
-const ADMIN_ONLY_PAGES = new Set(["AuditTrail"]);
+const ADMIN_ONLY_PAGES = new Set();
 
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
