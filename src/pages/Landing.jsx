@@ -21,30 +21,30 @@ import {
 const features = [
   {
     icon: Brain,
-    title: 'AI policy understanding',
+    title: 'Intelligent policy parsing',
     description:
-      'Ingest PDFs, DOCX or text. Himaya structures every clause and prepares it for control mapping — no manual tagging.',
+      'Upload PDFs, DOCX, or text. Himaya structures every clause and prepares it for control mapping — no manual tagging required.',
     accent: 'from-emerald-500 to-teal-600',
   },
   {
     icon: GitCompare,
-    title: 'Automatic control mapping',
+    title: 'Automated control mapping',
     description:
-      'Each clause is matched to NCA ECC, ISO 27001 and NIST 800-53 controls with traceable evidence and confidence scores.',
+      'Each clause is matched to NCA ECC, ISO 27001, and NIST 800-53 controls with traceable evidence and confidence scores.',
     accent: 'from-blue-500 to-indigo-600',
   },
   {
     icon: AlertTriangle,
-    title: 'Gap & risk surfacing',
+    title: 'Real-time gap detection',
     description:
-      'See unmet controls, partial coverage and high-risk areas instantly — prioritised so your team acts on what matters.',
+      'Spot unmet controls, partial coverage, and high-risk areas the moment they appear — prioritized so your team focuses on what matters.',
     accent: 'from-amber-500 to-orange-600',
   },
   {
     icon: FileBarChart,
-    title: 'Audit-ready reports',
+    title: 'Audit-ready reporting',
     description:
-      'Export branded PDF or CSV reports for executives and auditors — with full explainability behind every score.',
+      'Export branded PDF or CSV reports for executives and auditors, with full explainability behind every score.',
     accent: 'from-violet-500 to-purple-600',
   },
 ];
@@ -55,36 +55,36 @@ const workflow = [
     icon: Upload,
     title: 'Upload your policy',
     description:
-      'Drop in a security policy in PDF, DOCX or plain text. Himaya parses it in seconds.',
+      'Drop in a security policy as PDF, DOCX, or plain text. Himaya parses it in seconds.',
   },
   {
     step: '02',
     icon: Sparkles,
-    title: 'AI maps the controls',
+    title: 'Map controls automatically',
     description:
-      'Clauses are classified, mandatory evidence is boosted, and controls are mapped to your chosen frameworks.',
+      'Clauses are classified, mandatory evidence is highlighted, and controls are mapped to your selected framework.',
   },
   {
     step: '03',
     icon: LineChart,
-    title: 'Review gaps & scores',
+    title: 'Review gaps and scores',
     description:
-      'Coverage scores, gaps and risks appear on a live dashboard — drill into any clause for explainability.',
+      'Coverage, gaps, and risk levels appear on a live dashboard — drill into any clause for full explainability.',
   },
   {
     step: '04',
     icon: FileBarChart,
-    title: 'Export & share',
+    title: 'Export and share',
     description:
-      'Generate a branded report for leadership or auditors, with full traceability for every decision.',
+      'Generate a branded report for leadership or auditors, with complete traceability for every finding.',
   },
 ];
 
 const benefits = [
-  'Cut compliance review time from weeks to minutes',
-  'Map a single policy to multiple frameworks at once',
-  'Every score is explainable — no black-box AI',
-  'Built around NCA ECC, ISO 27001 and NIST 800-53',
+  'Reduce compliance review time from weeks to minutes',
+  'Map one policy to multiple frameworks simultaneously',
+  'Every score is fully explainable — no black-box decisions',
+  'Purpose-built for NCA ECC, ISO 27001, and NIST 800-53',
 ];
 
 function Logo() {
@@ -486,31 +486,11 @@ function Hero() {
             </h1>
 
             <p className="mt-6 text-lg text-slate-600 leading-relaxed max-w-xl">
-              Himaya analyses your security policies against NCA ECC, ISO 27001 and NIST 800-53,
-              maps controls automatically and surfaces the gaps that matter — so your team can
-              act on compliance instead of chasing it.
+              Himaya transforms dense security documentation into structured, mapped, and
+              scored compliance evidence. Analyze policies against NCA ECC, ISO 27001, and
+              NIST 800-53 in minutes — not months — with full traceability behind every
+              decision.
             </p>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/signup">
-                <Button
-                  size="lg"
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25 h-11 px-6"
-                >
-                  Get started free
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-              <Link to="/login">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-11 px-6 border-slate-300 text-slate-800 hover:bg-slate-50"
-                >
-                  Log in
-                </Button>
-              </Link>
-            </div>
 
             <ul className="mt-8 grid sm:grid-cols-2 gap-y-2 gap-x-6 max-w-xl">
               {benefits.map((b) => (
@@ -539,7 +519,7 @@ function Frameworks() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Built around the frameworks that matter
+            Aligned with the standards that matter most
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {items.map((f) => (
@@ -564,14 +544,14 @@ function Features() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
-            What Himaya does
+            Capabilities
           </p>
           <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-slate-900">
-            One platform from policy to audit-ready report.
+            From raw policy to audit-ready evidence.
           </h2>
           <p className="mt-4 text-slate-600 text-base lg:text-lg leading-relaxed">
-            Himaya turns dense security policies into structured, mapped, scored compliance
-            evidence — without the spreadsheets.
+            Replace fragmented spreadsheets and manual review cycles with a single
+            intelligent compliance workspace.
           </p>
         </div>
 
@@ -607,10 +587,10 @@ function HowItWorks() {
             How it works
           </p>
           <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-slate-900">
-            From upload to audit, in four steps.
+            From upload to audit in four steps.
           </h2>
           <p className="mt-4 text-slate-600 text-base lg:text-lg leading-relaxed">
-            A simple workflow your compliance team can adopt on day one.
+            A streamlined workflow your compliance team can adopt from day one.
           </p>
         </div>
 
@@ -657,11 +637,11 @@ function FinalCTA() {
           <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
             <div className="max-w-2xl">
               <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">
-                Ready to make compliance feel effortless?
+                Ready to make compliance effortless?
               </h2>
               <p className="mt-3 text-slate-300 max-w-xl">
-                Create a free account and analyse your first policy in minutes. No credit card,
-                no setup overhead.
+                Start your free account and analyze your first policy in minutes — no credit
+                card, no setup required.
               </p>
             </div>
 
