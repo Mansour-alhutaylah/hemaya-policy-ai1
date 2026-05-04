@@ -2,13 +2,14 @@ import json
 import os
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend import auth, database, models, schemas
 from backend.database import get_db
+from backend.email_utils import send_otp_email, send_password_reset_email
 from backend.text_extractor import extract_text
 from backend.checkpoint_analyzer import (
     run_checkpoint_analysis, chat_with_context,
@@ -109,9 +111,10 @@ ENTITY_MAP: Dict[str, Any] = {
 
 
 # Auth Routes
-@app.post("/api/auth/register", response_model=schemas.User)
-def register(user: schemas.RegisterRequest, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+@app.post("/api/auth/register")
+async def register(user: schemas.RegisterRequest, db: Session = Depends(get_db)):
+    normalized_email = user.email.lower()
+    db_user = db.query(models.User).filter(models.User.email == normalized_email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -122,39 +125,257 @@ def register(user: schemas.RegisterRequest, db: Session = Depends(get_db)):
     hashed_password = auth.get_password_hash(user.password)
 
     new_user = models.User(
-        email=user.email,
+        email=normalized_email,
         password_hash=hashed_password,
         first_name=user.first_name,
         last_name=user.last_name,
         phone=user.phone,
+        is_verified=False,
     )
-
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    return new_user
+    # Generate OTP, hash it, persist it, then send email
+    otp = auth.generate_otp()
+    token = models.OTPToken(
+        user_id=new_user.id,
+        otp_hash=auth.hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    db.add(token)
+    db.commit()
+
+    await send_otp_email(new_user.email, otp)
+
+    return {"message": "Registration successful. Please check your email for the verification code."}
 
 
 
 @app.post("/api/auth/login")
 def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    db_user = db.query(models.User).filter(models.User.email == user.email.lower()).first()
     if not db_user or not auth.verify_password(user.password, db_user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    if not db_user.is_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email not verified. Please check your inbox for the verification code.",
+        )
+
     access_token = auth.create_access_token(data={"sub": db_user.email})
     return {
-    "token": access_token,
-    "user": {
-        "id": db_user.id,
-        "email": db_user.email,
-        "first_name": db_user.first_name,
-        "last_name": db_user.last_name,
-        "phone": db_user.phone,
+        "token": access_token,
+        "user": {
+            "id": db_user.id,
+            "email": db_user.email,
+            "first_name": db_user.first_name,
+            "last_name": db_user.last_name,
+            "phone": db_user.phone,
+        },
     }
-}
 
+
+@app.post("/api/auth/verify-otp")
+def verify_otp(req: schemas.OTPVerifyRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email.lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    token = (
+        db.query(models.OTPToken)
+        .filter(models.OTPToken.user_id == user.id)
+        .order_by(models.OTPToken.created_at.desc())
+        .first()
+    )
+
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="No verification code found. Please request a new one.",
+        )
+
+    if token.failed_attempts >= 3:
+        db.delete(token)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Too many failed attempts. Please request a new code.",
+        )
+
+    if token.expires_at < datetime.now(timezone.utc):
+        db.delete(token)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Verification code has expired. Please request a new one.",
+        )
+
+    if not auth.verify_otp_code(req.otp, token.otp_hash):
+        token.failed_attempts += 1
+        db.commit()
+        if token.failed_attempts >= 3:
+            db.delete(token)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Incorrect code. Too many attempts — please request a new code.",
+            )
+        remaining = 3 - token.failed_attempts
+        raise HTTPException(
+            status_code=400,
+            detail=f"Incorrect verification code. {remaining} attempt(s) remaining.",
+        )
+
+    # OTP is valid — mark user as verified and delete the token
+    user.is_verified = True
+    db.delete(token)
+    db.commit()
+    return {"message": "Email verified successfully. You can now log in."}
+
+
+@app.post("/api/auth/resend-otp")
+async def resend_otp(req: schemas.ResendOTPRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email.lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="This email address is already verified.")
+
+    # Enforce 60-second cooldown based on the most recent token's created_at
+    existing = (
+        db.query(models.OTPToken)
+        .filter(models.OTPToken.user_id == user.id)
+        .order_by(models.OTPToken.created_at.desc())
+        .first()
+    )
+
+    if existing:
+        cooldown_ends = existing.created_at + timedelta(seconds=60)
+        if datetime.now(timezone.utc) < cooldown_ends:
+            wait = int((cooldown_ends - datetime.now(timezone.utc)).total_seconds())
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {wait} seconds before requesting a new code.",
+            )
+        # Delete all stale tokens for this user before issuing a new one
+        db.query(models.OTPToken).filter(models.OTPToken.user_id == user.id).delete()
+
+    otp = auth.generate_otp()
+    new_token = models.OTPToken(
+        user_id=user.id,
+        otp_hash=auth.hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    db.add(new_token)
+    db.commit()
+
+    await send_otp_email(user.email, otp)
+    return {"message": "Verification code resent. Please check your email."}
+
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email.lower()).first()
+    # Always return the same message to prevent email enumeration
+    generic_response = {"message": "If this email is registered, you will receive a reset code."}
+    if not user:
+        return generic_response
+
+    # Enforce 60-second cooldown
+    existing = (
+        db.query(models.PasswordResetToken)
+        .filter(models.PasswordResetToken.user_id == user.id)
+        .order_by(models.PasswordResetToken.created_at.desc())
+        .first()
+    )
+    if existing:
+        cooldown_ends = existing.created_at + timedelta(seconds=60)
+        if datetime.now(timezone.utc) < cooldown_ends:
+            # Silently drop — returning a different status code would reveal
+            # that this email is registered (enumeration attack vector).
+            return generic_response
+        db.query(models.PasswordResetToken).filter(models.PasswordResetToken.user_id == user.id).delete()
+
+    otp = auth.generate_otp()
+    token = models.PasswordResetToken(
+        user_id=user.id,
+        otp_hash=auth.hash_otp(otp),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    db.add(token)
+    db.commit()
+
+    await send_password_reset_email(user.email, otp)
+    return generic_response
+
+
+@app.post("/api/auth/verify-reset-otp")
+def verify_reset_otp(req: schemas.VerifyResetOTPRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email.lower()).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request.")
+
+    token = (
+        db.query(models.PasswordResetToken)
+        .filter(models.PasswordResetToken.user_id == user.id)
+        .order_by(models.PasswordResetToken.created_at.desc())
+        .first()
+    )
+
+    if not token:
+        raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
+
+    if token.failed_attempts >= 3:
+        db.delete(token)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many failed attempts. Please request a new code.")
+
+    if token.expires_at < datetime.now(timezone.utc):
+        db.delete(token)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+
+    if not auth.verify_otp_code(req.otp, token.otp_hash):
+        token.failed_attempts += 1
+        db.commit()
+        if token.failed_attempts >= 3:
+            db.delete(token)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Incorrect code. Too many attempts — please request a new code.",
+            )
+        remaining = 3 - token.failed_attempts
+        raise HTTPException(
+            status_code=400,
+            detail=f"Incorrect code. {remaining} attempt(s) remaining.",
+        )
+
+    # OTP valid — delete it and return a short-lived signed reset token
+    db.delete(token)
+    db.commit()
+    return {"reset_token": auth.create_reset_token(user.email)}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(req: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    email = auth.decode_reset_token(req.reset_token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request.")
+
+    if len(req.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Password must be <= 72 bytes")
+
+    user.password_hash = auth.get_password_hash(req.new_password)
+    db.commit()
+    return {"message": "Password reset successfully. You can now log in."}
 
 
 @app.get("/api/auth/me", response_model=schemas.User)

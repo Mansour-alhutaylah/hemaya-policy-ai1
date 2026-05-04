@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5ADE7A"/>
+      <stop offset="100%" stop-color="#0D9E6E"/>
+    </linearGradient>
+  </defs>
+
+  <!-- iOS-style rounded square background -->
+  <rect width="512" height="512" rx="114" fill="url(#g)"/>
+
+  <!-- Shield outline — white stroke, transparent interior -->
+  <path
+    d="M146 172 Q256 118 366 172 L366 268 Q366 350 256 396 Q146 350 146 268 Z"
+    fill="none"
+    stroke="white"
+    stroke-width="26"
+    stroke-linejoin="round"
+  />
+
+  <!-- Checkmark inside shield -->
+  <polyline
+    points="206,262 242,298 312,220"
+    fill="none"
+    stroke="white"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

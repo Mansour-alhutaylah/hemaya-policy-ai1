@@ -12,6 +12,8 @@ import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 // ✅ أضف صفحات الدخول
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import VerifyOTP from "@/pages/VerifyOTP";
+import ForgotPassword from "@/pages/ForgotPassword";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -29,6 +31,8 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route path="/login" element={isAuthed ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/signup" element={isAuthed ? <Navigate to="/" replace /> : <Signup />} />
+      <Route path="/verify-otp" element={<VerifyOTP />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

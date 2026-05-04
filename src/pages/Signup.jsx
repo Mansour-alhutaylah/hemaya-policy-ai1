@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import StatusAlert from "@/components/ui/StatusAlert";
+import PasswordStrengthChecker from "@/components/ui/PasswordStrengthChecker";
 
 export default function Signup() {
   const nav = useNavigate();
@@ -54,16 +56,8 @@ export default function Signup() {
         throw new Error(msg);
       }
 
-      // ✅ لا نسوي login هنا
-      // ✅ اختياري: نظف الفورم
-      setFirst("");
-      setLast("");
-      setPhone("");
-      setEmail("");
-      setPassword("");
-
-      // ✅ تحويل لصفحة تسجيل الدخول
-      nav("/login");
+      // Redirect to OTP verification; pass email so the page can display it
+      nav(`/verify-otp?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(err?.message || "Unknown error");
     } finally {
@@ -77,11 +71,7 @@ export default function Signup() {
         <h1 className="text-2xl font-semibold">Sign up</h1>
         <p className="text-slate-500 mt-1">Create your Himaya account</p>
 
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        <StatusAlert type="error" message={error} className="mt-4" />
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -137,6 +127,7 @@ export default function Signup() {
               minLength={8}
               required
             />
+            <PasswordStrengthChecker password={password} />
           </div>
 
           <button

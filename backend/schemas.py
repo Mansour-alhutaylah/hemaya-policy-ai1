@@ -1,7 +1,23 @@
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Enforces: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special character.
+_PASSWORD_RE = re.compile(
+    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#$%^&*!?_\-+=<>]).{8,64}$'
+)
+
+
+def _check_password_strength(v: str) -> str:
+    if not _PASSWORD_RE.match(v):
+        raise ValueError(
+            "Password must be 8–64 characters and include at least one uppercase letter, "
+            "one lowercase letter, one number, and one special character (@#$%^&*!?_-+=<>)."
+        )
+    return v
+
 
 class RegisterRequest(BaseModel):
     first_name: str
@@ -9,6 +25,11 @@ class RegisterRequest(BaseModel):
     phone: str
     email: str
     password: str = Field(min_length=8, max_length=64)
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _check_password_strength(v)
 
 
 class UserBase(BaseModel):
@@ -156,6 +177,34 @@ class AIInsight(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OTPVerifyRequest(BaseModel):
+    email: str
+    otp: str = Field(min_length=6, max_length=6)
+
+
+class ResendOTPRequest(BaseModel):
+    email: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class VerifyResetOTPRequest(BaseModel):
+    email: str
+    otp: str = Field(min_length=6, max_length=6)
+
+
+class ResetPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str = Field(min_length=8, max_length=64)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _check_password_strength(v)
 
 
 class AnalyzeRequest(BaseModel):
