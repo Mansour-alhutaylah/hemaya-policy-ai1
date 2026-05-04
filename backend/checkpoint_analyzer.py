@@ -633,16 +633,27 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
 
 # ── Main entry: run_checkpoint_analysis ──────────────────────────────────────
 
-async def run_checkpoint_analysis(db, policy_id, frameworks):
+async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None):
     """
     Analyze a policy against checkpoint-based compliance controls.
     Saves results to compliance_results, gaps, mapping_reviews,
     ai_insights, and audit_logs.
+
+    progress_cb(percent: int, stage: str) is called at each pipeline
+    stage so callers can persist live progress to the policy row.
     """
+    def _report(pct, stage):
+        if progress_cb:
+            try:
+                progress_cb(int(pct), stage)
+            except Exception:
+                pass
+
     t0 = time.time()
     print(f"\n{'='*50}")
     print(f"CHECKPOINT ANALYSIS STARTED at {time.strftime('%H:%M:%S')}")
     print(f"{'='*50}")
+    _report(12, "Checking policy chunks")
 
     # ── Auto-embed if needed ─────────────────────────────────────────────
     t1 = time.time()
@@ -654,11 +665,13 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
     if n == 0:
         print("  Auto-embedding policy chunks...")
+        _report(15, "Embedding policy chunks")
         embedded = await _auto_embed(db, policy_id)
         if embedded == 0:
             return {"error": "No text found in policy. Re-upload the document."}
         print(f"  Auto-embedded {embedded} chunks")
         n = embedded
+    _report(20, "Loading checkpoints")
 
     # ── Load policy chunk texts for targeted analysis ──────────────────
     try:
@@ -703,9 +716,16 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
     all_results = {}
 
+    # Progress budget for the per-framework loop: 25 → 90.
+    fw_count = max(1, len(frameworks))
+    fw_budget = 65 / fw_count  # percent allocated to each framework
+    fw_index = 0
+
     for fw in frameworks:
         fw_start = time.time()
         print(f"\n  Starting {fw}...")
+        fw_base = 25 + fw_budget * fw_index
+        _report(int(fw_base), f"{fw}: loading controls")
 
         # ── Load checkpoints for this framework ──────────────────────────
         t1 = time.time()
@@ -782,6 +802,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
 
         results_list = []
         batch_size = 5
+        total_codes = len(control_codes) or 1
         for i in range(0, len(control_codes), batch_size):
             t1 = time.time()
             batch_codes = control_codes[i:i + batch_size]
@@ -794,6 +815,10 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
             done = min(i + batch_size, len(control_codes))
             print(f"    Controls {i+1}-{done}/{len(control_codes)}: "
                   f"{round(time.time()-t1, 2)}s")
+            # Per-batch progress within this framework's slice of the budget.
+            ratio = done / total_codes
+            _report(int(fw_base + fw_budget * ratio),
+                    f"{fw}: {done}/{total_codes} controls")
 
         # ── Layer 3: Deterministic scoring ───────────────────────────────
         total = len(results_list)
@@ -892,14 +917,18 @@ async def run_checkpoint_analysis(db, policy_id, frameworks):
             "partial": part,
             "non_compliant": miss,
         }
+        fw_index += 1
+        _report(int(25 + fw_budget * fw_index), f"{fw} done")
 
     # ── Generate AI insights ─────────────────────────────────────────────
+    _report(92, "Generating AI insights")
     t1 = time.time()
     try:
         await generate_insights(db, policy_id, all_results)
         print(f"  AI insights: {round(time.time()-t1, 2)}s")
     except Exception as e:
         print(f"  Insights warning: {e}")
+    _report(98, "Finalising")
 
     # ── Audit log ────────────────────────────────────────────────────────
     try:

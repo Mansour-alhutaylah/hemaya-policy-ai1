@@ -46,6 +46,13 @@ class Policy(Base):
     last_analyzed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
+    # Real-time processing progress (0..100). Updated at each pipeline stage
+    # (text extraction, chunking, embedding, control analysis, etc.) so the
+    # frontend can show an accurate "Processing • 45%" indicator. Persisted
+    # to the DB so refresh shows the latest value.
+    progress = Column(Integer, default=0, nullable=True)
+    progress_stage = Column(String, nullable=True)
+
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")
     mappings = relationship("MappingReview", back_populates="policy", cascade="all, delete-orphan")

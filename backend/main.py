@@ -111,6 +111,32 @@ def serialize(obj: Any):
     return jsonable_encoder(obj)
 
 
+def set_policy_progress(db: Session, policy_id: str, percent: int, stage: str = "") -> None:
+    """Atomically update a policy's processing progress (0..100) + stage label.
+
+    Used by the upload + analysis pipelines so the Policies page can show
+    "Processing • NN%". Failures are swallowed (with rollback) — progress
+    is purely informational and must never block the real work.
+    """
+    from sqlalchemy import text as _t
+    try:
+        pct = max(0, min(100, int(percent)))
+    except Exception:
+        pct = 0
+    try:
+        db.execute(
+            _t("UPDATE policies SET progress = :p, progress_stage = :s WHERE id = :pid"),
+            {"p": pct, "s": stage or None, "pid": policy_id},
+        )
+        db.commit()
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        print(f"[set_policy_progress] {policy_id} -> {pct}% '{stage}' failed: {e}")
+
+
 ENTITY_MAP: Dict[str, Any] = {
     "Policy": models.Policy,
     "ComplianceResult": models.ComplianceResult,
@@ -311,21 +337,14 @@ async def upload_policy(
     dest = UPLOAD_DIR / file_name
     dest.write_bytes(raw)
 
-    # Extract text
-    try:
-        content = extract_text(str(dest), ext)
-    except TypeError:
-        content = extract_text(str(dest))
-    if not content or content.startswith("[Extraction error"):
-        content = ""
-
-    # Save policy row with status='processing'
+    # Save policy row with status='processing' and progress=5 (file accepted).
     db.execute(_sql("""
         INSERT INTO policies
-        (id, file_name, description, department, version, status,
+        (id, file_name, description, department, version, status, progress, progress_stage,
          file_url, file_type, content_preview, framework_code, owner_id,
          uploaded_at, created_at)
-        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:fwc,:oid,:at,:cat)
+        VALUES (:id,:fn,:desc,:dept,:ver,'processing', 5, 'File accepted',
+                :furl,:ft,:prev,:fwc,:oid,:at,:cat)
     """), {
         "id": policy_id,
         "fn": original_name,
@@ -334,13 +353,23 @@ async def upload_policy(
         "ver": version,
         "furl": f"/uploads/{file_name}",
         "ft": ext.replace(".", "").upper(),
-        "prev": content[:500] if content else "",
+        "prev": "",
         "fwc": framework_value,
         "oid": str(current_user.id),
         "at": datetime.now(timezone.utc),
         "cat": datetime.now(timezone.utc),
     })
     db.commit()
+
+    # Extract text
+    set_policy_progress(db, policy_id, 15, "Extracting text")
+    try:
+        content = extract_text(str(dest), ext)
+    except TypeError:
+        content = extract_text(str(dest))
+    if not content or content.startswith("[Extraction error"):
+        content = ""
+    set_policy_progress(db, policy_id, 30, "Text extracted")
 
     # Save full content for keyword search during analysis
     if content:
@@ -353,18 +382,21 @@ async def upload_policy(
     chunks_count = 0
     if content:
         try:
+            set_policy_progress(db, policy_id, 45, "Chunking document")
             chunks = chunk_text(content)
             if chunks:
+                set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
                 embeddings = await get_embeddings([c["text"] for c in chunks])
+                set_policy_progress(db, policy_id, 85, "Storing embeddings")
                 store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
                 chunks_count = len(chunks)
                 print(f"  Embedded {chunks_count} chunks for {original_name}")
         except Exception as e:
             print(f"  Embedding error (will auto-embed during analysis): {e}")
 
-    # Mark as uploaded
+    # Mark as uploaded (100%, ready for analysis)
     db.execute(_sql(
-        "UPDATE policies SET status='uploaded' WHERE id=:pid"
+        "UPDATE policies SET status='uploaded', progress=100, progress_stage='Ready' WHERE id=:pid"
     ), {"pid": policy_id})
     db.commit()
     print(f"Policy saved: {original_name}")
@@ -566,7 +598,31 @@ def get_policies(
     status_filter = params.get("status")
 
     where = "WHERE p.status = :st" if status_filter else ""
-    rows = db.execute(_t(f"""
+
+    # Defensive: progress columns are added by setup_policy_progress_columns
+    # at startup, but if the migration didn't apply we still want this query
+    # to succeed. Fall back to a basic SELECT in that case.
+    rich_sql = f"""
+        SELECT p.id, p.file_name, p.description, p.department, p.version,
+               p.status, p.file_url, p.file_type, p.content_preview,
+               p.framework_code, p.uploaded_at, p.last_analyzed_at, p.created_at,
+               u.email AS uploaded_by,
+               COALESCE(p.progress, 0) AS progress,
+               p.progress_stage
+        FROM policies p
+        LEFT JOIN LATERAL (
+            SELECT actor_id
+            FROM audit_logs
+            WHERE action = 'upload_policy' AND target_id = p.id
+            ORDER BY timestamp ASC
+            LIMIT 1
+        ) al ON TRUE
+        LEFT JOIN users u ON u.id = al.actor_id
+        {where}
+        ORDER BY p.created_at DESC
+        LIMIT :lim
+    """
+    basic_sql = f"""
         SELECT p.id, p.file_name, p.description, p.department, p.version,
                p.status, p.file_url, p.file_type, p.content_preview,
                p.framework_code, p.uploaded_at, p.last_analyzed_at, p.created_at,
@@ -583,7 +639,19 @@ def get_policies(
         {where}
         ORDER BY p.created_at DESC
         LIMIT :lim
-    """), {"lim": limit, "st": status_filter}).fetchall()
+    """
+
+    rich = True
+    try:
+        rows = db.execute(_t(rich_sql), {"lim": limit, "st": status_filter}).fetchall()
+    except Exception as e:
+        print(f"[get_policies] rich query failed, falling back: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        rich = False
+        rows = db.execute(_t(basic_sql), {"lim": limit, "st": status_filter}).fetchall()
 
     return [
         {"id": r[0], "file_name": r[1], "description": r[2],
@@ -593,7 +661,11 @@ def get_policies(
          "uploaded_at": r[10].isoformat() if r[10] else None,
          "last_analyzed_at": r[11].isoformat() if r[11] else None,
          "created_at": r[12].isoformat() if r[12] else None,
-         "uploaded_by": r[13]}
+         "uploaded_by": r[13],
+         "progress": int(r[14]) if rich and r[14] is not None else (
+             100 if r[5] == 'analyzed' else 0
+         ),
+         "progress_stage": (r[15] if rich else None) or None}
         for r in rows
     ]
 
@@ -896,6 +968,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
 
     policy.status = "processing"
     db.commit()
+    set_policy_progress(db, policy.id, 5, "Preparing analysis")
 
     # Remove previous analysis data to prevent duplicates on re-run
     db.query(models.AIInsight).filter(models.AIInsight.policy_id == policy.id).delete()
@@ -903,9 +976,32 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     db.query(models.MappingReview).filter(models.MappingReview.policy_id == policy.id).delete()
     db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
     db.commit()
+    set_policy_progress(db, policy.id, 10, "Cleared previous results")
 
-    # Checkpoint-based analysis handles all DB writes and updates policy status.
-    results = await run_checkpoint_analysis(db, request.policy_id, request.frameworks)
+    # Bridge analyzer stage callbacks → policy.progress in the DB
+    def _progress_cb(percent: int, stage: str):
+        set_policy_progress(db, policy.id, percent, stage)
+
+    try:
+        # Checkpoint-based analysis handles all DB writes and updates policy status.
+        results = await run_checkpoint_analysis(
+            db, request.policy_id, request.frameworks, progress_cb=_progress_cb
+        )
+        set_policy_progress(db, policy.id, 100, "Completed")
+    except Exception as e:
+        # Mark the policy as failed so the spinner doesn't stick on the UI.
+        try:
+            db.execute(
+                __import__("sqlalchemy").text(
+                    "UPDATE policies SET status='failed', progress=0, "
+                    "progress_stage='Analysis failed' WHERE id=:pid"
+                ),
+                {"pid": policy.id},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
 
     return {"success": True, "results": results}
 
@@ -1364,6 +1460,33 @@ def setup_framework_file_columns():
                 db.rollback()
                 print(f"[startup] Framework column migration warning: {sql} → {e}")
         print("[startup] Framework file columns ensured")
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def setup_policy_progress_columns():
+    """Idempotently add real-time progress columns to the policies table.
+
+    The processing pipeline (upload → extraction → chunking → embedding →
+    framework analysis) writes progress here so the Policies page shows
+    "Processing • NN%" instead of a static spinner.
+    """
+    from sqlalchemy import text as _t
+    statements = [
+        "ALTER TABLE policies ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0",
+        "ALTER TABLE policies ADD COLUMN IF NOT EXISTS progress_stage TEXT",
+    ]
+    db = database.SessionLocal()
+    try:
+        for sql in statements:
+            try:
+                db.execute(_t(sql))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                print(f"[startup] Policy progress column migration warning: {sql} → {e}")
+        print("[startup] Policy progress columns ensured")
     finally:
         db.close()
 

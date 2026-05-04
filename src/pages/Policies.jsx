@@ -89,6 +89,14 @@ export default function Policies() {
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at'),
+    // Poll every 2s while any policy is in 'processing' so the live
+    // progress percentage stays in sync with the backend pipeline.
+    refetchInterval: (query) => {
+      const data = query?.state?.data;
+      if (Array.isArray(data) && data.some(p => p?.status === 'processing')) return 2000;
+      return false;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const {
@@ -415,7 +423,31 @@ export default function Policies() {
     {
       header: 'Status',
       accessor: 'status',
-      cell: (row) => <StatusBadge status={row.status || 'uploaded'} />,
+      cell: (row) => {
+        if (row.status === 'processing') {
+          const pct = Math.max(0, Math.min(100, Number(row.progress) || 0));
+          const stage = row.progress_stage || 'Processing';
+          return (
+            <div className="min-w-[160px] max-w-[220px]">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Processing
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-amber-700">{pct}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-amber-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-emerald-500 transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 truncate mt-1" title={stage}>{stage}</p>
+            </div>
+          );
+        }
+        return <StatusBadge status={row.status || 'uploaded'} />;
+      },
     },
     {
       header: '',
