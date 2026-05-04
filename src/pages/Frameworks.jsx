@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
+import { useAuth } from '@/lib/AuthContext';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,8 +26,12 @@ import {
   TrendingUp,
   Loader2,
   Database,
-  Info
+  Info,
+  Lock
 } from 'lucide-react';
+
+// Mirrors the backend ADMIN_EMAIL in main.py and the Sidebar admin check.
+const ADMIN_EMAIL = 'himayaadmin@gmail.com';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
@@ -106,9 +111,10 @@ export default function Frameworks() {
   const [selectedFramework, setSelectedFramework] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [uploading, setUploading] = useState(null); // which framework is uploading
-  const [frameworkStatus, setFrameworkStatus] = useState(null);
   const fileInputRefs = useRef({});
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.email === ADMIN_EMAIL;
 
   const { data: results = [] } = useQuery({
     queryKey: ['complianceResults'],
@@ -151,6 +157,14 @@ export default function Frameworks() {
 
   const handleUpload = async (frameworkName, file) => {
     if (!file) return;
+    if (!isAdmin) {
+      toast({
+        title: 'Admin Required',
+        description: 'Only the administrator account can upload framework documents.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setUploading(frameworkName);
     try {
       const token = localStorage.getItem('token');
@@ -200,7 +214,11 @@ export default function Frameworks() {
   return (
     <PageContainer
       title="Compliance Frameworks"
-      subtitle="Upload reference documents and monitor compliance against industry standards"
+      subtitle={
+        isAdmin
+          ? 'Upload reference documents and monitor compliance against industry standards'
+          : 'Monitor compliance against the loaded framework knowledge base'
+      }
     >
       {/* ── Framework Knowledge Base banner ── */}
       <div className={`flex items-start gap-4 p-4 rounded-lg border mb-6 ${allLoaded ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -213,92 +231,112 @@ export default function Frameworks() {
           </p>
           <p className={`text-sm mt-0.5 ${allLoaded ? 'text-emerald-700' : 'text-amber-700'}`}>
             {allLoaded
-              ? 'All 3 framework documents are loaded. The AI will use them for deep compliance comparison.'
-              : 'Upload the official NCA ECC, ISO 27001, and NIST 800-53 documents below. These are the REFERENCE documents that define what controls SHOULD exist in your policies. Without them, analysis uses only basic control definitions.'}
+              ? 'All framework documents are loaded. The AI will use them for deep compliance comparison.'
+              : isAdmin
+                ? 'Upload the official NCA ECC, ISO 27001, and NIST 800-53 documents below. These are the REFERENCE documents that define what controls SHOULD exist in your policies. Without them, analysis uses only basic control definitions.'
+                : 'The framework knowledge base is incomplete. An administrator needs to upload the official reference documents before deep compliance analysis is available.'}
           </p>
         </div>
       </div>
 
-      {/* ── Framework Upload Cards ── */}
-      <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
-        <Database className="w-4 h-4 text-slate-500" />
-        Framework Knowledge Base — Upload Reference Documents
-      </h2>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
-        {frameworksData.map((fw) => {
-          const cc = colorClasses[fw.color];
-          const fwStat = status[fw.name] || { chunks: 0, documents: 0 };
-          const isLoaded = fwStat.chunks > 0;
-          const isUploading = uploading === fw.name;
+      {/* ── Framework Upload Cards (admin-only) ── */}
+      {isAdmin ? (
+        <>
+          <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <Database className="w-4 h-4 text-slate-500" />
+            Framework Knowledge Base — Upload Reference Documents
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
+            {frameworksData.map((fw) => {
+              const cc = colorClasses[fw.color];
+              const fwStat = status[fw.name] || { chunks: 0, documents: 0 };
+              const isLoaded = fwStat.chunks > 0;
+              const isUploading = uploading === fw.name;
 
-          return (
-            <Card key={fw.id} className={`overflow-hidden border-2 ${isLoaded ? cc.border : 'border-slate-200'}`}>
-              <div className={`h-1.5 bg-gradient-to-r ${fw.bgGradient}`} />
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-11 h-11 rounded-xl ${cc.bg} flex items-center justify-center text-2xl`}>
-                    {fw.icon}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-slate-900">{fw.name}</p>
-                    <p className="text-xs text-slate-500">v{fw.version}</p>
-                  </div>
-                  {isLoaded ? (
-                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      Loaded
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-slate-500 border-slate-300">
-                      Not Loaded
-                    </Badge>
-                  )}
-                </div>
+              return (
+                <Card key={fw.id} className={`overflow-hidden border-2 ${isLoaded ? cc.border : 'border-slate-200'}`}>
+                  <div className={`h-1.5 bg-gradient-to-r ${fw.bgGradient}`} />
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-11 h-11 rounded-xl ${cc.bg} flex items-center justify-center text-2xl`}>
+                        {fw.icon}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-900">{fw.name}</p>
+                        <p className="text-xs text-slate-500">v{fw.version}</p>
+                      </div>
+                      {isLoaded ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Loaded
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-slate-500 border-slate-300">
+                          Not Loaded
+                        </Badge>
+                      )}
+                    </div>
 
-                <p className="text-xs text-slate-500 mb-3 line-clamp-2">{fw.description}</p>
+                    <p className="text-xs text-slate-500 mb-3 line-clamp-2">{fw.description}</p>
 
-                {isLoaded && (
-                  <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded mb-3">
-                    <Database className="w-3.5 h-3.5" />
-                    <span>{fwStat.chunks.toLocaleString()} chunks · {fwStat.documents} document{fwStat.documents !== 1 ? 's' : ''}</span>
-                  </div>
-                )}
+                    {isLoaded && (
+                      <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded mb-3">
+                        <Database className="w-3.5 h-3.5" />
+                        <span>{fwStat.chunks.toLocaleString()} chunks · {fwStat.documents} document{fwStat.documents !== 1 ? 's' : ''}</span>
+                      </div>
+                    )}
 
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.txt"
-                  className="hidden"
-                  ref={el => (fileInputRefs.current[fw.name] = el)}
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) handleUpload(fw.name, file);
-                    e.target.value = '';
-                  }}
-                />
-                <Button
-                  size="sm"
-                  variant={isLoaded ? 'outline' : 'default'}
-                  className={`w-full ${!isLoaded ? `bg-gradient-to-r ${fw.bgGradient} text-white border-0 hover:opacity-90` : ''}`}
-                  disabled={isUploading}
-                  onClick={() => fileInputRefs.current[fw.name]?.click()}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      {isLoaded ? 'Replace Document' : 'Upload Reference Document'}
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.txt"
+                      className="hidden"
+                      ref={el => (fileInputRefs.current[fw.name] = el)}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUpload(fw.name, file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant={isLoaded ? 'outline' : 'default'}
+                      className={`w-full ${!isLoaded ? `bg-gradient-to-r ${fw.bgGradient} text-white border-0 hover:opacity-90` : ''}`}
+                      disabled={isUploading}
+                      onClick={() => fileInputRefs.current[fw.name]?.click()}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 mr-2" />
+                          {isLoaded ? 'Replace Document' : 'Upload Reference Document'}
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-slate-200 bg-slate-50 mb-10">
+          <div className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+            <Lock className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700">
+              Framework management is admin-only
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Reference documents are managed by the platform administrator. You can review framework status, scores, and analyses below.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Compliance Score Cards (existing analysis results) ── */}
       <h2 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">

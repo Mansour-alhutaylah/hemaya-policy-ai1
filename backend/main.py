@@ -91,6 +91,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     return user
 
 
+# ─── Admin authorisation ────────────────────────────────────────────────────
+# Defined here (above all routes) so any endpoint can depend on it. The
+# admin-only sections lower in this file reuse the same constant + helper.
+ADMIN_EMAIL = "himayaadmin@gmail.com"
+
+
+def require_admin(current_user: models.User = Depends(get_current_user)):
+    """Dependency: raises 403 if the caller is not the admin account."""
+    if current_user.email != ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+
+
 def serialize(obj: Any):
     return jsonable_encoder(obj)
 
@@ -695,11 +711,16 @@ def get_entity(entity: str, item_id: str, db: Session = Depends(get_db), current
     return serialize(item)
 
 
+ADMIN_ONLY_ENTITIES = {"Framework"}
+
+
 @app.post("/api/entities/{entity}")
 def create_or_update_entity(entity: str, payload: Dict[str, Any], db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     model = ENTITY_MAP.get(entity)
     if not model:
         raise HTTPException(status_code=404, detail="Entity not found")
+    if entity in ADMIN_ONLY_ENTITIES and current_user.email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
 
     item_id = payload.get("id")
     if item_id:
@@ -799,6 +820,8 @@ def delete_entity(entity: str, item_id: str, db: Session = Depends(get_db), curr
     model = ENTITY_MAP.get(entity)
     if not model:
         raise HTTPException(status_code=404, detail="Entity not found")
+    if entity in ADMIN_ONLY_ENTITIES and current_user.email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin access required")
     item = db.query(model).filter(model.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Not found")
@@ -896,9 +919,13 @@ async def upload_framework_doc(
     file: UploadFile = File(...),
     framework: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_admin),
 ):
-    """Upload a framework reference document (NCA ECC, ISO 27001, NIST 800-53)."""
+    """Upload a framework reference document (NCA ECC, ISO 27001, NIST 800-53).
+
+    Admin-only: regular users may read framework status but only the admin
+    account can write to the framework knowledge base.
+    """
     ext = Path(file.filename or "upload").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -1141,19 +1168,9 @@ async def explain_mapping_route(
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ADMIN ROUTES — restricted to himayaadmin@gmail.com
+# ADMIN_EMAIL + require_admin are defined near the top of this file so any
+# route can depend on them, including the framework-management endpoints.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ADMIN_EMAIL = "himayaadmin@gmail.com"
-
-
-def require_admin(current_user: models.User = Depends(get_current_user)):
-    """Dependency: raises 403 if the caller is not the admin account."""
-    if current_user.email != ADMIN_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return current_user
 
 
 @app.on_event("startup")
