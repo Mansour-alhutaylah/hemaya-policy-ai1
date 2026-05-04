@@ -3,6 +3,11 @@ import { useToast } from '@/components/ui/use-toast';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { downloadAuditTrailPdf } from '@/lib/auditReport';
+import {
+  buildPolicyReport,
+  fetchPolicyReportData,
+  triggerBrowserDownload,
+} from '@/lib/policyReport';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -647,10 +652,16 @@ function FrameworksSection() {
   const [ctrlForm, setCtrlForm] = useState({ control_code: '', title: '', severity_if_missing: 'Medium' });
   const [ctrlSaving, setCtrlSaving] = useState(false);
 
-  // Add / Edit framework modal state
+  // Add / Edit framework metadata modal state
   const [editFw, setEditFw] = useState(null);       // null = closed; {} = adding; {id,...} = editing
   const [fwForm, setFwForm] = useState({ name: '', description: '' });
   const [fwSaving, setFwSaving] = useState(false);
+
+  // File upload / replace state — frameworks are uploaded reference documents.
+  // uploadFw === { mode: 'new' | 'replace', framework?: object }
+  const [uploadFw, setUploadFw] = useState(null);
+  const [uploadForm, setUploadForm] = useState({ name: '', description: '', version: '', file: null });
+  const [uploadSaving, setUploadSaving] = useState(false);
 
   // Delete confirmation
   const [deleteFw, setDeleteFw] = useState(null);
@@ -667,14 +678,78 @@ function FrameworksSection() {
 
   useEffect(loadFrameworks, []);
 
-  const openAdd = () => {
-    setEditFw({}); // empty object = add mode
-    setFwForm({ name: '', description: '' });
+  const openUploadNew = () => {
+    setUploadFw({ mode: 'new' });
+    setUploadForm({ name: '', description: '', version: '', file: null });
+  };
+
+  const openReplace = (fw) => {
+    setUploadFw({ mode: 'replace', framework: fw });
+    setUploadForm({ name: fw.name, description: fw.description || '', version: fw.version || '', file: null });
   };
 
   const openEdit = (fw) => {
     setEditFw(fw);
     setFwForm({ name: fw.name || '', description: fw.description || '' });
+  };
+
+  const submitUpload = async () => {
+    const isReplace = uploadFw?.mode === 'replace';
+    const targetName = isReplace ? uploadFw.framework.name : uploadForm.name.trim();
+    if (!targetName) {
+      toast({ title: 'Name required', description: 'Give the framework a name.', variant: 'destructive' });
+      return;
+    }
+    if (!uploadForm.file) {
+      toast({ title: 'File required', description: 'Select the reference document.', variant: 'destructive' });
+      return;
+    }
+    setUploadSaving(true);
+    try {
+      // For new frameworks we create the row first so the upload's UPDATE-by-name can find it.
+      if (!isReplace) {
+        await adminApi.post('/admin/frameworks', {
+          name: targetName,
+          description: uploadForm.description,
+        });
+      } else if (uploadForm.description !== (uploadFw.framework.description || '')) {
+        await adminApi.patch(`/admin/frameworks/${uploadFw.framework.id}`, {
+          description: uploadForm.description,
+        });
+      }
+
+      const token = localStorage.getItem('token');
+      const form = new FormData();
+      form.append('file', uploadForm.file);
+      form.append('framework', targetName);
+      form.append('description', uploadForm.description || '');
+      form.append('version', uploadForm.version || '');
+      const res = await fetch('/api/functions/upload_framework_doc', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) {
+        let msg = 'Upload failed';
+        try { msg = (await res.json())?.detail || msg; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
+      const result = await res.json();
+      toast({
+        title: isReplace ? 'Framework Replaced' : 'Framework Uploaded',
+        description: `${targetName}: ${result.chunks_created || 0} chunks indexed.`,
+      });
+      setUploadFw(null);
+      loadFrameworks();
+    } catch (e) {
+      toast({
+        title: 'Upload Failed',
+        description: e.message || 'Could not upload the framework document.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadSaving(false);
+    }
   };
 
   const saveFramework = async () => {
@@ -761,13 +836,15 @@ function FrameworksSection() {
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h2 className="text-xl font-bold text-white">Framework Management</h2>
-          <p className="text-slate-400 text-sm mt-1">Compliance framework definitions</p>
+          <p className="text-slate-400 text-sm mt-1">
+            Frameworks are uploaded reference documents stored in the database.
+          </p>
         </div>
         <Button
-          onClick={openAdd}
+          onClick={openUploadNew}
           className="bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
         >
-          <Plus className="w-4 h-4 mr-1.5" /> Add Framework
+          <Plus className="w-4 h-4 mr-1.5" /> Upload Framework
         </Button>
       </div>
       {error && <div className="mb-4"><ErrorMsg msg={error} /></div>}
@@ -786,7 +863,9 @@ function FrameworksSection() {
             ))
           : frameworks.length === 0
             ? <div className="col-span-3 py-12 text-center text-slate-500">No frameworks found in the database.</div>
-            : frameworks.map(fw => (
+            : frameworks.map(fw => {
+              const hasFile = !!fw.file_url;
+              return (
               <div key={fw.id} className="bg-slate-800 border border-slate-700 rounded-xl p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
@@ -796,7 +875,7 @@ function FrameworksSection() {
                     <button
                       onClick={() => openEdit(fw)}
                       className="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                      title="Edit framework"
+                      title="Edit name and description"
                     >
                       <Edit className="w-3.5 h-3.5" />
                     </button>
@@ -809,8 +888,39 @@ function FrameworksSection() {
                     </button>
                   </div>
                 </div>
-                <h3 className="text-white font-bold text-lg">{fw.name}</h3>
-                <p className="text-slate-400 text-xs mt-1 mb-4 line-clamp-2">{fw.description || 'No description.'}</p>
+                <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                  {fw.name}
+                  {fw.version && (
+                    <span className="text-[10px] font-mono bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">
+                      v{fw.version}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-slate-400 text-xs mt-1 mb-3 line-clamp-2">{fw.description || 'No description.'}</p>
+
+                {/* File document metadata */}
+                <div className={`rounded-lg p-3 mb-3 border ${hasFile ? 'bg-slate-900/40 border-slate-700' : 'bg-amber-500/10 border-amber-500/30'}`}>
+                  {hasFile ? (
+                    <>
+                      <div className="flex items-center gap-2 text-slate-300 text-xs">
+                        <FileText className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                        <span className="truncate font-medium">{fw.original_file_name}</span>
+                        {fw.file_type && (
+                          <span className="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded">{fw.file_type}</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Uploaded {fmt(fw.uploaded_at)}{fw.uploaded_by ? ` by ${fw.uploaded_by}` : ''}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-amber-400 text-xs">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>No reference document uploaded yet.</span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-slate-700/50 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-white">{fw.controls}</p>
@@ -821,23 +931,110 @@ function FrameworksSection() {
                     <p className="text-slate-400 text-xs">Checkpoints</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button size="sm" variant="outline"
-                    className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 text-xs h-8"
+                    className="flex-1 min-w-[110px] border-slate-600 text-slate-300 hover:bg-slate-700 text-xs h-8"
+                    onClick={() => openReplace(fw)}>
+                    <Upload className="w-3 h-3 mr-1" /> {hasFile ? 'Replace File' : 'Upload File'}
+                  </Button>
+                  {hasFile && (
+                    <a
+                      href={fw.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 min-w-[110px] inline-flex items-center justify-center gap-1 border border-slate-600 text-slate-300 hover:bg-slate-700 text-xs h-8 rounded-md px-3"
+                    >
+                      <Download className="w-3 h-3" /> Download
+                    </a>
+                  )}
+                  <Button size="sm" variant="outline"
+                    className="flex-1 min-w-[110px] border-slate-600 text-slate-300 hover:bg-slate-700 text-xs h-8"
                     onClick={() => openAddControl(fw)}>
                     <Plus className="w-3 h-3 mr-1" /> Add Control
                   </Button>
                   <Button size="sm" variant="outline"
-                    className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 text-xs h-8"
+                    className="flex-1 min-w-[110px] border-slate-600 text-slate-300 hover:bg-slate-700 text-xs h-8"
                     onClick={() => openView(fw)}>
                     <Eye className="w-3 h-3 mr-1" /> View
                   </Button>
                 </div>
               </div>
-            ))}
+            );})}
       </div>
 
-      {/* ── Add / Edit Framework Modal ── */}
+      {/* ── Upload / Replace Framework Document Modal ── */}
+      <Dialog open={!!uploadFw} onOpenChange={open => !open && !uploadSaving && setUploadFw(null)}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {uploadFw?.mode === 'replace'
+                ? `Replace document for ${uploadFw.framework.name}`
+                : 'Upload Framework'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {uploadFw?.mode !== 'replace' && (
+              <div>
+                <label className="text-slate-400 text-xs mb-1 block">Framework Name *</label>
+                <Input
+                  placeholder="e.g. PCI DSS 4.0"
+                  value={uploadForm.name}
+                  onChange={e => setUploadForm(f => ({ ...f, name: e.target.value }))}
+                  className="bg-slate-900 border-slate-600 text-white"
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-slate-400 text-xs mb-1 block">Description</label>
+              <Textarea
+                placeholder="Optional short description."
+                value={uploadForm.description}
+                onChange={e => setUploadForm(f => ({ ...f, description: e.target.value }))}
+                className="bg-slate-900 border-slate-600 text-white min-h-[60px]"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs mb-1 block">Version</label>
+              <Input
+                placeholder="e.g. 2024-Rev2"
+                value={uploadForm.version}
+                onChange={e => setUploadForm(f => ({ ...f, version: e.target.value }))}
+                className="bg-slate-900 border-slate-600 text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs mb-1 block">Reference Document *</label>
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt,.xlsx,.xls"
+                onChange={e => setUploadForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
+                className="block w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600"
+              />
+              {uploadFw?.mode === 'replace' && uploadFw.framework.original_file_name && !uploadForm.file && (
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Current: {uploadFw.framework.original_file_name}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-slate-400" onClick={() => setUploadFw(null)} disabled={uploadSaving}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={uploadSaving || !uploadForm.file || (uploadFw?.mode !== 'replace' && !uploadForm.name.trim())}
+              onClick={submitUpload}
+            >
+              {uploadSaving
+                ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Uploading…</>
+                : <><Upload className="w-4 h-4 mr-1" /> {uploadFw?.mode === 'replace' ? 'Replace File' : 'Upload Framework'}</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Framework Metadata Modal ── */}
       <Dialog open={!!editFw} onOpenChange={open => !open && !fwSaving && setEditFw(null)}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md">
           <DialogHeader>
@@ -1018,26 +1215,70 @@ function FrameworksSection() {
 // ─────────────────────────────────────────────────────────
 
 function AnalysesSection() {
+  const { toast } = useToast();
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
 
-  useEffect(() => {
-    // Real API call → GET /api/admin/analysis-results
-    adminApi.get('/admin/analysis-results')
+  const loadAnalyses = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return adminApi.get('/admin/analysis-results')
       .then(setAnalyses)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => { loadAnalyses(); }, [loadAnalyses]);
+
   const handleDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
     try {
       await adminApi.delete(`/admin/analysis-results/${deleteTarget}`);
       setAnalyses(prev => prev.filter(a => a.id !== deleteTarget));
       setDeleteTarget(null);
+      toast({ title: 'Analysis Deleted', description: 'The result was removed.' });
     } catch (e) {
-      alert('Failed to delete: ' + e.message);
+      toast({
+        title: 'Delete Failed',
+        description: e.message || 'Could not delete the analysis result.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDownload = async (row) => {
+    if (!row.policy_id) {
+      toast({
+        title: 'Download Unavailable',
+        description: 'This result is not linked to a policy.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDownloadingId(row.id);
+    try {
+      const data = await fetchPolicyReportData(row.policy_id);
+      const { blob, filename } = await buildPolicyReport(data, 'pdf');
+      triggerBrowserDownload(blob, filename);
+      toast({
+        title: 'Report Downloaded',
+        description: `Branded PDF for ${row.policy_name || 'this policy'} ready.`,
+      });
+    } catch (e) {
+      toast({
+        title: 'Download Failed',
+        description: e.message || 'Could not build the analysis report.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -1089,11 +1330,25 @@ function AnalysesSection() {
                       <td className="px-4 py-3 text-slate-400 text-xs">{fmt(a.analyzed_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 h-8 px-2" title="Download">
-                            <Download className="w-3.5 h-3.5" />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-blue-400 hover:text-blue-300 h-8 px-2"
+                            title="Download branded PDF report"
+                            onClick={() => handleDownload(a)}
+                            disabled={downloadingId === a.id}
+                          >
+                            {downloadingId === a.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Download className="w-3.5 h-3.5" />}
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 h-8 px-2"
-                            onClick={() => setDeleteTarget(a.id)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-400 hover:text-red-300 h-8 px-2"
+                            title="Delete analysis result"
+                            onClick={() => setDeleteTarget(a.id)}
+                          >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -1116,9 +1371,13 @@ function AnalysesSection() {
           </DialogHeader>
           <p className="text-slate-300 py-2">This will permanently delete the analysis result.</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}
               className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
-            <Button onClick={handleDelete} className="bg-red-600 hover:bg-red-700">Delete Result</Button>
+            <Button onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
+              {deleting
+                ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Deleting…</>
+                : 'Delete Result'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1129,6 +1388,59 @@ function AnalysesSection() {
 // ─────────────────────────────────────────────────────────
 // SECTION: ACTIVITY LOGS — real database data
 // ─────────────────────────────────────────────────────────
+
+// Humanize raw audit-log action codes for display.
+const ACTION_LABELS = {
+  policy_upload: 'Policy Upload',
+  policy_delete: 'Policy Delete',
+  analysis_start: 'Analysis Started',
+  analysis_complete: 'Analysis Complete',
+  analysis_delete: 'Analysis Deleted',
+  mapping_review: 'Mapping Review',
+  report_generate: 'Report Generated',
+  report_delete: 'Report Deleted',
+  framework_upload: 'Framework Uploaded',
+  framework_delete: 'Framework Deleted',
+  gap_update: 'Gap Update',
+  settings_change: 'Settings Change',
+  user_login: 'User Login',
+  user_logout: 'User Logout',
+};
+
+function readableAction(action) {
+  if (!action) return '—';
+  return (
+    ACTION_LABELS[action] ||
+    String(action).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+// Render audit details (string or JSON-stringified object) as a tidy line.
+function formatLogDetails(details) {
+  if (details == null || details === '') return '—';
+  if (typeof details === 'string') {
+    const t = details.trim();
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t);
+        if (parsed && typeof parsed === 'object') {
+          return Object.entries(parsed)
+            .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+            .join(' · ');
+        }
+      } catch { /* fall through */ }
+    }
+    return details;
+  }
+  if (typeof details === 'object') {
+    try {
+      return Object.entries(details)
+        .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+        .join(' · ');
+    } catch { return JSON.stringify(details); }
+  }
+  return String(details);
+}
 
 function LogsSection() {
   const { toast } = useToast();
@@ -1230,28 +1542,36 @@ function LogsSection() {
                 <th className="text-left px-4 py-3 text-slate-400 font-medium">Activity</th>
                 <th className="text-left px-4 py-3 text-slate-400 font-medium">User</th>
                 <th className="text-left px-4 py-3 text-slate-400 font-medium">Target</th>
+                <th className="text-left px-4 py-3 text-slate-400 font-medium hidden lg:table-cell">Details</th>
                 <th className="text-left px-4 py-3 text-slate-400 font-medium">Date &amp; Time</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <LoadingRows cols={5} />
+                <LoadingRows cols={6} />
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">No logs found.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">No logs found.</td></tr>
               ) : (
                 filtered.map((log, i) => (
                   <tr key={log.id || i} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
                     <td className="px-4 py-3">
                       <StatusPill status={log._status} label={log._status.charAt(0).toUpperCase() + log._status.slice(1)} />
                     </td>
-                    <td className="px-4 py-3 text-slate-300">{log.action}</td>
+                    <td className="px-4 py-3 text-slate-200 font-medium">{readableAction(log.action)}</td>
                     <td className="px-4 py-3 text-slate-300 text-xs">
                       {log.actor_name
                         ? log.actor_name
                         : <span className="text-slate-600">System</span>}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{log.target_type}{log.target_id ? ` · ${String(log.target_id).slice(0, 8)}…` : ''}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{fmtTime(log.timestamp)}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">
+                      {log.target_type
+                        ? <>{log.target_type}{log.target_id ? <span className="text-slate-600"> · {String(log.target_id).slice(0, 8)}…</span> : null}</>
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-400 text-xs hidden lg:table-cell max-w-[360px] truncate" title={formatLogDetails(log.details)}>
+                      {formatLogDetails(log.details)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{fmtTime(log.timestamp)}</td>
                   </tr>
                 ))
               )}

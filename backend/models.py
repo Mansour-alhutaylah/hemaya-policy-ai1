@@ -165,3 +165,14 @@ class Framework(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String, unique=True)
     description = Column(Text, nullable=True)
+
+    # File-document fields. Frameworks are uploaded reference documents,
+    # so each row points at the actual stored PDF/DOCX/TXT.
+    version = Column(String, nullable=True)
+    original_file_name = Column(String, nullable=True)
+    file_url = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
+    file_size = Column(Integer, nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), nullable=True)
+    uploaded_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)

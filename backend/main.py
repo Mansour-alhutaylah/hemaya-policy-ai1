@@ -472,9 +472,12 @@ def get_frameworks(
 
     if include_empty:
         rows = db.execute(_t("""
-            SELECT f.id, f.name, f.description,
+            SELECT f.id, f.name, f.description, f.version,
+                   f.original_file_name, f.file_url, f.file_type, f.file_size,
+                   f.uploaded_at, u.email AS uploaded_by,
                    COALESCE(c.chunks, 0) AS chunks
             FROM frameworks f
+            LEFT JOIN users u ON u.id = f.uploaded_by
             LEFT JOIN (
                 SELECT framework_id, COUNT(*) AS chunks
                 FROM framework_chunks
@@ -484,16 +487,27 @@ def get_frameworks(
         """)).fetchall()
     else:
         rows = db.execute(_t("""
-            SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks
+            SELECT f.id, f.name, f.description, f.version,
+                   f.original_file_name, f.file_url, f.file_type, f.file_size,
+                   f.uploaded_at, u.email AS uploaded_by,
+                   COUNT(fc.*) AS chunks
             FROM frameworks f
+            LEFT JOIN users u ON u.id = f.uploaded_by
             JOIN framework_chunks fc ON fc.framework_id = f.id
-            GROUP BY f.id, f.name, f.description
+            GROUP BY f.id, u.email
             HAVING COUNT(fc.*) > 0
             ORDER BY f.name ASC
         """)).fetchall()
 
     return [
-        {"id": r[0], "name": r[1], "description": r[2], "chunks": r[3] or 0}
+        {
+            "id": r[0], "name": r[1], "description": r[2], "version": r[3],
+            "original_file_name": r[4], "file_url": r[5], "file_type": r[6],
+            "file_size": r[7],
+            "uploaded_at": r[8].isoformat() if r[8] else None,
+            "uploaded_by": r[9],
+            "chunks": r[10] or 0,
+        }
         for r in rows
     ]
 
@@ -920,34 +934,92 @@ def db_health(db: Session = Depends(get_db)):
 async def upload_framework_doc(
     file: UploadFile = File(...),
     framework: str = Form(...),
+    description: str = Form(""),
+    version: str = Form(""),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin),
 ):
-    """Upload a framework reference document (NCA ECC, ISO 27001, NIST 800-53).
+    """Upload a framework reference document.
 
-    Admin-only: regular users may read framework status but only the admin
-    account can write to the framework knowledge base.
+    Admin-only. Persists the file under /uploads/frameworks/<timestamped>
+    so re-uploads don't overwrite previous files, and writes the file
+    metadata (name, version, file_url, uploaded_at, uploaded_by) onto the
+    framework row so the framework is treated as a real database-backed
+    uploaded document — not just a static name.
     """
-    ext = Path(file.filename or "upload").suffix.lower()
+    from sqlalchemy import text as _sql
+
+    original_name = file.filename or "upload"
+    ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
             detail=f"File type '{ext}' not supported. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
 
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty framework document")
+    if len(raw) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Framework file exceeds 50 MB limit")
+
     fw_dir = UPLOAD_DIR / "frameworks"
     fw_dir.mkdir(exist_ok=True)
-    file_path = fw_dir / (file.filename or "upload")
-
-    content = await file.read()
-    file_path.write_bytes(content)
+    stored_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{original_name}"
+    file_path = fw_dir / stored_name
+    file_path.write_bytes(raw)
 
     from backend.framework_loader import load_framework_document
 
-    result = await load_framework_document(db, str(file_path), framework, file.filename or "")
+    result = await load_framework_document(db, str(file_path), framework, original_name)
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+
+    # Update framework row with the file metadata so the UI can show the
+    # real uploaded document and the Replace flow works cleanly.
+    try:
+        db.execute(_sql("""
+            UPDATE frameworks
+               SET original_file_name = :ofn,
+                   file_url    = :furl,
+                   file_type   = :ft,
+                   file_size   = :fs,
+                   uploaded_at = :at,
+                   uploaded_by = :uby,
+                   version     = COALESCE(NULLIF(:ver, ''), version),
+                   description = COALESCE(NULLIF(:desc, ''), description)
+             WHERE name = :name
+        """), {
+            "ofn":  original_name,
+            "furl": f"/uploads/frameworks/{stored_name}",
+            "ft":   ext.replace(".", "").upper(),
+            "fs":   len(raw),
+            "at":   datetime.now(timezone.utc),
+            "uby":  str(current_user.id) if hasattr(current_user, "id") else None,
+            "ver":  (version or "").strip(),
+            "desc": (description or "").strip(),
+            "name": framework,
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Framework metadata update warning: {_e}")
+        db.rollback()
+
+    try:
+        db.execute(_sql("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'framework_upload', 'framework', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": framework,
+            "det": json.dumps({"name": framework, "file": original_name, "version": version}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
 
     return result
 
@@ -1196,6 +1268,38 @@ def seed_admin_user():
     except Exception as e:
         db.rollback()
         print(f"[startup] Could not seed admin user: {e}")
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def setup_framework_file_columns():
+    """Idempotently add file-document columns to the frameworks table.
+
+    Frameworks are stored as uploaded reference documents; older databases
+    won't have the file metadata columns yet, so we ALTER on startup.
+    """
+    from sqlalchemy import text as _t
+    statements = [
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS version TEXT",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS original_file_name TEXT",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS file_url TEXT",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS file_type TEXT",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS file_size INTEGER",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS uploaded_by UUID REFERENCES users(id)",
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+    ]
+    db = database.SessionLocal()
+    try:
+        for sql in statements:
+            try:
+                db.execute(_t(sql))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                print(f"[startup] Framework column migration warning: {sql} → {e}")
+        print("[startup] Framework file columns ensured")
     finally:
         db.close()
 
@@ -1519,34 +1623,51 @@ def admin_list_frameworks(
     db: Session = Depends(get_db),
     _: models.User = Depends(require_admin),
 ):
-    """Return all frameworks with real control and checkpoint counts."""
-    from sqlalchemy import func, text as _t
-    rows = (
-        db.query(
-            models.Framework.id,
-            models.Framework.name,
-            models.Framework.description,
-            func.count(models.ControlLibrary.id).label("controls"),
-        )
-        .outerjoin(models.ControlLibrary, models.ControlLibrary.framework_id == models.Framework.id)
-        .group_by(models.Framework.id)
-        .all()
-    )
+    """Return all frameworks (incl. file metadata) with control + checkpoint counts."""
+    from sqlalchemy import text as _t
+    rows = db.execute(_t("""
+        SELECT
+            f.id, f.name, f.description, f.version,
+            f.original_file_name, f.file_url, f.file_type, f.file_size,
+            f.uploaded_at, u.email AS uploaded_by_email,
+            COALESCE(ctrl.controls, 0)        AS controls,
+            COALESCE(chunks.chunks, 0)        AS chunks
+        FROM frameworks f
+        LEFT JOIN users u ON u.id = f.uploaded_by
+        LEFT JOIN (
+            SELECT framework_id, COUNT(*) AS controls
+            FROM control_library GROUP BY framework_id
+        ) ctrl ON ctrl.framework_id = f.id
+        LEFT JOIN (
+            SELECT framework_id, COUNT(*) AS chunks
+            FROM framework_chunks GROUP BY framework_id
+        ) chunks ON chunks.framework_id = f.id
+        ORDER BY f.name ASC
+    """)).fetchall()
+
     result = []
     for r in rows:
         try:
             chk_row = db.execute(
                 _t("SELECT COUNT(*) FROM control_checkpoints WHERE framework = :fwid"),
-                {"fwid": r.id},
+                {"fwid": r[0]},
             ).fetchone()
             checkpoint_count = chk_row[0] if chk_row else 0
         except Exception:
             checkpoint_count = 0
         result.append({
-            "id": r.id,
-            "name": r.name,
-            "description": r.description,
-            "controls": r.controls,
+            "id": r[0],
+            "name": r[1],
+            "description": r[2],
+            "version": r[3],
+            "original_file_name": r[4],
+            "file_url": r[5],
+            "file_type": r[6],
+            "file_size": r[7],
+            "uploaded_at": r[8].isoformat() if r[8] else None,
+            "uploaded_by": r[9],
+            "controls": r[10],
+            "chunks": r[11],
             "checkpoints": checkpoint_count,
         })
     return result
@@ -1770,6 +1891,7 @@ def admin_analysis_results(
         rows = db.execute(_t("""
             SELECT
                 cr.id,
+                cr.policy_id,
                 p.file_name,
                 f.name AS framework_name,
                 cr.compliance_score,
@@ -1802,18 +1924,53 @@ def admin_analysis_results(
     return [
         {
             "id": r[0],
-            "policy_name": r[1],
-            "framework": r[2],
-            "compliance_score": r[3],
-            "controls_covered": r[4],
-            "controls_partial": r[5],
-            "controls_missing": r[6],
-            "status": r[7],
-            "analyzed_at": r[8].isoformat() if r[8] else None,
-            "uploaded_by": r[9],
+            "policy_id": r[1],
+            "policy_name": r[2],
+            "framework": r[3],
+            "compliance_score": r[4],
+            "controls_covered": r[5],
+            "controls_partial": r[6],
+            "controls_missing": r[7],
+            "status": r[8],
+            "analyzed_at": r[9].isoformat() if r[9] else None,
+            "uploaded_by": r[10],
         }
         for r in rows
     ]
+
+
+@app.delete("/api/admin/analysis-results/{result_id}")
+def admin_delete_analysis_result(
+    result_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin),
+):
+    """Delete a single compliance result row."""
+    item = db.query(models.ComplianceResult).filter(models.ComplianceResult.id == result_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Analysis result not found")
+
+    policy_id = item.policy_id
+    db.delete(item)
+    db.commit()
+
+    try:
+        from sqlalchemy import text as _audit_sql
+        db.execute(_audit_sql("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'analysis_delete', 'compliance_result', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": result_id,
+            "det": json.dumps({"policy_id": policy_id}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    return {"ok": True}
 
 
 @app.get("/api/admin/activity-logs")
