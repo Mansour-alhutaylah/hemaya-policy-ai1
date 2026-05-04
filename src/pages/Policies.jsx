@@ -8,6 +8,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ import {
   FileBarChart,
   MoreVertical,
   Play,
+  Pause,
   Eye,
   Trash2,
   Archive,
@@ -44,7 +46,9 @@ import {
   Loader2,
   AlertTriangle,
   Database,
-  Download
+  Download,
+  ShieldCheck,
+  PauseCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -58,6 +62,7 @@ import {
 
 const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
+const Framework = api.entities.Framework;
 
 export default function Policies() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -77,6 +82,7 @@ export default function Policies() {
   const [newPolicy, setNewPolicy] = useState({
     file_name: '',
     version: '1.0',
+    framework: '',
   });
 
   const { toast } = useToast();
@@ -85,6 +91,86 @@ export default function Policies() {
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at'),
+    // Poll every 2s while any policy is in 'processing' (or has a pause
+    // request in flight) so live progress + status transitions
+    // (processing → paused, paused → processing on resume) stay in sync.
+    refetchInterval: (query) => {
+      const data = query?.state?.data;
+      if (!Array.isArray(data)) return false;
+      if (data.some(p => p?.status === 'processing' || p?.pause_requested)) return 2000;
+      return false;
+    },
+    refetchIntervalInBackground: false,
+  });
+
+  const pausePolicyMutation = useMutation({
+    mutationFn: (id) => api.functions.invoke('pause_policy', { policy_id: id }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['policies'] });
+      const previous = queryClient.getQueryData(['policies']);
+      queryClient.setQueryData(['policies'], (old = []) =>
+        old.map(p => p.id === id ? { ...p, pause_requested: true, progress_stage: 'Pause requested…' } : p)
+      );
+      return { previous };
+    },
+    onError: (error, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(['policies'], context.previous);
+      toast({
+        title: 'Pause Failed',
+        description: error?.message || 'Could not request pause.',
+        variant: 'destructive',
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Pause Requested',
+        description: 'Analysis will stop at the next safe checkpoint.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
+    },
+  });
+
+  const resumePolicyMutation = useMutation({
+    mutationFn: (id) => api.functions.invoke('resume_policy', { policy_id: id }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['policies'] });
+      const previous = queryClient.getQueryData(['policies']);
+      queryClient.setQueryData(['policies'], (old = []) =>
+        old.map(p => p.id === id
+          ? { ...p, status: 'processing', pause_requested: false, progress_stage: 'Resuming…' }
+          : p)
+      );
+      return { previous };
+    },
+    onError: (error, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(['policies'], context.previous);
+      toast({
+        title: 'Resume Failed',
+        description: error?.message || 'Could not resume analysis.',
+        variant: 'destructive',
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Analysis Resumed',
+        description: 'Continuing from where it was paused.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+    },
+  });
+
+  const {
+    data: frameworks = [],
+    isLoading: frameworksLoading,
+  } = useQuery({
+    queryKey: ['frameworks', 'available'],
+    queryFn: () => Framework.list('name', 50),
+    staleTime: 60_000,
   });
 
 
@@ -132,6 +218,7 @@ export default function Policies() {
     setNewPolicy({
       file_name: '',
       version: '1.0',
+      framework: '',
     });
     setSelectedFile(null);
     setUploadProgress(0);
@@ -159,6 +246,15 @@ export default function Policies() {
       return;
     }
 
+    if (!newPolicy.framework) {
+      toast({
+        title: 'Framework Required',
+        description: 'Select a framework to compare this policy against.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
 
@@ -171,6 +267,7 @@ export default function Policies() {
       const form = new FormData();
       form.append('file', selectedFile);
       form.append('version', newPolicy.version || '1.0');
+      form.append('framework', newPolicy.framework);
 
       const res = await fetch('/api/integrations/upload', {
         method: 'POST',
@@ -214,14 +311,20 @@ export default function Policies() {
     try {
       updatePolicyMutation.mutate({ id: policy.id, data: { status: 'processing' } });
 
+      // If the policy was uploaded with an explicit framework, analyse only against
+      // that one. Legacy policies without framework_code fall back to all three.
+      const targetFrameworks = policy.framework_code
+        ? [policy.framework_code]
+        : ['NCA ECC', 'ISO 27001', 'NIST 800-53'];
+
       toast({
         title: 'Analysis Started',
-        description: `Analyzing ${policy.file_name} across all 3 frameworks (90 controls). This may take a few minutes...`,
+        description: `Analyzing ${policy.file_name} against ${targetFrameworks.join(', ')}. This may take a few minutes...`,
       });
 
       const result = await api.functions.invoke('analyze_policy', {
         policy_id: policy.id,
-        frameworks: ['NCA ECC', 'ISO 27001', 'NIST 800-53'],
+        frameworks: targetFrameworks,
       });
 
       if (result.success) {
@@ -246,10 +349,16 @@ export default function Policies() {
   };
 
   const handleRunAnalysis = async (policy) => {
-    // Check if framework reference documents are loaded
+    // Only block when *the policy's actual framework* has no reference
+    // document loaded. The previous code checked a hardcoded three-framework
+    // bundle, which fired the warning even when the policy's real framework
+    // was fully loaded.
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/functions/framework_status', {
+      const url = policy.framework_code
+        ? `/api/functions/framework_status?framework=${encodeURIComponent(policy.framework_code)}`
+        : '/api/functions/framework_status';
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -261,7 +370,7 @@ export default function Policies() {
         }
       }
     } catch (_) {
-      // If status check fails, proceed anyway
+      // If the status check fails, fall through and let analysis attempt run.
     }
     doRunAnalysis(policy);
   };
@@ -336,6 +445,22 @@ export default function Policies() {
       ),
     },
     {
+      header: 'Framework',
+      accessor: 'framework_code',
+      cell: (row) =>
+        row.framework_code ? (
+          <Badge
+            variant="outline"
+            className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 font-medium"
+          >
+            <ShieldCheck className="w-3 h-3" />
+            {row.framework_code}
+          </Badge>
+        ) : (
+          <span className="text-xs text-slate-400">—</span>
+        ),
+    },
+    {
       header: 'Uploaded',
       accessor: 'created_date',
       cell: (row) => (
@@ -363,7 +488,64 @@ export default function Policies() {
     {
       header: 'Status',
       accessor: 'status',
-      cell: (row) => <StatusBadge status={row.status || 'uploaded'} />,
+      cell: (row) => {
+        const pct = Math.max(0, Math.min(100, Number(row.progress) || 0));
+        const stage = row.progress_stage || '';
+
+        if (row.status === 'processing') {
+          const pausing = !!row.pause_requested;
+          const labelColor = pausing ? 'text-slate-500' : 'text-amber-700';
+          const trackColor = pausing ? 'bg-slate-200' : 'bg-amber-100';
+          const fillColor  = pausing
+            ? 'bg-gradient-to-r from-slate-400 to-slate-500'
+            : 'bg-gradient-to-r from-amber-400 to-emerald-500';
+          return (
+            <div className="min-w-[160px] max-w-[220px]">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${labelColor}`}>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {pausing ? 'Pausing…' : 'Processing'}
+                </span>
+                <span className={`text-xs font-semibold tabular-nums ${labelColor}`}>{pct}%</span>
+              </div>
+              <div className={`h-1.5 w-full rounded-full overflow-hidden ${trackColor}`}>
+                <div
+                  className={`h-full transition-all duration-500 ${fillColor}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 truncate mt-1" title={stage}>
+                {pausing ? 'Pause will take effect at the next safe checkpoint.' : stage}
+              </p>
+            </div>
+          );
+        }
+
+        if (row.status === 'paused') {
+          return (
+            <div className="min-w-[160px] max-w-[220px]">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                  <PauseCircle className="w-3.5 h-3.5" />
+                  Paused
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-slate-700">{pct}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-slate-400 transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 truncate mt-1">
+                {stage || 'Resume to continue analysis'}
+              </p>
+            </div>
+          );
+        }
+
+        return <StatusBadge status={row.status || 'uploaded'} />;
+      },
     },
     {
       header: '',
@@ -376,10 +558,28 @@ export default function Policies() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleRunAnalysis(row)}>
-              <Play className="w-4 h-4 mr-2" />
-              Run Analysis
-            </DropdownMenuItem>
+            {row.status === 'processing' ? (
+              <DropdownMenuItem
+                onClick={() => pausePolicyMutation.mutate(row.id)}
+                disabled={row.pause_requested || pausePolicyMutation.isPending}
+              >
+                <Pause className="w-4 h-4 mr-2" />
+                {row.pause_requested ? 'Pause Requested…' : 'Pause Analysis'}
+              </DropdownMenuItem>
+            ) : row.status === 'paused' ? (
+              <DropdownMenuItem
+                onClick={() => resumePolicyMutation.mutate(row.id)}
+                disabled={resumePolicyMutation.isPending}
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Resume Analysis
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => handleRunAnalysis(row)}>
+                <Play className="w-4 h-4 mr-2" />
+                Run Analysis
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => handleViewPreview(row)}>
               <Eye className="w-4 h-4 mr-2" />
               View Details
@@ -518,13 +718,57 @@ export default function Policies() {
               </label>
             </div>
 
-            <div className="space-y-2">
-              <Label>Version</Label>
-              <Input
-                placeholder="1.0"
-                value={newPolicy.version}
-                onChange={(e) => setNewPolicy(prev => ({ ...prev, version: e.target.value }))}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>
+                  Framework <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={newPolicy.framework}
+                  onValueChange={(value) =>
+                    setNewPolicy((prev) => ({ ...prev, framework: value }))
+                  }
+                  disabled={uploading || frameworksLoading || frameworks.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        frameworksLoading
+                          ? 'Loading frameworks…'
+                          : frameworks.length === 0
+                            ? 'No frameworks available'
+                            : 'Select a framework'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {frameworks.map((fw) => (
+                      <SelectItem key={fw.id} value={fw.name}>
+                        {fw.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!frameworksLoading && frameworks.length === 0 && (
+                  <p className="text-xs text-amber-600">
+                    Upload a reference document on the Frameworks page first.
+                  </p>
+                )}
+                {!frameworksLoading && frameworks.length > 0 && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    The policy will be analyzed against this framework's controls.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Version</Label>
+                <Input
+                  placeholder="1.0"
+                  value={newPolicy.version}
+                  onChange={(e) => setNewPolicy(prev => ({ ...prev, version: e.target.value }))}
+                />
+              </div>
             </div>
           </div>
 
@@ -534,7 +778,7 @@ export default function Policies() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!selectedFile || uploading}
+              disabled={!selectedFile || !newPolicy.framework || uploading}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               {uploading ? (
@@ -620,19 +864,32 @@ export default function Policies() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
-              Framework Documents Not Loaded
+              Framework Document Not Loaded
             </DialogTitle>
             <DialogDescription>
-              The AI will use basic control definitions only. For deeper analysis that compares your
-              policy against the full framework requirements, upload reference documents in the
-              Frameworks page first.
+              {pendingAnalysisPolicy?.framework_code ? (
+                <>
+                  The reference document for{' '}
+                  <strong>{pendingAnalysisPolicy.framework_code}</strong> hasn't been uploaded yet,
+                  so the AI will fall back to basic control definitions instead of comparing this
+                  policy against the full framework requirements.
+                </>
+              ) : (
+                <>
+                  No reference document is loaded for this policy's framework. The AI will use
+                  basic control definitions only.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg my-2">
             <Database className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-amber-700">
-              Upload official NCA ECC, ISO 27001, and NIST 800-53 documents in
-              <strong> Frameworks → Upload Reference Document</strong> for best results.
+              Ask an administrator to upload the reference document for
+              {pendingAnalysisPolicy?.framework_code
+                ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
+                : ' this framework '}
+              from the Admin <strong>Frameworks</strong> panel for the best results.
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-2">
@@ -675,6 +932,10 @@ export default function Policies() {
                 <div>
                   <p className="text-sm text-slate-500">Version</p>
                   <p className="font-medium">{selectedPolicy.version || '1.0'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Framework</p>
+                  <p className="font-medium">{selectedPolicy.framework_code || '—'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Upload Date</p>

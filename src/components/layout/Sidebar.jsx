@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/AuthContext';
 import {
   Home,
   LayoutDashboard,
@@ -13,15 +14,18 @@ import {
   FileBarChart,
   Lightbulb,
   Brain,
-  History,
   FlaskConical,
   MessageSquare,
   Settings,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  KeyRound,
 } from 'lucide-react';
 
+const ADMIN_EMAIL = 'himayaadmin@gmail.com';
+
+// Audit Trail / Activity Logs lives in the Admin panel only — no entry here.
 const navigationItems = [
   { name: 'Home', icon: Home, page: 'Home' },
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
@@ -33,7 +37,6 @@ const navigationItems = [
   { name: 'Reports', icon: FileBarChart, page: 'Reports' },
   { name: 'AI Insights', icon: Lightbulb, page: 'AIInsights', badge: 'NEW' },
   { name: 'Explainability', icon: Brain, page: 'Explainability' },
-  { name: 'Audit Trail', icon: History, page: 'AuditTrail' },
   { name: 'Simulation', icon: FlaskConical, page: 'Simulation', badge: 'BETA' },
   { name: 'AI Assistant', icon: MessageSquare, page: 'AIAssistant' },
   { name: 'Settings', icon: Settings, page: 'Settings' },
@@ -42,6 +45,9 @@ const navigationItems = [
 export default function Sidebar({ collapsed, setCollapsed }) {
   const location = useLocation();
   const currentPath = location.pathname;
+  const { user } = useAuth();
+  const isAdmin = user?.email === ADMIN_EMAIL;
+  const visibleNav = navigationItems;
 
   return (
     <aside
@@ -66,7 +72,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       {/* Navigation */}
       <nav dir="rtl" className="flex-1 overflow-y-auto py-4 px-3">
         <ul dir="ltr" className="space-y-1">
-          {navigationItems.map((item) => {
+          {visibleNav.map((item) => {
             const isActive = currentPath === `/${item.page}` ||
               (item.page === 'Home' && currentPath === '/');
             
@@ -112,6 +118,22 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           })}
         </ul>
       </nav>
+
+      {/* Admin link — only visible to the admin account */}
+      {isAdmin && (
+        <div className="px-3 pb-2">
+          <Link to="/admin"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
+              currentPath === '/admin'
+                ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-400 border-l-2 border-emerald-400"
+                : "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+            )}>
+            <KeyRound className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="text-sm font-medium">Admin Panel</span>}
+          </Link>
+        </div>
+      )}
 
       {/* Collapse Toggle */}
       <div className="p-3 border-t border-slate-700/50">

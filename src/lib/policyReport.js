@@ -100,7 +100,7 @@ function newDoc() {
   return doc;
 }
 
-function drawHeader(doc, policyName, logoDataUrl) {
+function drawHeader(doc, headerSubtitle, logoDataUrl, headerTitle = "Compliance Report") {
   doc.setFillColor(...BRAND.slate900);
   doc.rect(0, 0, PAGE_W, 28, "F");
 
@@ -123,11 +123,12 @@ function drawHeader(doc, policyName, logoDataUrl) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...BRAND.white);
-  doc.text("Compliance Report", PAGE_W - MARGIN, 13.5, { align: "right" });
+  doc.text(headerTitle, PAGE_W - MARGIN, 13.5, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...BRAND.slate300);
-  const truncated = policyName && policyName.length > 48 ? policyName.slice(0, 45) + "…" : policyName || "";
+  const subtitle = headerSubtitle || "";
+  const truncated = subtitle.length > 48 ? subtitle.slice(0, 45) + "…" : subtitle;
   doc.text(truncated, PAGE_W - MARGIN, 18, { align: "right" });
 }
 
@@ -147,7 +148,7 @@ function drawFooter(doc, pageNum, totalPages, generatedAt) {
 function ensureRoom(ctx, needed) {
   if (ctx.y + needed > PAGE_H - 18) {
     ctx.doc.addPage();
-    drawHeader(ctx.doc, ctx.policyName, ctx.logoDataUrl);
+    drawHeader(ctx.doc, ctx.headerSubtitle ?? ctx.policyName, ctx.logoDataUrl, ctx.headerTitle);
     ctx.y = 38;
   }
 }
@@ -554,6 +555,27 @@ function buildCsvBlob(data) {
   const csv = "﻿" + lines.join("\n");
   return new Blob([csv], { type: "text/csv;charset=utf-8;" });
 }
+
+// Re-export the shared branding primitives so other report builders
+// (e.g. auditReport.js) can render documents in the same Himaya style
+// without duplicating the logo/header/footer/table layout code.
+export {
+  BRAND,
+  MARGIN,
+  PAGE_W,
+  PAGE_H,
+  loadLogoDataUrl,
+  safeDate,
+  safeFilenameBase,
+  newDoc,
+  drawHeader,
+  drawFooter,
+  ensureRoom,
+  drawSectionTitle,
+  drawKeyValueGrid,
+  drawTable,
+  drawEmpty,
+};
 
 export async function buildPolicyReport(data, format) {
   const base = safeFilenameBase(data?.policy?.file_name);

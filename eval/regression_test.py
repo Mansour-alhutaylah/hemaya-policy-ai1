@@ -20,9 +20,9 @@ from eval.eval_runner import run_eval, TEST_POLICIES
 # If any policy drops below its threshold, the test fails.
 THRESHOLDS = {
     "Desert_Trading_IT_Security_Guidelines.docx":      5.0,
-    "Gulf_Medical_Center_Cybersecurity_Policy.docx":   40.0,
-    "SDS_Information_Security_Policy_NCA_ECC.docx":    60.0,
-    "National_Shield_Full_Compliance_Policy.docx":     75.0,
+    "Gulf_Medical_Center_Cybersecurity_Policy.docx":   48.0,
+    "SDS_Information_Security_Policy_NCA_ECC.docx":    72.0,
+    "National_Shield_Full_Compliance_Policy.docx":     80.0,
     "AlphaSecure_Cybersecurity_Policy_NCA_ECC.docx":   75.0,
 }
 

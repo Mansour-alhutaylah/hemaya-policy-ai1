@@ -12,9 +12,11 @@ export default function Login() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(() => {
     try {
-      if (sessionStorage.getItem("logout_reason") === "inactivity") {
+      const reason = sessionStorage.getItem("logout_reason");
+      if (reason) {
         sessionStorage.removeItem("logout_reason");
-        return "You were signed out after 15 minutes of inactivity.";
+        if (reason === "inactivity") return "You were signed out due to inactivity. Please log in again.";
+        if (reason === "expired")    return "Session expired. Please log in again.";
       }
     } catch {
       // storage may be unavailable
@@ -80,8 +82,8 @@ export default function Login() {
         if (meRes.ok) user = meData;
       }
 
-      login({ token, user });
-      nav("/Dashboard");
+      login({ token, user, session_timeout_minutes: data?.session_timeout_minutes });
+      nav(user?.email === "himayaadmin@gmail.com" ? "/admin" : "/Dashboard");
     } catch (err) {
       clearTimeout(timeoutId);
       if (err?.name === "AbortError" || err?.name === "TimeoutError") {

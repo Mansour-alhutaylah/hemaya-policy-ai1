@@ -16,6 +16,19 @@ async function request(method, url, data) {
   const isJson = contentType.includes("application/json");
 
   if (!res.ok) {
+    // 401 anywhere in the app means the token is expired or invalid — force logout
+    if (res.status === 401) {
+      try {
+        sessionStorage.setItem("logout_reason", "expired");
+      } catch { /* storage unavailable */ }
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("session_timeout_minutes");
+      window.location.href = "/login";
+      // Throw so any awaiting caller also stops execution
+      throw new Error("Session expired. Please log in again.");
+    }
+
     const text = await res.text();
     if (isJson && text) {
       try {
@@ -60,7 +73,7 @@ export const api = {
     logout: (redirectUrl) => {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = redirectUrl || "/login";
+      window.location.href = redirectUrl || "/";
     },
   },
   entities: new Proxy({}, entityHandler),

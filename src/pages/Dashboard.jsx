@@ -15,7 +15,6 @@ import {
   TrendingUp,
   Upload,
   BarChart3,
-  ArrowRight,
   Clock,
   CheckCircle2,
   FileText
@@ -99,21 +98,16 @@ export default function Dashboard() {
     Missing: item.missing,
   }));
 
-  // Recent activity
-  const recentActivity = auditLogs.slice(0, 5).map(log => ({
+  // Recent activity — DB-backed only, no mock fallback. The audit endpoint is
+  // admin-only, so non-admins will see the empty state below (which is correct
+  // since they don't have visibility into system-wide activity anyway).
+  const displayActivity = auditLogs.slice(0, 5).map(log => ({
     id: log.id,
     action: log.action,
     actor: log.actor,
     target: typeof log.details === 'object' ? JSON.stringify(log.details) : log.details,
     time: log.timestamp,
   }));
-
-  // Default activity if no logs
-  const displayActivity = recentActivity.length > 0 ? recentActivity : [
-    { id: 1, action: 'policy_upload', actor: 'admin@company.com', target: 'Security Policy v2.1', time: new Date().toISOString() },
-    { id: 2, action: 'analysis_complete', actor: 'System', target: 'ISO 27001 Analysis', time: new Date(Date.now() - 3600000).toISOString() },
-    { id: 3, action: 'gap_update', actor: 'compliance@company.com', target: 'Access Control Gap', time: new Date(Date.now() - 7200000).toISOString() },
-  ];
 
   const getActionIcon = (action) => {
     switch (action) {
@@ -301,18 +295,10 @@ export default function Dashboard() {
         {/* Recent Activity */}
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Clock className="w-5 h-5 text-slate-600" />
-                Recent Activity
-              </CardTitle>
-              <Link to={createPageUrl('AuditTrail')}>
-                <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700">
-                  View all
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
-              </Link>
-            </div>
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <Clock className="w-5 h-5 text-slate-600" />
+              Recent Activity
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {logsLoading ? (
@@ -320,6 +306,10 @@ export default function Dashboard() {
                 {[...Array(5)].map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
+              </div>
+            ) : displayActivity.length === 0 ? (
+              <div className="text-center py-8 text-sm text-slate-500">
+                No recent activity to show.
               </div>
             ) : (
               <div className="space-y-4">

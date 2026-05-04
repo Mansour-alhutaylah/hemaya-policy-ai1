@@ -46,7 +46,7 @@ export default function Topbar() {
 
   const handleLogout = () => {
     if (typeof ctxLogout === "function") return ctxLogout();
-    api.auth.logout("/login");
+    api.auth.logout("/");
   };
 
   const displayName = useMemo(() => {

@@ -14,13 +14,28 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import VerifyOTP from "@/pages/VerifyOTP";
 import ForgotPassword from "@/pages/ForgotPassword";
+import Landing from "@/pages/Landing";
+import Admin from "@/pages/Admin";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
+// Mirrors backend ADMIN_EMAIL + Sidebar admin check. Reusable when admin-only
+// user-app pages are added in future (Audit Trail now lives in /admin only).
+const ADMIN_EMAIL = "himayaadmin@gmail.com";
+const ADMIN_ONLY_PAGES = new Set();
+
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
+
+const AdminOnly = ({ children }) => {
+  const { user } = useAuth();
+  if (user?.email !== ADMIN_EMAIL) {
+    return <Navigate to="/Dashboard" replace />;
+  }
+  return children;
+};
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthed } = useAuth();
@@ -29,11 +44,12 @@ const AuthenticatedApp = () => {
   // إذا كان مسجّل دخول وحاول يفتح /login حوله للداشبورد
   const publicRoutes = (
     <Routes>
+      <Route path="/" element={isAuthed ? <Navigate to="/Dashboard" replace /> : <Landing />} />
       <Route path="/login" element={isAuthed ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/signup" element={isAuthed ? <Navigate to="/" replace /> : <Signup />} />
       <Route path="/verify-otp" element={<VerifyOTP />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 
@@ -60,6 +76,9 @@ const AuthenticatedApp = () => {
   // ✅ Render main app (protected)
   return (
     <Routes>
+      {/* Admin panel — rendered without the main Layout, handles its own access control */}
+      <Route path="/admin" element={<Admin />} />
+
       <Route
         path="/"
         element={
@@ -69,17 +88,22 @@ const AuthenticatedApp = () => {
         }
       />
 
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
+      {Object.entries(Pages).map(([path, Page]) => {
+        const element = (
+          <LayoutWrapper currentPageName={path}>
+            <Page />
+          </LayoutWrapper>
+        );
+        return (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={
+              ADMIN_ONLY_PAGES.has(path) ? <AdminOnly>{element}</AdminOnly> : element
+            }
+          />
+        );
+      })}
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>

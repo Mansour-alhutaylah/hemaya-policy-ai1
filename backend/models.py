@@ -69,6 +69,22 @@ class Policy(Base):
     last_analyzed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
+    # Real-time processing progress (0..100). Updated at each pipeline stage
+    # (text extraction, chunking, embedding, control analysis, etc.) so the
+    # frontend can show an accurate "Processing • 45%" indicator. Persisted
+    # to the DB so refresh shows the latest value.
+    progress = Column(Integer, default=0, nullable=True)
+    progress_stage = Column(String, nullable=True)
+
+    # Cooperative pause: the analyzer polls pause_requested at safe checkpoints
+    # (after each framework finishes). When true, it commits, sets status to
+    # 'paused', records paused_at, clears the flag, and exits gracefully.
+    # Resume re-runs the analyzer with resume=True; frameworks that already
+    # have a compliance_results row are skipped, and the verification_cache
+    # makes any re-run framework cheap.
+    pause_requested = Column(Boolean, default=False, nullable=True)
+    paused_at = Column(DateTime(timezone=True), nullable=True)
+
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")
     mappings = relationship("MappingReview", back_populates="policy", cascade="all, delete-orphan")
@@ -188,3 +204,14 @@ class Framework(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String, unique=True)
     description = Column(Text, nullable=True)
+
+    # File-document fields. Frameworks are uploaded reference documents,
+    # so each row points at the actual stored PDF/DOCX/TXT.
+    version = Column(String, nullable=True)
+    original_file_name = Column(String, nullable=True)
+    file_url = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
+    file_size = Column(Integer, nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), nullable=True)
+    uploaded_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
