@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Component } from 'react';
 import { useToast } from '@/components/ui/use-toast';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
@@ -175,6 +175,70 @@ const fmtTime = (d) => {
   try { return new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
   catch { return '—'; }
 };
+
+// ─────────────────────────────────────────────────────────
+// SECTION ERROR BOUNDARY
+// Wraps each admin section so any runtime crash inside a section shows
+// a usable error UI instead of unmounting the whole admin tree (which
+// otherwise leaves the user staring at a blank white screen).
+// ─────────────────────────────────────────────────────────
+
+class SectionErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    // Surface the error in the dev console; the UI below replaces the section.
+    // eslint-disable-next-line no-console
+    console.error('[Admin section crashed]', this.props.sectionName, error, info);
+  }
+  componentDidUpdate(prevProps) {
+    if (prevProps.sectionName !== this.props.sectionName && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+  render() {
+    if (this.state.error) {
+      const msg = this.state.error?.message || String(this.state.error);
+      return (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 text-slate-200">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-red-300 font-semibold">
+                The {this.props.sectionName || 'admin'} section ran into an error.
+              </p>
+              <p className="text-sm text-slate-400 mt-1 break-words">{msg}</p>
+              <div className="mt-4 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-slate-600 text-slate-200 hover:bg-slate-700"
+                  onClick={() => this.setState({ error: null })}
+                >
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-slate-600 text-slate-200 hover:bg-slate-700"
+                  onClick={() => window.location.reload()}
+                >
+                  Reload page
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─────────────────────────────────────────────────────────
 // SECTION: DASHBOARD
@@ -1996,6 +2060,8 @@ export default function Admin() {
 
       <div className={`transition-all duration-300 ${collapsed ? 'ml-20' : 'ml-64'}`}>
         {/* Top bar */}
+        {/* Section content rendered below is wrapped in SectionErrorBoundary
+            so a crash in any single section doesn't blank the whole admin shell. */}
         <header className="bg-slate-900 border-b border-slate-700/50 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
           <div>
             <h1 className="text-white font-semibold capitalize">{active.replace('-', ' ')}</h1>
@@ -2015,7 +2081,9 @@ export default function Admin() {
         </header>
 
         <main className="p-6">
-          {renderSection()}
+          <SectionErrorBoundary sectionName={active}>
+            {renderSection()}
+          </SectionErrorBoundary>
         </main>
       </div>
     </div>
