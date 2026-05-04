@@ -633,7 +633,7 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
 
 # ── Main entry: run_checkpoint_analysis ──────────────────────────────────────
 
-async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None):
+async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, resume=False):
     """
     Analyze a policy against checkpoint-based compliance controls.
     Saves results to compliance_results, gaps, mapping_reviews,
@@ -641,6 +641,14 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None):
 
     progress_cb(percent: int, stage: str) is called at each pipeline
     stage so callers can persist live progress to the policy row.
+
+    Cooperative pause: at safe checkpoints (after each framework finishes)
+    we read policies.pause_requested. When true, we set status='paused',
+    stamp paused_at, clear the request flag, and return early with
+    {"paused": True, ...}. Resume re-invokes this function with resume=True;
+    frameworks that already have a compliance_results row are skipped.
+    The verification_cache makes any partially-done framework cheap to
+    re-run.
     """
     def _report(pct, stage):
         if progress_cb:
@@ -649,9 +657,40 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None):
             except Exception:
                 pass
 
+    def _pause_requested() -> bool:
+        try:
+            row = db.execute(sql_text(
+                "SELECT pause_requested FROM policies WHERE id = :pid"
+            ), {"pid": policy_id}).fetchone()
+            return bool(row and row[0])
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return False
+
+    def _mark_paused():
+        try:
+            db.execute(sql_text(
+                "UPDATE policies "
+                "SET status='paused', paused_at=:now, "
+                "    pause_requested=FALSE, "
+                "    progress_stage='Paused' "
+                "WHERE id=:pid"
+            ), {"now": datetime.now(timezone.utc), "pid": policy_id})
+            db.commit()
+        except Exception as e:
+            print(f"  [pause] failed to mark paused: {e}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
     t0 = time.time()
     print(f"\n{'='*50}")
-    print(f"CHECKPOINT ANALYSIS STARTED at {time.strftime('%H:%M:%S')}")
+    mode = "RESUMED" if resume else "STARTED"
+    print(f"CHECKPOINT ANALYSIS {mode} at {time.strftime('%H:%M:%S')}")
     print(f"{'='*50}")
     _report(12, "Checking policy chunks")
 
@@ -722,6 +761,29 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None):
     fw_index = 0
 
     for fw in frameworks:
+        # Pause check at the start of each framework (safe boundary).
+        if _pause_requested():
+            _mark_paused()
+            print(f"  Pause requested before {fw} — stopping gracefully.")
+            return {"paused": True, "results": all_results}
+
+        # Resume mode: skip frameworks that already have a result row.
+        if resume:
+            try:
+                existing = db.execute(sql_text(
+                    "SELECT 1 FROM compliance_results cr "
+                    "JOIN frameworks f ON f.id = cr.framework_id "
+                    "WHERE cr.policy_id = :pid AND f.name = :fw LIMIT 1"
+                ), {"pid": policy_id, "fw": fw}).fetchone()
+                if existing:
+                    fw_index += 1
+                    print(f"  [resume] {fw} already complete — skipping")
+                    _report(int(25 + fw_budget * fw_index), f"{fw} (resumed, already done)")
+                    continue
+            except Exception:
+                try: db.rollback()
+                except Exception: pass
+
         fw_start = time.time()
         print(f"\n  Starting {fw}...")
         fw_base = 25 + fw_budget * fw_index

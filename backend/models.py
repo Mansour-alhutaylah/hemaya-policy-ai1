@@ -5,7 +5,7 @@ import uuid
 def _now():
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
@@ -52,6 +52,15 @@ class Policy(Base):
     # to the DB so refresh shows the latest value.
     progress = Column(Integer, default=0, nullable=True)
     progress_stage = Column(String, nullable=True)
+
+    # Cooperative pause: the analyzer polls pause_requested at safe checkpoints
+    # (after each framework finishes). When true, it commits, sets status to
+    # 'paused', records paused_at, clears the flag, and exits gracefully.
+    # Resume re-runs the analyzer with resume=True; frameworks that already
+    # have a compliance_results row are skipped, and the verification_cache
+    # makes any re-run framework cheap.
+    pause_requested = Column(Boolean, default=False, nullable=True)
+    paused_at = Column(DateTime(timezone=True), nullable=True)
 
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")

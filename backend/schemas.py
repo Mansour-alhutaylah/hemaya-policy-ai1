@@ -161,6 +161,10 @@ class AIInsight(BaseModel):
 class AnalyzeRequest(BaseModel):
     policy_id: str
     frameworks: List[str]
+    # When true, the analyzer keeps existing compliance_results / gaps /
+    # mappings in place and skips frameworks that have already finished
+    # (used by the resume-after-pause flow).
+    resume: Optional[bool] = False
 
 
 class RunSimulationRequest(BaseModel):

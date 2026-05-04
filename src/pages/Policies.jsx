@@ -36,6 +36,7 @@ import {
   FileBarChart,
   MoreVertical,
   Play,
+  Pause,
   Eye,
   Trash2,
   Archive,
@@ -46,7 +47,8 @@ import {
   AlertTriangle,
   Database,
   Download,
-  ShieldCheck
+  ShieldCheck,
+  PauseCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -89,14 +91,77 @@ export default function Policies() {
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at'),
-    // Poll every 2s while any policy is in 'processing' so the live
-    // progress percentage stays in sync with the backend pipeline.
+    // Poll every 2s while any policy is in 'processing' (or has a pause
+    // request in flight) so live progress + status transitions
+    // (processing → paused, paused → processing on resume) stay in sync.
     refetchInterval: (query) => {
       const data = query?.state?.data;
-      if (Array.isArray(data) && data.some(p => p?.status === 'processing')) return 2000;
+      if (!Array.isArray(data)) return false;
+      if (data.some(p => p?.status === 'processing' || p?.pause_requested)) return 2000;
       return false;
     },
     refetchIntervalInBackground: false,
+  });
+
+  const pausePolicyMutation = useMutation({
+    mutationFn: (id) => api.functions.invoke('pause_policy', { policy_id: id }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['policies'] });
+      const previous = queryClient.getQueryData(['policies']);
+      queryClient.setQueryData(['policies'], (old = []) =>
+        old.map(p => p.id === id ? { ...p, pause_requested: true, progress_stage: 'Pause requested…' } : p)
+      );
+      return { previous };
+    },
+    onError: (error, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(['policies'], context.previous);
+      toast({
+        title: 'Pause Failed',
+        description: error?.message || 'Could not request pause.',
+        variant: 'destructive',
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Pause Requested',
+        description: 'Analysis will stop at the next safe checkpoint.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
+    },
+  });
+
+  const resumePolicyMutation = useMutation({
+    mutationFn: (id) => api.functions.invoke('resume_policy', { policy_id: id }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['policies'] });
+      const previous = queryClient.getQueryData(['policies']);
+      queryClient.setQueryData(['policies'], (old = []) =>
+        old.map(p => p.id === id
+          ? { ...p, status: 'processing', pause_requested: false, progress_stage: 'Resuming…' }
+          : p)
+      );
+      return { previous };
+    },
+    onError: (error, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(['policies'], context.previous);
+      toast({
+        title: 'Resume Failed',
+        description: error?.message || 'Could not resume analysis.',
+        variant: 'destructive',
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Analysis Resumed',
+        description: 'Continuing from where it was paused.',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['policies'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+    },
   });
 
   const {
@@ -424,28 +489,61 @@ export default function Policies() {
       header: 'Status',
       accessor: 'status',
       cell: (row) => {
+        const pct = Math.max(0, Math.min(100, Number(row.progress) || 0));
+        const stage = row.progress_stage || '';
+
         if (row.status === 'processing') {
-          const pct = Math.max(0, Math.min(100, Number(row.progress) || 0));
-          const stage = row.progress_stage || 'Processing';
+          const pausing = !!row.pause_requested;
+          const labelColor = pausing ? 'text-slate-500' : 'text-amber-700';
+          const trackColor = pausing ? 'bg-slate-200' : 'bg-amber-100';
+          const fillColor  = pausing
+            ? 'bg-gradient-to-r from-slate-400 to-slate-500'
+            : 'bg-gradient-to-r from-amber-400 to-emerald-500';
           return (
             <div className="min-w-[160px] max-w-[220px]">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${labelColor}`}>
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  Processing
+                  {pausing ? 'Pausing…' : 'Processing'}
                 </span>
-                <span className="text-xs font-semibold tabular-nums text-amber-700">{pct}%</span>
+                <span className={`text-xs font-semibold tabular-nums ${labelColor}`}>{pct}%</span>
               </div>
-              <div className="h-1.5 w-full bg-amber-100 rounded-full overflow-hidden">
+              <div className={`h-1.5 w-full rounded-full overflow-hidden ${trackColor}`}>
                 <div
-                  className="h-full bg-gradient-to-r from-amber-400 to-emerald-500 transition-all duration-500"
+                  className={`h-full transition-all duration-500 ${fillColor}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <p className="text-[10px] text-slate-500 truncate mt-1" title={stage}>{stage}</p>
+              <p className="text-[10px] text-slate-500 truncate mt-1" title={stage}>
+                {pausing ? 'Pause will take effect at the next safe checkpoint.' : stage}
+              </p>
             </div>
           );
         }
+
+        if (row.status === 'paused') {
+          return (
+            <div className="min-w-[160px] max-w-[220px]">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                  <PauseCircle className="w-3.5 h-3.5" />
+                  Paused
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-slate-700">{pct}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-slate-400 transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 truncate mt-1">
+                {stage || 'Resume to continue analysis'}
+              </p>
+            </div>
+          );
+        }
+
         return <StatusBadge status={row.status || 'uploaded'} />;
       },
     },
@@ -460,10 +558,28 @@ export default function Policies() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleRunAnalysis(row)}>
-              <Play className="w-4 h-4 mr-2" />
-              Run Analysis
-            </DropdownMenuItem>
+            {row.status === 'processing' ? (
+              <DropdownMenuItem
+                onClick={() => pausePolicyMutation.mutate(row.id)}
+                disabled={row.pause_requested || pausePolicyMutation.isPending}
+              >
+                <Pause className="w-4 h-4 mr-2" />
+                {row.pause_requested ? 'Pause Requested…' : 'Pause Analysis'}
+              </DropdownMenuItem>
+            ) : row.status === 'paused' ? (
+              <DropdownMenuItem
+                onClick={() => resumePolicyMutation.mutate(row.id)}
+                disabled={resumePolicyMutation.isPending}
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Resume Analysis
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => handleRunAnalysis(row)}>
+                <Play className="w-4 h-4 mr-2" />
+                Run Analysis
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => handleViewPreview(row)}>
               <Eye className="w-4 h-4 mr-2" />
               View Details

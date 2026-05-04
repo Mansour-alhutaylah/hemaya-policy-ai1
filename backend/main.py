@@ -608,7 +608,9 @@ def get_policies(
                p.framework_code, p.uploaded_at, p.last_analyzed_at, p.created_at,
                u.email AS uploaded_by,
                COALESCE(p.progress, 0) AS progress,
-               p.progress_stage
+               p.progress_stage,
+               COALESCE(p.pause_requested, FALSE) AS pause_requested,
+               p.paused_at
         FROM policies p
         LEFT JOIN LATERAL (
             SELECT actor_id
@@ -665,7 +667,9 @@ def get_policies(
          "progress": int(r[14]) if rich and r[14] is not None else (
              100 if r[5] == 'analyzed' else 0
          ),
-         "progress_stage": (r[15] if rich else None) or None}
+         "progress_stage": (r[15] if rich else None) or None,
+         "pause_requested": bool(r[16]) if rich else False,
+         "paused_at": (r[17].isoformat() if rich and r[17] else None)}
         for r in rows
     ]
 
@@ -962,40 +966,49 @@ def delete_entity(entity: str, item_id: str, db: Session = Depends(get_db), curr
 # Functions
 @app.post("/api/functions/analyze_policy")
 async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    from sqlalchemy import text as _t
+
     policy = db.query(models.Policy).filter(models.Policy.id == request.policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
 
-    policy.status = "processing"
-    db.commit()
-    set_policy_progress(db, policy.id, 5, "Preparing analysis")
+    resume = bool(getattr(request, "resume", False))
 
-    # Remove previous analysis data to prevent duplicates on re-run
-    db.query(models.AIInsight).filter(models.AIInsight.policy_id == policy.id).delete()
-    db.query(models.Gap).filter(models.Gap.policy_id == policy.id).delete()
-    db.query(models.MappingReview).filter(models.MappingReview.policy_id == policy.id).delete()
-    db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
+    # Reset pause flag — a new run (or a resume) is starting.
+    db.execute(_t(
+        "UPDATE policies SET status='processing', pause_requested=FALSE, "
+        "paused_at = CASE WHEN :resume THEN paused_at ELSE NULL END "
+        "WHERE id = :pid"
+    ), {"resume": resume, "pid": policy.id})
     db.commit()
-    set_policy_progress(db, policy.id, 10, "Cleared previous results")
+    set_policy_progress(db, policy.id, 5,
+                        "Resuming analysis" if resume else "Preparing analysis")
 
-    # Bridge analyzer stage callbacks → policy.progress in the DB
+    if not resume:
+        # Fresh run — wipe previous analysis data so we don't leave stale rows.
+        db.query(models.AIInsight).filter(models.AIInsight.policy_id == policy.id).delete()
+        db.query(models.Gap).filter(models.Gap.policy_id == policy.id).delete()
+        db.query(models.MappingReview).filter(models.MappingReview.policy_id == policy.id).delete()
+        db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy.id).delete()
+        db.commit()
+        set_policy_progress(db, policy.id, 10, "Cleared previous results")
+
     def _progress_cb(percent: int, stage: str):
         set_policy_progress(db, policy.id, percent, stage)
 
     try:
-        # Checkpoint-based analysis handles all DB writes and updates policy status.
         results = await run_checkpoint_analysis(
-            db, request.policy_id, request.frameworks, progress_cb=_progress_cb
+            db, request.policy_id, request.frameworks,
+            progress_cb=_progress_cb, resume=resume,
         )
+        if isinstance(results, dict) and results.get("paused"):
+            return {"success": True, "paused": True, "results": results.get("results", {})}
         set_policy_progress(db, policy.id, 100, "Completed")
     except Exception as e:
-        # Mark the policy as failed so the spinner doesn't stick on the UI.
         try:
             db.execute(
-                __import__("sqlalchemy").text(
-                    "UPDATE policies SET status='failed', progress=0, "
-                    "progress_stage='Analysis failed' WHERE id=:pid"
-                ),
+                _t("UPDATE policies SET status='failed', progress=0, "
+                   "progress_stage='Analysis failed' WHERE id=:pid"),
                 {"pid": policy.id},
             )
             db.commit()
@@ -1004,6 +1017,166 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
 
     return {"success": True, "results": results}
+
+
+@app.post("/api/functions/pause_policy")
+def pause_policy(payload: Dict[str, Any], db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """Cooperative pause: sets pause_requested=true on the policy row.
+
+    The running analyzer polls this flag at safe checkpoints (after each
+    framework finishes), commits its work, sets status='paused', and exits.
+    Pause latency is bounded by per-framework duration; the
+    verification_cache makes resume cheap.
+    """
+    from sqlalchemy import text as _t
+
+    policy_id = payload.get("policy_id")
+    if not policy_id:
+        raise HTTPException(status_code=400, detail="policy_id is required")
+
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if policy.status != "processing":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot pause a policy in status '{policy.status}'.",
+        )
+
+    db.execute(_t(
+        "UPDATE policies SET pause_requested = TRUE, "
+        "progress_stage = 'Pause requested…' WHERE id = :pid"
+    ), {"pid": policy_id})
+    db.commit()
+
+    try:
+        db.execute(_t("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'analysis_pause', 'policy', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": policy_id,
+            "det": json.dumps({"file_name": policy.file_name}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    return {"ok": True, "pause_requested": True}
+
+
+def _frameworks_for_policy(db, policy_id: str) -> list:
+    """Return the framework names a policy should be analyzed against.
+
+    Uses policies.framework_code when set; otherwise falls back to all
+    frameworks that have a reference document loaded. Mirrors the
+    frontend's doRunAnalysis logic so resume targets the same set.
+    """
+    from sqlalchemy import text as _t
+    row = db.execute(_t(
+        "SELECT framework_code FROM policies WHERE id = :pid"
+    ), {"pid": policy_id}).fetchone()
+    if row and row[0]:
+        return [row[0]]
+    rows = db.execute(_t(
+        "SELECT DISTINCT f.name FROM framework_chunks fc "
+        "JOIN frameworks f ON f.id = fc.framework_id"
+    )).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
+async def _resume_analysis_in_background(policy_id: str, frameworks: list):
+    """Fire-and-forget resume worker with its own DB session.
+
+    Used by /api/functions/resume_policy so the user's HTTP request
+    returns instantly and the polling UI shows live progress as the
+    analyzer continues.
+    """
+    from sqlalchemy import text as _t
+    db = database.SessionLocal()
+    try:
+        db.execute(_t(
+            "UPDATE policies SET status='processing', pause_requested=FALSE "
+            "WHERE id = :pid"
+        ), {"pid": policy_id})
+        db.commit()
+        set_policy_progress(db, policy_id, 5, "Resuming analysis")
+
+        def _cb(percent: int, stage: str):
+            set_policy_progress(db, policy_id, percent, stage)
+
+        result = await run_checkpoint_analysis(
+            db, policy_id, frameworks, progress_cb=_cb, resume=True
+        )
+        if not (isinstance(result, dict) and result.get("paused")):
+            set_policy_progress(db, policy_id, 100, "Completed")
+    except Exception as e:
+        try:
+            db.execute(_t(
+                "UPDATE policies SET status='failed', progress=0, "
+                "progress_stage='Analysis failed' WHERE id = :pid"
+            ), {"pid": policy_id})
+            db.commit()
+        except Exception:
+            db.rollback()
+        print(f"[resume] background analysis failed: {e}")
+    finally:
+        db.close()
+
+
+@app.post("/api/functions/resume_policy")
+async def resume_policy(payload: Dict[str, Any], db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """Resume a paused policy. Returns immediately; analysis runs in
+    the background and progress is visible via the existing polling on
+    GET /api/entities/Policy."""
+    from sqlalchemy import text as _t
+    import asyncio
+
+    policy_id = payload.get("policy_id")
+    if not policy_id:
+        raise HTTPException(status_code=400, detail="policy_id is required")
+
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if policy.status != "paused":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot resume a policy in status '{policy.status}'.",
+        )
+
+    frameworks = _frameworks_for_policy(db, policy_id)
+    if not frameworks:
+        raise HTTPException(
+            status_code=400,
+            detail="No loaded framework available for this policy.",
+        )
+
+    db.execute(_t(
+        "UPDATE policies SET status='processing', pause_requested=FALSE, "
+        "progress_stage='Resuming…' WHERE id = :pid"
+    ), {"pid": policy_id})
+    db.commit()
+
+    try:
+        db.execute(_t("""
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id, :aid, 'analysis_resume', 'policy', :tid, :det, :ts)
+        """), {
+            "id": str(uuid.uuid4()),
+            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
+            "tid": policy_id,
+            "det": json.dumps({"file_name": policy.file_name, "frameworks": frameworks}),
+            "ts": datetime.now(timezone.utc),
+        })
+        db.commit()
+    except Exception as _e:
+        print(f"Audit log warning: {_e}")
+
+    asyncio.create_task(_resume_analysis_in_background(policy_id, frameworks))
+    return {"ok": True, "resumed": True, "frameworks": frameworks}
 
 
 @app.post("/api/functions/run_simulation")
@@ -1476,6 +1649,9 @@ def setup_policy_progress_columns():
     statements = [
         "ALTER TABLE policies ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0",
         "ALTER TABLE policies ADD COLUMN IF NOT EXISTS progress_stage TEXT",
+        # Cooperative pause flag + paused_at timestamp.
+        "ALTER TABLE policies ADD COLUMN IF NOT EXISTS pause_requested BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE policies ADD COLUMN IF NOT EXISTS paused_at TIMESTAMPTZ",
     ]
     db = database.SessionLocal()
     try:
