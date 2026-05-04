@@ -13,6 +13,7 @@ import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Landing from "@/pages/Landing";
+import Admin from "@/pages/Admin";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -58,6 +59,9 @@ const AuthenticatedApp = () => {
   // ✅ Render main app (protected)
   return (
     <Routes>
+      {/* Admin panel — rendered without the main Layout, handles its own access control */}
+      <Route path="/admin" element={<Admin />} />
+
       <Route
         path="/"
         element={

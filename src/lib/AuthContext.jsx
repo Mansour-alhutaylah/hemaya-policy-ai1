@@ -3,11 +3,18 @@ import { api } from "@/api/apiClient";
 
 const AuthContext = createContext(null);
 
-// Inactivity-based session timeout. Reset on any mouse/keyboard/scroll/touch activity.
-// Chosen over absolute expiry because the JWT already enforces absolute server-side,
-// and inactivity matches the UX cue exposed by the Settings page.
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
-const ACTIVITY_THROTTLE_MS = 5 * 1000;
+// Fallback inactivity timeout used only before the first login response is received.
+const DEFAULT_INACTIVITY_MS = 60 * 60 * 1000; // 60 min
+const ACTIVITY_THROTTLE_MS  = 5 * 1000;
+
+function getStoredTimeoutMs() {
+  try {
+    const mins = parseInt(localStorage.getItem("session_timeout_minutes") || "60", 10);
+    return (isNaN(mins) || mins <= 0 ? 60 : mins) * 60 * 1000;
+  } catch {
+    return DEFAULT_INACTIVITY_MS;
+  }
+}
 
 function getCachedUser() {
   try {
@@ -36,10 +43,14 @@ export const AuthProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = ({ token, user }) => {
+  const login = ({ token, user, session_timeout_minutes }) => {
     if (!token) return;
 
     localStorage.setItem("token", token);
+
+    if (session_timeout_minutes != null) {
+      localStorage.setItem("session_timeout_minutes", String(session_timeout_minutes));
+    }
 
     if (user) {
       localStorage.setItem("user", JSON.stringify(user));
@@ -111,10 +122,12 @@ export const AuthProvider = ({ children }) => {
 
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("session_timeout_minutes");
 
-    if (reason === "inactivity") {
+    // Persist reason so Login page can display the correct notice after reload
+    if (reason) {
       try {
-        sessionStorage.setItem("logout_reason", "inactivity");
+        sessionStorage.setItem("logout_reason", reason);
       } catch {
         // storage may be unavailable
       }
@@ -124,18 +137,20 @@ export const AuthProvider = ({ children }) => {
     window.location.href = "/";
   }, []);
 
-  // ── Inactivity auto-logout (15 min) ──────────────────────────────────────
+  // ── Inactivity auto-logout (duration from backend settings) ─────────────
   const inactivityTimerRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
 
+    const timeoutMs = getStoredTimeoutMs();
+
     const resetTimer = () => {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = setTimeout(() => {
         logout("inactivity");
-      }, INACTIVITY_TIMEOUT_MS);
+      }, timeoutMs);
     };
 
     const onActivity = () => {
@@ -145,7 +160,7 @@ export const AuthProvider = ({ children }) => {
       resetTimer();
     };
 
-    const events = ["mousedown", "keydown", "scroll", "touchstart", "mousemove"];
+    const events = ["mousedown", "keydown", "click", "scroll", "touchstart", "mousemove"];
     events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     resetTimer();
 

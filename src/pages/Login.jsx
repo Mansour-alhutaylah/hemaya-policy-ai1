@@ -10,6 +10,19 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(() => {
+    try {
+      const reason = sessionStorage.getItem("logout_reason");
+      if (reason) {
+        sessionStorage.removeItem("logout_reason");
+        if (reason === "inactivity") return "You were signed out due to inactivity. Please log in again.";
+        if (reason === "expired")    return "Session expired. Please log in again.";
+      }
+    } catch {
+      // storage may be unavailable
+    }
+    return "";
+  });
 
   // ✅ يحاول يقرأ JSON لو موجود، ولو الرد نص/فاضي يرجّع object مناسب
   async function safeJson(res) {
@@ -31,6 +44,7 @@ export default function Login() {
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
+    setNotice("");
     setLoading(true);
 
     const controller = new AbortController();
@@ -68,8 +82,8 @@ export default function Login() {
         if (meRes.ok) user = meData;
       }
 
-      login({ token, user });
-      nav("/Dashboard");
+      login({ token, user, session_timeout_minutes: data?.session_timeout_minutes });
+      nav(user?.email === "himayaadmin@gmail.com" ? "/admin" : "/Dashboard");
     } catch (err) {
       clearTimeout(timeoutId);
       if (err?.name === "AbortError" || err?.name === "TimeoutError") {
@@ -87,6 +101,12 @@ export default function Login() {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border p-6">
         <h1 className="text-2xl font-semibold">Login</h1>
         <p className="text-slate-500 mt-1">Sign in to Himaya</p>
+
+        {notice && !error && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {notice}
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">

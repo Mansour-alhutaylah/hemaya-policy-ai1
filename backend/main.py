@@ -137,23 +137,103 @@ def register(user: schemas.RegisterRequest, db: Session = Depends(get_db)):
 
 
 
+def _get_setting(db, key: str, default: str) -> str:
+    """Read a single value from system_settings, returning default on any error."""
+    from sqlalchemy import text as _t
+    try:
+        row = db.execute(_t("SELECT value FROM system_settings WHERE key = :k"), {"k": key}).fetchone()
+        return row[0] if row else default
+    except Exception:
+        # Roll back so the connection doesn't stay in InFailedSqlTransaction state
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return default
+
+
 @app.post("/api/auth/login")
 def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
+    from sqlalchemy import text as _t
+    from datetime import timedelta
+
+    max_attempts       = int(_get_setting(db, "max_login_attempts",       "5"))
+    lockout_minutes    = int(_get_setting(db, "lockout_duration_minutes",  "15"))
+    session_timeout    = int(_get_setting(db, "session_timeout_minutes",   "60"))
+
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
+
+    if db_user:
+        # Check whether this account is currently locked out
+        try:
+            row = db.execute(
+                _t("SELECT failed_login_attempts, locked_until FROM users WHERE id = :uid"),
+                {"uid": str(db_user.id)},
+            ).fetchone()
+            attempts     = int(row[0] or 0) if row else 0
+            locked_until = row[1] if row else None
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            attempts = 0
+            locked_until = None
+
+        if locked_until is not None:
+            from datetime import datetime, timezone as _tz
+            if locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=_tz.utc)
+            if datetime.now(_tz.utc) < locked_until:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many failed login attempts. Please try again later.",
+                )
+
     if not db_user or not auth.verify_password(user.password, db_user.password_hash):
+        # Record the failed attempt
+        if db_user:
+            new_attempts = attempts + 1
+            from datetime import datetime, timezone as _tz
+            new_locked = (
+                datetime.now(_tz.utc) + timedelta(minutes=lockout_minutes)
+                if new_attempts >= max_attempts else None
+            )
+            try:
+                db.execute(
+                    _t("UPDATE users SET failed_login_attempts = :a, locked_until = :lu WHERE id = :uid"),
+                    {"a": new_attempts, "lu": new_locked, "uid": str(db_user.id)},
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    access_token = auth.create_access_token(data={"sub": db_user.email})
+    # Successful login — reset lockout counters
+    try:
+        db.execute(
+            _t("UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = :uid"),
+            {"uid": str(db_user.id)},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    access_token = auth.create_access_token(
+        data={"sub": db_user.email},
+        expires_delta=timedelta(minutes=session_timeout),
+    )
     return {
-    "token": access_token,
-    "user": {
-        "id": db_user.id,
-        "email": db_user.email,
-        "first_name": db_user.first_name,
-        "last_name": db_user.last_name,
-        "phone": db_user.phone,
+        "token": access_token,
+        "session_timeout_minutes": session_timeout,
+        "user": {
+            "id": str(db_user.id),
+            "email": db_user.email,
+            "first_name": db_user.first_name,
+            "last_name": db_user.last_name,
+            "phone": db_user.phone,
+        },
     }
-}
 
 
 
@@ -1057,4 +1137,575 @@ async def explain_mapping_route(
     mapping_id = payload.get("mapping_id", "")
     result = await explain_mapping(db, mapping_id)
     return result
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ADMIN ROUTES — restricted to himayaadmin@gmail.com
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ADMIN_EMAIL = "himayaadmin@gmail.com"
+
+
+def require_admin(current_user: models.User = Depends(get_current_user)):
+    """Dependency: raises 403 if the caller is not the admin account."""
+    if current_user.email != ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+
+
+@app.on_event("startup")
+def seed_admin_user():
+    """Ensure the admin account exists in the database on every startup."""
+    db = database.SessionLocal()
+    try:
+        existing = db.query(models.User).filter(models.User.email == ADMIN_EMAIL).first()
+        if not existing:
+            hashed = auth.get_password_hash("09himaya09")
+            admin = models.User(
+                email=ADMIN_EMAIL,
+                password_hash=hashed,
+                first_name="Himaya",
+                last_name="Admin",
+                role="admin",
+            )
+            db.add(admin)
+            db.commit()
+            print(f"[startup] Admin user created: {ADMIN_EMAIL}")
+    except Exception as e:
+        db.rollback()
+        print(f"[startup] Could not seed admin user: {e}")
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def setup_system_settings():
+    """Create system_settings table, seed defaults, and add lockout columns to users."""
+    from sqlalchemy import text as _t
+    db = database.SessionLocal()
+    try:
+        # system_settings table
+        db.execute(_t("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """))
+
+        # Default settings — only insert if the key doesn't already exist
+        defaults = {
+            "session_timeout_minutes":   "60",
+            "max_login_attempts":        "5",
+            "lockout_duration_minutes":  "15",
+            "llm_model":                 "gpt-4o-mini",
+            "top_k_retrieval":           "10",
+            "notify_analysis_complete":  "true",
+            "notify_failed_analysis":    "true",
+            "notify_weekly_report":      "false",
+            "notify_new_user":           "true",
+        }
+        for key, value in defaults.items():
+            db.execute(_t("""
+                INSERT INTO system_settings (key, value)
+                VALUES (:k, :v)
+                ON CONFLICT (key) DO NOTHING
+            """), {"k": key, "v": value})
+
+        # Add lockout columns to users (idempotent)
+        db.execute(_t("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0
+        """))
+        db.execute(_t("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ DEFAULT NULL
+        """))
+
+        db.commit()
+        print("[startup] system_settings ready.")
+    except Exception as e:
+        db.rollback()
+        print(f"[startup] setup_system_settings warning: {e}")
+    finally:
+        db.close()
+
+
+ALLOWED_SETTINGS_KEYS = {
+    "session_timeout_minutes",
+    "max_login_attempts",
+    "lockout_duration_minutes",
+    "llm_model",
+    "top_k_retrieval",
+    "notify_analysis_complete",
+    "notify_failed_analysis",
+    "notify_weekly_report",
+    "notify_new_user",
+}
+
+
+@app.get("/api/admin/settings")
+def get_admin_settings(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return all system settings as a key→value dict."""
+    from sqlalchemy import text as _t
+    rows = db.execute(_t("SELECT key, value FROM system_settings")).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+@app.patch("/api/admin/settings")
+def update_admin_settings(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Update one or more system settings. Only known keys are accepted."""
+    from sqlalchemy import text as _t
+    unknown = set(payload.keys()) - ALLOWED_SETTINGS_KEYS
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown setting keys: {unknown}")
+    for key, value in payload.items():
+        db.execute(_t("""
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES (:k, :v, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = :v, updated_at = NOW()
+        """), {"k": key, "v": str(value)})
+    db.commit()
+    rows = db.execute(_t("SELECT key, value FROM system_settings")).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+@app.patch("/api/auth/profile")
+def update_profile(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Update first_name / last_name of the currently authenticated user."""
+    allowed = {"first_name", "last_name"}
+    for field in allowed:
+        if field in payload:
+            setattr(current_user, field, payload[field])
+    db.commit()
+    db.refresh(current_user)
+    return {"first_name": current_user.first_name, "last_name": current_user.last_name}
+
+
+@app.get("/api/admin/stats")
+def admin_stats(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Dashboard summary statistics."""
+    total_users = db.query(models.User).count()
+    uploaded_policies = db.query(models.Policy).count()
+    completed = db.query(models.Policy).filter(models.Policy.status == "analyzed").count()
+    pending = db.query(models.Policy).filter(models.Policy.status.in_(["uploaded", "processing"])).count()
+    failed = db.query(models.Policy).filter(models.Policy.status == "failed").count()
+
+    scores = db.query(models.ComplianceResult.compliance_score).all()
+    avg_score = round(sum(s[0] for s in scores if s[0]) / len(scores), 1) if scores else 0.0
+
+    return {
+        "totalUsers": total_users,
+        "uploadedPolicies": uploaded_policies,
+        "completedAnalyses": completed,
+        "pendingAnalyses": pending,
+        "failedAnalyses": failed,
+        "avgComplianceScore": avg_score,
+    }
+
+
+@app.get("/api/admin/users")
+def admin_list_users(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return all registered users."""
+    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+    return [
+        {
+            "id": str(u.id),
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email,
+            "role": u.role or "Regular User",
+            "is_active": u.role != "disabled",
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        }
+        for u in users
+    ]
+
+
+@app.patch("/api/admin/users/{user_id}/role")
+def admin_update_user_role(
+    user_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Change a user's role."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.role = payload.get("role", user.role)
+    db.commit()
+    return {"ok": True, "role": user.role}
+
+
+@app.patch("/api/admin/users/{user_id}/status")
+def admin_update_user_status(
+    user_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Activate or deactivate a user account (stored as role='disabled')."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    is_active = payload.get("is_active", True)
+    if not is_active:
+        user.role = "disabled"
+    else:
+        # Restore to Regular User if previously disabled
+        if user.role == "disabled":
+            user.role = "Regular User"
+    db.commit()
+    return {"ok": True, "is_active": user.role != "disabled"}
+
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    """Permanently delete a user account."""
+    if str(admin.id) == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.delete(user)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/policies")
+def admin_list_policies(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return all uploaded policies with uploader name and most recent framework."""
+    from sqlalchemy import text as _t
+    try:
+        rows = db.execute(_t("""
+            SELECT
+                p.id,
+                p.file_name,
+                p.department,
+                p.status,
+                p.created_at,
+                COALESCE(
+                    NULLIF(TRIM(u.first_name || ' ' || COALESCE(u.last_name, '')), ''),
+                    u.email
+                ) AS uploaded_by,
+                (
+                    SELECT f.name
+                    FROM compliance_results cr
+                    JOIN frameworks f ON f.id = cr.framework_id
+                    WHERE cr.policy_id = p.id
+                    ORDER BY cr.analyzed_at DESC
+                    LIMIT 1
+                ) AS framework
+            FROM policies p
+            LEFT JOIN LATERAL (
+                SELECT actor_id
+                FROM audit_logs
+                WHERE action = 'upload_policy' AND target_id = p.id
+                ORDER BY timestamp ASC
+                LIMIT 1
+            ) al ON TRUE
+            LEFT JOIN users u ON u.id = al.actor_id
+            ORDER BY p.created_at DESC
+        """)).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return [
+        {
+            "id": str(r[0]),
+            "file_name": r[1],
+            "department": r[2],
+            "status": r[3],
+            "created_at": r[4].isoformat() if r[4] else None,
+            "uploaded_by": r[5],
+            "framework": r[6],
+        }
+        for r in rows
+    ]
+
+
+@app.delete("/api/admin/policies/{policy_id}")
+def admin_delete_policy(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Delete a policy and all its analysis data (cascaded by DB)."""
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    db.delete(policy)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/admin/policies/{policy_id}/reanalyze")
+async def admin_reanalyze_policy(
+    policy_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Trigger a fresh analysis for a policy."""
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    frameworks = payload.get("frameworks", ["NCA ECC", "ISO 27001", "NIST 800-53"])
+
+    # Clear previous results
+    db.query(models.Gap).filter(models.Gap.policy_id == policy_id).delete()
+    db.query(models.MappingReview).filter(models.MappingReview.policy_id == policy_id).delete()
+    db.query(models.ComplianceResult).filter(models.ComplianceResult.policy_id == policy_id).delete()
+    db.commit()
+
+    policy.status = "processing"
+    db.commit()
+
+    from backend.rag_engine import run_full_analysis
+    results = await run_full_analysis(db, policy_id, frameworks)
+    return {"ok": True, "results": results}
+
+
+@app.get("/api/admin/frameworks")
+def admin_list_frameworks(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return all frameworks with real control and checkpoint counts."""
+    from sqlalchemy import func, text as _t
+    rows = (
+        db.query(
+            models.Framework.id,
+            models.Framework.name,
+            models.Framework.description,
+            func.count(models.ControlLibrary.id).label("controls"),
+        )
+        .outerjoin(models.ControlLibrary, models.ControlLibrary.framework_id == models.Framework.id)
+        .group_by(models.Framework.id)
+        .all()
+    )
+    result = []
+    for r in rows:
+        try:
+            chk_row = db.execute(
+                _t("SELECT COUNT(*) FROM control_checkpoints WHERE framework = :fwid"),
+                {"fwid": r.id},
+            ).fetchone()
+            checkpoint_count = chk_row[0] if chk_row else 0
+        except Exception:
+            checkpoint_count = 0
+        result.append({
+            "id": r.id,
+            "name": r.name,
+            "description": r.description,
+            "controls": r.controls,
+            "checkpoints": checkpoint_count,
+        })
+    return result
+
+
+@app.get("/api/admin/frameworks/{framework_id}")
+def admin_get_framework(
+    framework_id: str,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return framework details with controls and their checkpoints."""
+    from sqlalchemy import text as _t
+    fw = db.query(models.Framework).filter(models.Framework.id == framework_id).first()
+    if not fw:
+        raise HTTPException(status_code=404, detail="Framework not found")
+
+    controls = (
+        db.query(models.ControlLibrary)
+        .filter(models.ControlLibrary.framework_id == framework_id)
+        .order_by(models.ControlLibrary.control_code)
+        .all()
+    )
+
+    controls_with_checkpoints = []
+    for ctrl in controls:
+        try:
+            chk_rows = db.execute(
+                _t("""
+                    SELECT id, checkpoint_index, requirement, keywords, weight
+                    FROM control_checkpoints
+                    WHERE framework = :fwid AND control_code = :code
+                    ORDER BY checkpoint_index
+                """),
+                {"fwid": framework_id, "code": ctrl.control_code},
+            ).fetchall()
+            checkpoints = [
+                {"id": c[0], "index": c[1], "requirement": c[2], "keywords": c[3], "weight": c[4]}
+                for c in chk_rows
+            ]
+        except Exception:
+            checkpoints = []
+        controls_with_checkpoints.append({
+            "id": ctrl.id,
+            "control_code": ctrl.control_code,
+            "title": ctrl.title,
+            "keywords": ctrl.keywords,
+            "severity_if_missing": ctrl.severity_if_missing,
+            "checkpoints": checkpoints,
+        })
+
+    return {
+        "id": fw.id,
+        "name": fw.name,
+        "description": fw.description,
+        "controls": controls_with_checkpoints,
+    }
+
+
+@app.post("/api/admin/frameworks/{framework_id}/controls")
+def admin_add_control(
+    framework_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Add a new control to a framework."""
+    fw = db.query(models.Framework).filter(models.Framework.id == framework_id).first()
+    if not fw:
+        raise HTTPException(status_code=404, detail="Framework not found")
+    ctrl = models.ControlLibrary(
+        framework_id=framework_id,
+        control_code=payload.get("control_code", ""),
+        title=payload.get("title", ""),
+        keywords=payload.get("keywords", []),
+        severity_if_missing=payload.get("severity_if_missing", "Medium"),
+    )
+    db.add(ctrl)
+    db.commit()
+    db.refresh(ctrl)
+    return {"id": ctrl.id, "control_code": ctrl.control_code, "title": ctrl.title}
+
+
+@app.get("/api/admin/analysis-results")
+def admin_analysis_results(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return compliance results with policy name, framework name, and uploader."""
+    from sqlalchemy import text as _t
+    try:
+        rows = db.execute(_t("""
+            SELECT
+                cr.id,
+                p.file_name,
+                f.name AS framework_name,
+                cr.compliance_score,
+                cr.controls_covered,
+                cr.controls_partial,
+                cr.controls_missing,
+                cr.status,
+                cr.analyzed_at,
+                COALESCE(
+                    NULLIF(TRIM(u.first_name || ' ' || COALESCE(u.last_name, '')), ''),
+                    u.email
+                ) AS uploaded_by
+            FROM compliance_results cr
+            JOIN policies p ON p.id = cr.policy_id
+            LEFT JOIN frameworks f ON f.id = cr.framework_id
+            LEFT JOIN LATERAL (
+                SELECT actor_id
+                FROM audit_logs
+                WHERE action = 'upload_policy' AND target_id = p.id
+                ORDER BY timestamp ASC
+                LIMIT 1
+            ) al ON TRUE
+            LEFT JOIN users u ON u.id = al.actor_id
+            ORDER BY cr.analyzed_at DESC
+            LIMIT 200
+        """)).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return [
+        {
+            "id": r[0],
+            "policy_name": r[1],
+            "framework": r[2],
+            "compliance_score": r[3],
+            "controls_covered": r[4],
+            "controls_partial": r[5],
+            "controls_missing": r[6],
+            "status": r[7],
+            "analyzed_at": r[8].isoformat() if r[8] else None,
+            "uploaded_by": r[9],
+        }
+        for r in rows
+    ]
+
+
+@app.get("/api/admin/activity-logs")
+def admin_activity_logs(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """Return recent audit log entries with resolved actor name."""
+    from sqlalchemy import text as _t
+    try:
+        rows = db.execute(_t("""
+            SELECT
+                al.id,
+                al.action,
+                al.target_type,
+                al.target_id,
+                al.details::text,
+                al.timestamp,
+                COALESCE(
+                    NULLIF(TRIM(u.first_name || ' ' || COALESCE(u.last_name, '')), ''),
+                    u.email
+                ) AS actor_name
+            FROM audit_logs al
+            LEFT JOIN users u ON u.id = al.actor_id
+            ORDER BY al.timestamp DESC
+            LIMIT 200
+        """)).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return [
+        {
+            "id": r[0],
+            "action": r[1],
+            "target_type": r[2],
+            "target_id": r[3],
+            "details": r[4],
+            "timestamp": r[5].isoformat() if r[5] else None,
+            "actor_name": r[6],
+        }
+        for r in rows
+    ]
 
