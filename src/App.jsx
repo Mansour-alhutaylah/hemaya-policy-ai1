@@ -12,6 +12,7 @@ import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 // ✅ أضف صفحات الدخول
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import Landing from "@/pages/Landing";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -27,9 +28,10 @@ const AuthenticatedApp = () => {
   // إذا كان مسجّل دخول وحاول يفتح /login حوله للداشبورد
   const publicRoutes = (
     <Routes>
+      <Route path="/" element={isAuthed ? <Navigate to="/Dashboard" replace /> : <Landing />} />
       <Route path="/login" element={isAuthed ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/signup" element={isAuthed ? <Navigate to="/" replace /> : <Signup />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 
