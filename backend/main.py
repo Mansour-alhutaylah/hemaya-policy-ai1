@@ -1501,6 +1501,7 @@ async def upload_framework_doc(
     framework: str = Form(...),
     description: str = Form(""),
     version: str = Form(""),
+    force: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin),
 ):
@@ -1511,7 +1512,13 @@ async def upload_framework_doc(
     metadata (name, version, file_url, uploaded_at, uploaded_by) onto the
     framework row so the framework is treated as a real database-backed
     uploaded document — not just a static name.
+
+    If the same file (by SHA-256 hash) was already extracted for this
+    framework name and force=False, returns the cached extraction result
+    without re-running the pipeline. Pass force=True to delete the existing
+    controls + checkpoints and re-extract from scratch.
     """
+    import hashlib
     from sqlalchemy import text as _sql
 
     original_name = file.filename or "upload"
@@ -1528,6 +1535,51 @@ async def upload_framework_doc(
     if len(raw) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="Framework file exceeds 50 MB limit")
 
+    file_hash = hashlib.sha256(raw).hexdigest()
+    print(f"[fw-upload] {framework}: file={original_name} bytes={len(raw)} sha256={file_hash[:16]}... force={force}")
+
+    # Cache check: if the framework already has this exact file_hash and the
+    # caller didn't ask for re-extraction, return the cached row counts.
+    if not force:
+        try:
+            cached = db.execute(_sql(
+                "SELECT id, file_hash FROM frameworks WHERE name = :name"
+            ), {"name": framework}).fetchone()
+            if cached and cached[1] and cached[1] == file_hash:
+                fid = cached[0]
+                ctrl_count = db.execute(_sql(
+                    "SELECT COUNT(*) FROM control_library WHERE framework_id = :fid"
+                ), {"fid": fid}).fetchone()[0]
+                cp_count = db.execute(_sql(
+                    "SELECT COUNT(*) FROM control_checkpoints WHERE framework = :fid"
+                ), {"fid": fid}).fetchone()[0]
+                chunk_count = db.execute(_sql(
+                    "SELECT COUNT(*) FROM framework_chunks WHERE framework_id = :fid"
+                ), {"fid": fid}).fetchone()[0]
+                print(f"[fw-upload] cache hit: skipping extraction "
+                      f"(controls={ctrl_count}, checkpoints={cp_count})")
+                return {
+                    "framework": framework,
+                    "source": original_name,
+                    "status": "cached",
+                    "from_cache": True,
+                    "force_reprocess": False,
+                    "file_hash": file_hash,
+                    "chunks_created": chunk_count,
+                    "controls_extracted": ctrl_count,
+                    "checkpoints_generated": cp_count,
+                    # file_hash is only ever stored on complete extractions, so
+                    # a cache hit by definition means the cached run was complete.
+                    "extraction_complete": True,
+                    "failed_windows_count": 0,
+                    "failed_windows": [],
+                    "extraction_warnings": [],
+                    "warning": None,
+                }
+        except Exception as _e:
+            db.rollback()
+            print(f"[fw-upload] cache check failed, proceeding with extraction: {_e}")
+
     fw_dir = UPLOAD_DIR / "frameworks"
     fw_dir.mkdir(exist_ok=True)
     stored_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{original_name}"
@@ -1536,10 +1588,25 @@ async def upload_framework_doc(
 
     from backend.framework_loader import load_framework_document
 
-    result = await load_framework_document(db, str(file_path), framework, original_name)
+    result = await load_framework_document(
+        db, str(file_path), framework, original_name, force=force
+    )
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+
+    result["from_cache"] = False
+    result["force_reprocess"] = force
+    result["file_hash"] = file_hash
+
+    # Only persist file_hash on the framework row if extraction was complete.
+    # Incomplete extractions must not be cached: a future re-upload with the
+    # same hash should re-run the pipeline rather than return a partial result.
+    persist_hash = bool(result.get("extraction_complete", True))
+    if not persist_hash:
+        print(f"[fw-upload] extraction incomplete "
+              f"({result.get('failed_windows_count', 0)} window(s) failed); "
+              f"file_hash will NOT be persisted to frameworks row")
 
     # Update framework row with the file metadata so the UI can show the
     # real uploaded document and the Replace flow works cleanly.
@@ -1550,6 +1617,7 @@ async def upload_framework_doc(
                    file_url    = :furl,
                    file_type   = :ft,
                    file_size   = :fs,
+                   file_hash   = :fhash,
                    uploaded_at = :at,
                    uploaded_by = :uby,
                    version     = COALESCE(NULLIF(:ver, ''), version),
@@ -1560,6 +1628,7 @@ async def upload_framework_doc(
             "furl": f"/uploads/frameworks/{stored_name}",
             "ft":   ext.replace(".", "").upper(),
             "fs":   len(raw),
+            "fhash": file_hash if persist_hash else None,
             "at":   datetime.now(timezone.utc),
             "uby":  str(current_user.id) if hasattr(current_user, "id") else None,
             "ver":  (version or "").strip(),
@@ -1877,6 +1946,9 @@ def setup_framework_file_columns():
         # the Admin Frameworks page. The JOIN below works without a real FK.
         "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS uploaded_by UUID",
         "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        # SHA-256 of last successfully extracted file. Same hash + force=false
+        # short-circuits the extraction pipeline (cache hit).
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS file_hash TEXT",
     ]
     db = database.SessionLocal()
     try:
