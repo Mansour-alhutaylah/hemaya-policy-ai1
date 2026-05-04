@@ -1067,13 +1067,31 @@ async def upload_framework_doc(
 
 @app.get("/api/functions/framework_status")
 def framework_status(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Check which frameworks have reference documents loaded."""
-    from backend.framework_loader import get_framework_stats
+    """Check which frameworks have reference documents loaded.
 
+    If ?framework=<name> is passed, the response is scoped to that single
+    framework (used by the per-policy "Run Analysis" gate so the warning
+    only appears when the policy's *actual* framework is missing).
+    Without the param, returns the legacy three-framework summary.
+    """
+    from backend.framework_loader import get_framework_stats
     stats = get_framework_stats(db)
+
+    target = (request.query_params.get("framework") or "").strip()
+
+    if target:
+        fw_stats = stats.get(target, {"chunks": 0, "documents": 0})
+        loaded = fw_stats.get("chunks", 0) > 0
+        return {
+            "framework": target,
+            "frameworks": {target: fw_stats},
+            "ready": loaded,
+            "loaded": loaded,
+        }
 
     return {
         "frameworks": {

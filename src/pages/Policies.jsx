@@ -276,10 +276,16 @@ export default function Policies() {
   };
 
   const handleRunAnalysis = async (policy) => {
-    // Check if framework reference documents are loaded
+    // Only block when *the policy's actual framework* has no reference
+    // document loaded. The previous code checked a hardcoded three-framework
+    // bundle, which fired the warning even when the policy's real framework
+    // was fully loaded.
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/functions/framework_status', {
+      const url = policy.framework_code
+        ? `/api/functions/framework_status?framework=${encodeURIComponent(policy.framework_code)}`
+        : '/api/functions/framework_status';
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -291,7 +297,7 @@ export default function Policies() {
         }
       }
     } catch (_) {
-      // If status check fails, proceed anyway
+      // If the status check fails, fall through and let analysis attempt run.
     }
     doRunAnalysis(policy);
   };
@@ -710,19 +716,32 @@ export default function Policies() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
-              Framework Documents Not Loaded
+              Framework Document Not Loaded
             </DialogTitle>
             <DialogDescription>
-              The AI will use basic control definitions only. For deeper analysis that compares your
-              policy against the full framework requirements, upload reference documents in the
-              Frameworks page first.
+              {pendingAnalysisPolicy?.framework_code ? (
+                <>
+                  The reference document for{' '}
+                  <strong>{pendingAnalysisPolicy.framework_code}</strong> hasn't been uploaded yet,
+                  so the AI will fall back to basic control definitions instead of comparing this
+                  policy against the full framework requirements.
+                </>
+              ) : (
+                <>
+                  No reference document is loaded for this policy's framework. The AI will use
+                  basic control definitions only.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg my-2">
             <Database className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-amber-700">
-              Upload official NCA ECC, ISO 27001, and NIST 800-53 documents in
-              <strong> Frameworks → Upload Reference Document</strong> for best results.
+              Ask an administrator to upload the reference document for
+              {pendingAnalysisPolicy?.framework_code
+                ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
+                : ' this framework '}
+              from the Admin <strong>Frameworks</strong> panel for the best results.
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-2">
