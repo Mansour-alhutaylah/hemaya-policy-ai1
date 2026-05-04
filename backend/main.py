@@ -179,6 +179,7 @@ async def upload_policy(
     department: str = Form("General"),
     version: str = Form("1.0"),
     description: str = Form(""),
+    framework: str = Form(""),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -193,6 +194,18 @@ async def upload_policy(
             status_code=400,
             detail=f"File type '{ext}' not supported. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
+
+    # Validate the selected framework against frameworks present in the DB.
+    framework_value = (framework or "").strip() or None
+    if framework_value:
+        exists = db.execute(_sql(
+            "SELECT 1 FROM frameworks WHERE name = :name LIMIT 1"
+        ), {"name": framework_value}).fetchone()
+        if not exists:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown framework '{framework_value}'. Upload a reference document for it first.",
+            )
 
     raw = await file.read()
     if len(raw) > MAX_FILE_SIZE:
@@ -214,8 +227,9 @@ async def upload_policy(
     db.execute(_sql("""
         INSERT INTO policies
         (id, file_name, description, department, version, status,
-         file_url, file_type, content_preview, uploaded_at, created_at)
-        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:at,:cat)
+         file_url, file_type, content_preview, framework_code,
+         uploaded_at, created_at)
+        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:fwc,:at,:cat)
     """), {
         "id": policy_id,
         "fn": original_name,
@@ -225,6 +239,7 @@ async def upload_policy(
         "furl": f"/uploads/{file_name}",
         "ft": ext.replace(".", "").upper(),
         "prev": content[:500] if content else "",
+        "fwc": framework_value,
         "at": datetime.now(timezone.utc),
         "cat": datetime.now(timezone.utc),
     })
@@ -345,6 +360,46 @@ def dashboard_stats(
 
 # ━━━ Dedicated entity routes (raw SQL, correct column names) ━━━
 # Must be defined BEFORE the generic /api/entities/{entity} route
+
+@app.get("/api/entities/Framework")
+def get_frameworks(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """List frameworks that actually have a reference document loaded
+    (chunks > 0) — i.e. frameworks usable for policy analysis."""
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    include_empty = params.get("include_empty") == "true"
+
+    if include_empty:
+        rows = db.execute(_t("""
+            SELECT f.id, f.name, f.description,
+                   COALESCE(c.chunks, 0) AS chunks
+            FROM frameworks f
+            LEFT JOIN (
+                SELECT framework_id, COUNT(*) AS chunks
+                FROM framework_chunks
+                GROUP BY framework_id
+            ) c ON c.framework_id = f.id
+            ORDER BY f.name ASC
+        """)).fetchall()
+    else:
+        rows = db.execute(_t("""
+            SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks
+            FROM frameworks f
+            JOIN framework_chunks fc ON fc.framework_id = f.id
+            GROUP BY f.id, f.name, f.description
+            HAVING COUNT(fc.*) > 0
+            ORDER BY f.name ASC
+        """)).fetchall()
+
+    return [
+        {"id": r[0], "name": r[1], "description": r[2], "chunks": r[3] or 0}
+        for r in rows
+    ]
+
 
 @app.get("/api/entities/Policy")
 def get_policies(

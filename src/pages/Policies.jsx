@@ -58,6 +58,7 @@ import {
 
 const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
+const Framework = api.entities.Framework;
 
 export default function Policies() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -77,6 +78,7 @@ export default function Policies() {
   const [newPolicy, setNewPolicy] = useState({
     file_name: '',
     version: '1.0',
+    framework: '',
   });
 
   const { toast } = useToast();
@@ -85,6 +87,15 @@ export default function Policies() {
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at'),
+  });
+
+  const {
+    data: frameworks = [],
+    isLoading: frameworksLoading,
+  } = useQuery({
+    queryKey: ['frameworks', 'available'],
+    queryFn: () => Framework.list('name', 50),
+    staleTime: 60_000,
   });
 
 
@@ -132,6 +143,7 @@ export default function Policies() {
     setNewPolicy({
       file_name: '',
       version: '1.0',
+      framework: '',
     });
     setSelectedFile(null);
     setUploadProgress(0);
@@ -159,6 +171,15 @@ export default function Policies() {
       return;
     }
 
+    if (!newPolicy.framework) {
+      toast({
+        title: 'Framework Required',
+        description: 'Select a framework to compare this policy against.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
 
@@ -171,6 +192,7 @@ export default function Policies() {
       const form = new FormData();
       form.append('file', selectedFile);
       form.append('version', newPolicy.version || '1.0');
+      form.append('framework', newPolicy.framework);
 
       const res = await fetch('/api/integrations/upload', {
         method: 'POST',
@@ -214,14 +236,20 @@ export default function Policies() {
     try {
       updatePolicyMutation.mutate({ id: policy.id, data: { status: 'processing' } });
 
+      // If the policy was uploaded with an explicit framework, analyse only against
+      // that one. Legacy policies without framework_code fall back to all three.
+      const targetFrameworks = policy.framework_code
+        ? [policy.framework_code]
+        : ['NCA ECC', 'ISO 27001', 'NIST 800-53'];
+
       toast({
         title: 'Analysis Started',
-        description: `Analyzing ${policy.file_name} across all 3 frameworks (90 controls). This may take a few minutes...`,
+        description: `Analyzing ${policy.file_name} against ${targetFrameworks.join(', ')}. This may take a few minutes...`,
       });
 
       const result = await api.functions.invoke('analyze_policy', {
         policy_id: policy.id,
-        frameworks: ['NCA ECC', 'ISO 27001', 'NIST 800-53'],
+        frameworks: targetFrameworks,
       });
 
       if (result.success) {
@@ -518,13 +546,57 @@ export default function Policies() {
               </label>
             </div>
 
-            <div className="space-y-2">
-              <Label>Version</Label>
-              <Input
-                placeholder="1.0"
-                value={newPolicy.version}
-                onChange={(e) => setNewPolicy(prev => ({ ...prev, version: e.target.value }))}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>
+                  Framework <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={newPolicy.framework}
+                  onValueChange={(value) =>
+                    setNewPolicy((prev) => ({ ...prev, framework: value }))
+                  }
+                  disabled={uploading || frameworksLoading || frameworks.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        frameworksLoading
+                          ? 'Loading frameworks…'
+                          : frameworks.length === 0
+                            ? 'No frameworks available'
+                            : 'Select a framework'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {frameworks.map((fw) => (
+                      <SelectItem key={fw.id} value={fw.name}>
+                        {fw.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!frameworksLoading && frameworks.length === 0 && (
+                  <p className="text-xs text-amber-600">
+                    Upload a reference document on the Frameworks page first.
+                  </p>
+                )}
+                {!frameworksLoading && frameworks.length > 0 && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    The policy will be analyzed against this framework's controls.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Version</Label>
+                <Input
+                  placeholder="1.0"
+                  value={newPolicy.version}
+                  onChange={(e) => setNewPolicy(prev => ({ ...prev, version: e.target.value }))}
+                />
+              </div>
             </div>
           </div>
 
@@ -534,7 +606,7 @@ export default function Policies() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!selectedFile || uploading}
+              disabled={!selectedFile || !newPolicy.framework || uploading}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               {uploading ? (
@@ -675,6 +747,10 @@ export default function Policies() {
                 <div>
                   <p className="text-sm text-slate-500">Version</p>
                   <p className="font-medium">{selectedPolicy.version || '1.0'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Framework</p>
+                  <p className="font-medium">{selectedPolicy.framework_code || '—'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Upload Date</p>
