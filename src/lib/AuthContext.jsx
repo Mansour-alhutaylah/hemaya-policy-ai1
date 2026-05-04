@@ -120,7 +120,8 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    window.location.href = "/login";
+    // Redirect to the public landing — users pick Sign Up or Log In from there.
+    window.location.href = "/";
   }, []);
 
   // ── Inactivity auto-logout (15 min) ──────────────────────────────────────

@@ -60,7 +60,7 @@ export const api = {
     logout: (redirectUrl) => {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = redirectUrl || "/login";
+      window.location.href = redirectUrl || "/";
     },
   },
   entities: new Proxy({}, entityHandler),
