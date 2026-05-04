@@ -8,6 +8,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -44,7 +45,8 @@ import {
   Loader2,
   AlertTriangle,
   Database,
-  Download
+  Download,
+  ShieldCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -362,6 +364,22 @@ export default function Policies() {
           </div>
         </div>
       ),
+    },
+    {
+      header: 'Framework',
+      accessor: 'framework_code',
+      cell: (row) =>
+        row.framework_code ? (
+          <Badge
+            variant="outline"
+            className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 font-medium"
+          >
+            <ShieldCheck className="w-3 h-3" />
+            {row.framework_code}
+          </Badge>
+        ) : (
+          <span className="text-xs text-slate-400">—</span>
+        ),
     },
     {
       header: 'Uploaded',
