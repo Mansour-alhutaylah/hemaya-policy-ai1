@@ -470,43 +470,84 @@ def get_frameworks(
     params = dict(request.query_params)
     include_empty = params.get("include_empty") == "true"
 
-    if include_empty:
-        rows = db.execute(_t("""
-            SELECT f.id, f.name, f.description, f.version,
-                   f.original_file_name, f.file_url, f.file_type, f.file_size,
-                   f.uploaded_at, u.email AS uploaded_by,
-                   COALESCE(c.chunks, 0) AS chunks
-            FROM frameworks f
-            LEFT JOIN users u ON u.id = f.uploaded_by
-            LEFT JOIN (
-                SELECT framework_id, COUNT(*) AS chunks
-                FROM framework_chunks
-                GROUP BY framework_id
-            ) c ON c.framework_id = f.id
-            ORDER BY f.name ASC
-        """)).fetchall()
-    else:
-        rows = db.execute(_t("""
-            SELECT f.id, f.name, f.description, f.version,
-                   f.original_file_name, f.file_url, f.file_type, f.file_size,
-                   f.uploaded_at, u.email AS uploaded_by,
-                   COUNT(fc.*) AS chunks
-            FROM frameworks f
-            LEFT JOIN users u ON u.id = f.uploaded_by
-            JOIN framework_chunks fc ON fc.framework_id = f.id
-            GROUP BY f.id, u.email
-            HAVING COUNT(fc.*) > 0
-            ORDER BY f.name ASC
-        """)).fetchall()
+    rich_with_empty = """
+        SELECT f.id, f.name, f.description, f.version,
+               f.original_file_name, f.file_url, f.file_type, f.file_size,
+               f.uploaded_at, u.email AS uploaded_by,
+               COALESCE(c.chunks, 0) AS chunks
+        FROM frameworks f
+        LEFT JOIN users u ON u.id = f.uploaded_by
+        LEFT JOIN (
+            SELECT framework_id, COUNT(*) AS chunks
+            FROM framework_chunks
+            GROUP BY framework_id
+        ) c ON c.framework_id = f.id
+        ORDER BY f.name ASC
+    """
+    rich_loaded_only = """
+        SELECT f.id, f.name, f.description, f.version,
+               f.original_file_name, f.file_url, f.file_type, f.file_size,
+               f.uploaded_at, u.email AS uploaded_by,
+               COUNT(fc.*) AS chunks
+        FROM frameworks f
+        LEFT JOIN users u ON u.id = f.uploaded_by
+        JOIN framework_chunks fc ON fc.framework_id = f.id
+        GROUP BY f.id, u.email
+        HAVING COUNT(fc.*) > 0
+        ORDER BY f.name ASC
+    """
+    basic_with_empty = """
+        SELECT f.id, f.name, f.description,
+               COALESCE(c.chunks, 0) AS chunks
+        FROM frameworks f
+        LEFT JOIN (
+            SELECT framework_id, COUNT(*) AS chunks
+            FROM framework_chunks GROUP BY framework_id
+        ) c ON c.framework_id = f.id
+        ORDER BY f.name ASC
+    """
+    basic_loaded_only = """
+        SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks
+        FROM frameworks f
+        JOIN framework_chunks fc ON fc.framework_id = f.id
+        GROUP BY f.id, f.name, f.description
+        HAVING COUNT(fc.*) > 0
+        ORDER BY f.name ASC
+    """
 
+    rich = True
+    try:
+        rows = db.execute(_t(rich_with_empty if include_empty else rich_loaded_only)).fetchall()
+    except Exception as e:
+        # File columns missing — fall back to the basic shape so the page
+        # still loads (and the upload modal etc. still works).
+        print(f"[get_frameworks] rich query failed, falling back: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        rich = False
+        rows = db.execute(_t(basic_with_empty if include_empty else basic_loaded_only)).fetchall()
+
+    if rich:
+        return [
+            {
+                "id": r[0], "name": r[1], "description": r[2], "version": r[3],
+                "original_file_name": r[4], "file_url": r[5], "file_type": r[6],
+                "file_size": r[7],
+                "uploaded_at": r[8].isoformat() if r[8] else None,
+                "uploaded_by": r[9],
+                "chunks": r[10] or 0,
+            }
+            for r in rows
+        ]
     return [
         {
-            "id": r[0], "name": r[1], "description": r[2], "version": r[3],
-            "original_file_name": r[4], "file_url": r[5], "file_type": r[6],
-            "file_size": r[7],
-            "uploaded_at": r[8].isoformat() if r[8] else None,
-            "uploaded_by": r[9],
-            "chunks": r[10] or 0,
+            "id": r[0], "name": r[1], "description": r[2],
+            "version": None, "original_file_name": None, "file_url": None,
+            "file_type": None, "file_size": None, "uploaded_at": None,
+            "uploaded_by": None,
+            "chunks": r[3] or 0,
         }
         for r in rows
     ]
@@ -1287,7 +1328,12 @@ def setup_framework_file_columns():
         "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS file_type TEXT",
         "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS file_size INTEGER",
         "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ",
-        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS uploaded_by UUID REFERENCES users(id)",
+        # Plain UUID column with NO inline FK reference. Adding the FK constraint
+        # on a managed Postgres can fail (constraint name collision, permissions,
+        # or users.id type mismatch). If that single statement fails, the column
+        # never gets created and the list endpoint 500s — which is what broke
+        # the Admin Frameworks page. The JOIN below works without a real FK.
+        "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS uploaded_by UUID",
         "ALTER TABLE frameworks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
     ]
     db = database.SessionLocal()
@@ -1623,9 +1669,15 @@ def admin_list_frameworks(
     db: Session = Depends(get_db),
     _: models.User = Depends(require_admin),
 ):
-    """Return all frameworks (incl. file metadata) with control + checkpoint counts."""
+    """Return all frameworks (incl. file metadata) with control + checkpoint counts.
+
+    Defensive: if any of the file-document columns are missing in this
+    deployment (because the startup migration failed), fall back to the
+    basic columns so the page still loads instead of 500-ing.
+    """
     from sqlalchemy import text as _t
-    rows = db.execute(_t("""
+
+    rich_sql = """
         SELECT
             f.id, f.name, f.description, f.version,
             f.original_file_name, f.file_url, f.file_type, f.file_size,
@@ -1643,7 +1695,44 @@ def admin_list_frameworks(
             FROM framework_chunks GROUP BY framework_id
         ) chunks ON chunks.framework_id = f.id
         ORDER BY f.name ASC
-    """)).fetchall()
+    """
+
+    basic_sql = """
+        SELECT
+            f.id, f.name, f.description,
+            COALESCE(ctrl.controls, 0) AS controls,
+            COALESCE(chunks.chunks, 0) AS chunks
+        FROM frameworks f
+        LEFT JOIN (
+            SELECT framework_id, COUNT(*) AS controls
+            FROM control_library GROUP BY framework_id
+        ) ctrl ON ctrl.framework_id = f.id
+        LEFT JOIN (
+            SELECT framework_id, COUNT(*) AS chunks
+            FROM framework_chunks GROUP BY framework_id
+        ) chunks ON chunks.framework_id = f.id
+        ORDER BY f.name ASC
+    """
+
+    rich = True
+    try:
+        rows = db.execute(_t(rich_sql)).fetchall()
+    except Exception as e:
+        # File columns missing or any other column-related failure — fall back.
+        print(f"[admin_list_frameworks] rich query failed, falling back: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        rich = False
+        try:
+            rows = db.execute(_t(basic_sql)).fetchall()
+        except Exception as e2:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            raise HTTPException(status_code=500, detail=f"Could not load frameworks: {e2}")
 
     result = []
     for r in rows:
@@ -1655,21 +1744,43 @@ def admin_list_frameworks(
             checkpoint_count = chk_row[0] if chk_row else 0
         except Exception:
             checkpoint_count = 0
-        result.append({
-            "id": r[0],
-            "name": r[1],
-            "description": r[2],
-            "version": r[3],
-            "original_file_name": r[4],
-            "file_url": r[5],
-            "file_type": r[6],
-            "file_size": r[7],
-            "uploaded_at": r[8].isoformat() if r[8] else None,
-            "uploaded_by": r[9],
-            "controls": r[10],
-            "chunks": r[11],
-            "checkpoints": checkpoint_count,
-        })
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+        if rich:
+            result.append({
+                "id": r[0],
+                "name": r[1],
+                "description": r[2],
+                "version": r[3],
+                "original_file_name": r[4],
+                "file_url": r[5],
+                "file_type": r[6],
+                "file_size": r[7],
+                "uploaded_at": r[8].isoformat() if r[8] else None,
+                "uploaded_by": r[9],
+                "controls": r[10],
+                "chunks": r[11],
+                "checkpoints": checkpoint_count,
+            })
+        else:
+            result.append({
+                "id": r[0],
+                "name": r[1],
+                "description": r[2],
+                "version": None,
+                "original_file_name": None,
+                "file_url": None,
+                "file_type": None,
+                "file_size": None,
+                "uploaded_at": None,
+                "uploaded_by": None,
+                "controls": r[3],
+                "chunks": r[4],
+                "checkpoints": checkpoint_count,
+            })
     return result
 
 

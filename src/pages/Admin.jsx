@@ -667,16 +667,16 @@ function FrameworksSection() {
   const [deleteFw, setDeleteFw] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  const loadFrameworks = () => {
+  const loadFrameworks = useCallback(() => {
     setLoading(true);
     setError(null);
-    adminApi.get('/admin/frameworks')
-      .then(setFrameworks)
-      .catch(e => setError(e.message))
+    return adminApi.get('/admin/frameworks')
+      .then((data) => setFrameworks(Array.isArray(data) ? data : []))
+      .catch(e => setError(e.message || 'Failed to load frameworks'))
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(loadFrameworks, []);
+  useEffect(() => { loadFrameworks(); }, [loadFrameworks]);
 
   const openUploadNew = () => {
     setUploadFw({ mode: 'new' });
