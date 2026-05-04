@@ -1889,6 +1889,36 @@ def setup_policy_progress_columns():
         db.close()
 
 
+def ensure_pgvector_columns(db):
+    """Ensure pgvector-related columns exist. Idempotent.
+
+    Previously ALTERed on every upload from store_chunks_with_embeddings;
+    now runs once at startup.
+    """
+    from sqlalchemy import text as _t
+    statements = [
+        "ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS classification VARCHAR DEFAULT 'descriptive'",
+    ]
+    for stmt in statements:
+        try:
+            db.execute(_t(stmt))
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"  [startup] {stmt[:50]}... -> {e}")
+
+
+@app.on_event("startup")
+def setup_pgvector_columns():
+    """Run idempotent ALTER TABLE for runtime-managed pgvector/policy_chunks columns."""
+    db = database.SessionLocal()
+    try:
+        ensure_pgvector_columns(db)
+        print("[startup] pgvector columns ensured")
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def setup_system_settings():
     """Create system_settings table, seed defaults, and add lockout columns to users."""

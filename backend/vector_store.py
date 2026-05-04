@@ -38,16 +38,6 @@ async def get_embeddings(texts: list) -> list:
 def store_chunks_with_embeddings(db, policy_id, chunks, embeddings):
     from backend.structured_extractor import classify_sentence
 
-    # Ensure classification column exists
-    try:
-        db.execute(text(
-            "ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS "
-            "classification VARCHAR DEFAULT 'descriptive'"
-        ))
-        db.commit()
-    except Exception:
-        db.rollback()
-
     for chunk, emb in zip(chunks, embeddings):
         if emb is None:
             continue
