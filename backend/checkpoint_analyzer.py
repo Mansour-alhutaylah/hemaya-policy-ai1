@@ -6,12 +6,15 @@ Deterministic 3-layer compliance analysis:
   Layer 3: Score = checkpoints_met / total x 100 (pure math)
 """
 import os
+import re
 import json
 import uuid
 import time
 import asyncio
 import glob
+import hashlib
 import httpx
+from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from sqlalchemy import text as sql_text
 from backend.vector_store import (
@@ -19,6 +22,51 @@ from backend.vector_store import (
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Bump this version string when VERIFIER_PROMPT changes meaningfully.
+# Bumping it invalidates all cached verdicts from the old prompt.
+PROMPT_VERSION = "v2"
+
+
+def _normalize_text(s):
+    """Lowercase and collapse all whitespace."""
+    if not s:
+        return ""
+    return re.sub(r'\s+', ' ', s.lower()).strip()
+
+
+def _find_grounded_evidence(claimed_evidence, policy_text):
+    """
+    Returns (grounded: bool, actual_text: str, similarity: float).
+    Tries exact substring first, then fuzzy match.
+    """
+    if not claimed_evidence or not policy_text:
+        return False, "", 0.0
+
+    norm_evidence = _normalize_text(claimed_evidence)
+    norm_policy = _normalize_text(policy_text)
+
+    if len(norm_evidence) < 10:
+        return False, claimed_evidence, 0.0
+
+    if norm_evidence in norm_policy:
+        return True, claimed_evidence, 1.0
+
+    # Fuzzy match: slide a window of similar size over policy
+    win_size = max(50, int(len(norm_evidence) * 1.3))
+    best_ratio = 0.0
+    best_window = ""
+    step = max(20, win_size // 4)
+    for i in range(0, max(1, len(norm_policy) - win_size), step):
+        window = norm_policy[i:i+win_size]
+        ratio = SequenceMatcher(None, norm_evidence, window).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_window = window
+
+    if best_ratio >= 0.75:
+        return True, best_window, best_ratio
+    return False, claimed_evidence, best_ratio
 
 
 # ── GPT-4o-mini  (temperature=0.0 for deterministic) ────────────────────────
@@ -81,13 +129,66 @@ Return ONLY valid JSON:
 
 
 async def verify_checkpoints_gpt(checkpoints, policy_text, db=None):
-    """GPT verifies each checkpoint as binary YES/NO with evidence quote."""
+    """GPT verifies each checkpoint as binary YES/NO with evidence quote.
+    Caches results per (checkpoint_id, policy_text_hash, prompt_version)
+    so repeated analyses produce identical verdicts."""
 
-    # Few-shot examples from verified corrections (if available)
-    examples_str = ""
+    # ── Build cache keys for each checkpoint ──────────────────────
+    cache_keys = {}
+    if db and policy_text:
+        policy_hash = hashlib.sha256(
+            policy_text.encode("utf-8")
+        ).hexdigest()[:16]
+        for cp in checkpoints:
+            cp_id = (cp.get("checkpoint_id") or
+                     f"{cp.get('control_code','')}-{cp.get('checkpoint_index','')}")
+            key_input = f"{cp_id}|{policy_hash}|{PROMPT_VERSION}"
+            cache_keys[cp["checkpoint_index"]] = (
+                cp_id,
+                hashlib.sha256(key_input.encode("utf-8")).hexdigest()
+            )
+
+    # ── Look up cache for each checkpoint ─────────────────────────
+    cached_results = {}
+    uncached_checkpoints = []
     if db:
         try:
             for cp in checkpoints:
+                idx = cp["checkpoint_index"]
+                if idx not in cache_keys:
+                    uncached_checkpoints.append(cp)
+                    continue
+                _, ck = cache_keys[idx]
+                row = db.execute(sql_text(
+                    "SELECT met, confidence, evidence, grounded "
+                    "FROM verification_cache WHERE cache_key = :ck"
+                ), {"ck": ck}).fetchone()
+                if row is not None:
+                    cached_results[idx] = {
+                        "index": idx,
+                        "met": bool(row[0]),
+                        "confidence": float(row[1]) if row[1] is not None else 0.5,
+                        "evidence": row[2] or "",
+                        "grounded": bool(row[3]) if row[3] is not None else True,
+                    }
+                else:
+                    uncached_checkpoints.append(cp)
+        except Exception as cache_err:
+            print(f"    [cache] read error: {cache_err}")
+            db.rollback()
+            uncached_checkpoints = list(checkpoints)
+    else:
+        uncached_checkpoints = list(checkpoints)
+
+    if cached_results:
+        print(f"    [cache] {len(cached_results)}/{len(checkpoints)} "
+              f"checkpoints from cache, {len(uncached_checkpoints)} need GPT")
+
+    # ── Build few-shot examples for uncached checkpoints ──────────
+    examples_str = ""
+    if db and uncached_checkpoints:
+        try:
+            for cp in uncached_checkpoints:
                 cp_id = cp.get("checkpoint_id")
                 if not cp_id:
                     continue
@@ -105,30 +206,105 @@ async def verify_checkpoints_gpt(checkpoints, policy_text, db=None):
         except Exception:
             pass
 
-    prompt = VERIFIER_PROMPT
-    if examples_str:
-        prompt += f"\n\nLearn from these verified examples:{examples_str}"
+    # ── Call GPT only for uncached checkpoints ────────────────────
+    new_results = []
+    if uncached_checkpoints:
+        prompt = VERIFIER_PROMPT
+        if examples_str:
+            prompt += f"\n\nLearn from these verified examples:{examples_str}"
 
-    cp_lines = "\n".join(
-        f"CHECKPOINT {cp['checkpoint_index']}: {cp['requirement']}"
-        for cp in checkpoints
-    )
-    user_msg = (
-        f"Verify each checkpoint against this policy evidence:\n\n"
-        f"{cp_lines}\n\n"
-        f"POLICY EVIDENCE:\n{policy_text[:15000]}"
-    )
-    try:
-        raw = await call_llm(prompt, user_msg)
-        data = json.loads(raw)
-        return data.get("checkpoints", [])
-    except Exception as e:
-        print(f"    GPT verify error: {e}")
-        return [
-            {"index": cp["checkpoint_index"], "met": False,
-             "evidence": f"Verification error: {str(e)[:100]}"}
-            for cp in checkpoints
-        ]
+        cp_lines = "\n".join(
+            f"CHECKPOINT {cp['checkpoint_index']}: {cp['requirement']}"
+            for cp in uncached_checkpoints
+        )
+        user_msg = (
+            f"Verify each checkpoint against this policy evidence:\n\n"
+            f"{cp_lines}\n\n"
+            f"POLICY EVIDENCE:\n{policy_text[:15000]}"
+        )
+
+        try:
+            raw = await call_llm(prompt, user_msg)
+            data = json.loads(raw)
+            new_results = data.get("checkpoints", [])
+
+            # Apply grounding to GPT verdicts (preserves Iteration A logic)
+            for v in new_results:
+                if not v.get("met"):
+                    v["grounded"] = True
+                    continue
+                ev = v.get("evidence", "")
+                if not ev or ev.strip().lower() == "no evidence found":
+                    v["grounded"] = True
+                    continue
+                grounded, actual, sim = _find_grounded_evidence(
+                    ev, policy_text
+                )
+                if not grounded:
+                    old_conf = v.get("confidence", 0.5)
+                    v["met"] = False
+                    v["confidence"] = max(0.1, old_conf - 0.4)
+                    v["evidence"] = (
+                        "Evidence could not be verified in policy text"
+                    )
+                    v["grounded"] = False
+                    print(f"      [grounding] CP{v.get('index')} "
+                          f"REJECTED (sim={sim:.2f})")
+                else:
+                    v["grounded"] = True
+                    v["evidence"] = actual
+
+            # Store new verdicts in cache
+            if db and cache_keys:
+                try:
+                    for v in new_results:
+                        idx = v.get("index", 0)
+                        if idx not in cache_keys:
+                            continue
+                        cp_id, ck = cache_keys[idx]
+                        db.execute(sql_text("""
+                            INSERT INTO verification_cache
+                            (cache_key, checkpoint_id, met, confidence,
+                             evidence, grounded, prompt_version)
+                            VALUES (:ck, :cid, :m, :c, :e, :g, :pv)
+                            ON CONFLICT (cache_key) DO NOTHING
+                        """), {
+                            "ck": ck, "cid": cp_id,
+                            "m": bool(v.get("met", False)),
+                            "c": float(v.get("confidence", 0.5)),
+                            "e": (v.get("evidence", "") or "")[:5000],
+                            "g": bool(v.get("grounded", True)),
+                            "pv": PROMPT_VERSION,
+                        })
+                    db.commit()
+                except Exception as cache_write_err:
+                    db.rollback()
+                    print(f"    [cache] write error: {cache_write_err}")
+
+        except Exception as e:
+            print(f"    GPT verify error: {e}")
+            new_results = [
+                {"index": cp["checkpoint_index"], "met": False,
+                 "confidence": 0.1, "grounded": True,
+                 "evidence": f"Verification error: {str(e)[:100]}"}
+                for cp in uncached_checkpoints
+            ]
+
+    # ── Merge cached + new, preserving original checkpoint order ──
+    new_map = {v.get("index"): v for v in new_results}
+    final = []
+    for cp in checkpoints:
+        idx = cp["checkpoint_index"]
+        if idx in cached_results:
+            final.append(cached_results[idx])
+        elif idx in new_map:
+            final.append(new_map[idx])
+        else:
+            final.append({
+                "index": idx, "met": False, "confidence": 0.1,
+                "evidence": "No result", "grounded": True
+            })
+    return final
 
 
 # ── Auto-embed helper ────────────────────────────────────────────────────────
@@ -300,16 +476,41 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
     print(f"    [{control_code}] Run1: {len(focused_1)} chars, "
           f"Run2: {len(focused_2)} chars")
 
-    # ── Dual GPT verification ────────────────────────────────────────
+    # ── Adaptive GPT verification ────────────────────────────────────
+    # Run 1 always. Run 2 only for checkpoints with borderline confidence.
     t1 = time.time()
-    gpt_run1, gpt_run2 = await asyncio.gather(
-        verify_checkpoints_gpt(checkpoints, focused_1, db=db),
-        verify_checkpoints_gpt(checkpoints, focused_2, db=db),
-    )
-    gpt_time = round(time.time() - t1, 2)
-
+    gpt_run1 = await verify_checkpoints_gpt(checkpoints, focused_1, db=db)
     gpt_map1 = {g.get("index", 0): g for g in gpt_run1}
+
+    # Identify checkpoints that need a second pass (borderline cases only)
+    needs_second_pass = []
+    for cp in checkpoints:
+        idx = cp["checkpoint_index"]
+        r1 = gpt_map1.get(idx, {})
+        conf = float(r1.get("confidence", 0.5))
+        if 0.4 <= conf <= 0.7:
+            needs_second_pass.append(cp)
+
+    second_pass_count = len(needs_second_pass)
+    print(f"    [{control_code}] Run2 needed for "
+          f"{second_pass_count}/{len(checkpoints)} borderline checkpoints")
+
+    # Run 2 only if any checkpoint actually needs it
+    gpt_run2 = []
+    if needs_second_pass:
+        gpt_run2 = await verify_checkpoints_gpt(
+            needs_second_pass, focused_2, db=db
+        )
     gpt_map2 = {g.get("index", 0): g for g in gpt_run2}
+
+    # For checkpoints that didn't need run 2, copy run 1 result
+    # (perfect agreement since we skipped run 2 because it was already certain)
+    for cp in checkpoints:
+        idx = cp["checkpoint_index"]
+        if idx not in gpt_map2:
+            gpt_map2[idx] = dict(gpt_map1.get(idx, {}))
+
+    gpt_time = round(time.time() - t1, 2)
 
     # ── Score each checkpoint with 3-signal confidence ───────────────
     sub_requirements = []

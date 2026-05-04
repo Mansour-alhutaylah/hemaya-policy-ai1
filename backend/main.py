@@ -323,9 +323,9 @@ async def upload_policy(
     db.execute(_sql("""
         INSERT INTO policies
         (id, file_name, description, department, version, status,
-         file_url, file_type, content_preview, framework_code,
+         file_url, file_type, content_preview, framework_code, owner_id,
          uploaded_at, created_at)
-        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:fwc,:at,:cat)
+        VALUES (:id,:fn,:desc,:dept,:ver,'processing',:furl,:ft,:prev,:fwc,:oid,:at,:cat)
     """), {
         "id": policy_id,
         "fn": original_name,
@@ -336,6 +336,7 @@ async def upload_policy(
         "ft": ext.replace(".", "").upper(),
         "prev": content[:500] if content else "",
         "fwc": framework_value,
+        "oid": str(current_user.id),
         "at": datetime.now(timezone.utc),
         "cat": datetime.now(timezone.utc),
     })
