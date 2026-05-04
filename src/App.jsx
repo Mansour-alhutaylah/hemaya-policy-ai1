@@ -19,8 +19,23 @@ const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
+// Mirrors backend ADMIN_EMAIL + Sidebar admin check.
+const ADMIN_EMAIL = "himayaadmin@gmail.com";
+
+// Pages that must only be reachable by the admin account. Direct URL access
+// for non-admins is redirected to /Dashboard so they don't see a 404 dead-end.
+const ADMIN_ONLY_PAGES = new Set(["AuditTrail"]);
+
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
+
+const AdminOnly = ({ children }) => {
+  const { user } = useAuth();
+  if (user?.email !== ADMIN_EMAIL) {
+    return <Navigate to="/Dashboard" replace />;
+  }
+  return children;
+};
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthed } = useAuth();
@@ -71,17 +86,22 @@ const AuthenticatedApp = () => {
         }
       />
 
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
+      {Object.entries(Pages).map(([path, Page]) => {
+        const element = (
+          <LayoutWrapper currentPageName={path}>
+            <Page />
+          </LayoutWrapper>
+        );
+        return (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={
+              ADMIN_ONLY_PAGES.has(path) ? <AdminOnly>{element}</AdminOnly> : element
+            }
+          />
+        );
+      })}
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>

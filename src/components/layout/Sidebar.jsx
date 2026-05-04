@@ -26,6 +26,9 @@ import {
 
 const ADMIN_EMAIL = 'himayaadmin@gmail.com';
 
+// Pages that must only appear in the sidebar for the admin account.
+const ADMIN_ONLY_NAV_PAGES = new Set(['AuditTrail']);
+
 const navigationItems = [
   { name: 'Home', icon: Home, page: 'Home' },
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
@@ -48,6 +51,9 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const currentPath = location.pathname;
   const { user } = useAuth();
   const isAdmin = user?.email === ADMIN_EMAIL;
+  const visibleNav = navigationItems.filter(
+    (item) => isAdmin || !ADMIN_ONLY_NAV_PAGES.has(item.page)
+  );
 
   return (
     <aside
@@ -72,7 +78,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       {/* Navigation */}
       <nav dir="rtl" className="flex-1 overflow-y-auto py-4 px-3">
         <ul dir="ltr" className="space-y-1">
-          {navigationItems.map((item) => {
+          {visibleNav.map((item) => {
             const isActive = currentPath === `/${item.page}` ||
               (item.page === 'Home' && currentPath === '/');
             

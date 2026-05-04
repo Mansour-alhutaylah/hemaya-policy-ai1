@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
+import { useToast } from '@/components/ui/use-toast';
+import { downloadAuditTrailPdf } from '@/lib/auditReport';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import EmptyState from '@/components/ui/EmptyState';
@@ -54,6 +56,8 @@ export default function AuditTrailPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState('all');
   const [dateRange, setDateRange] = useState({ from: null, to: null });
+  const [exporting, setExporting] = useState(false);
+  const { toast } = useToast();
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['auditLogs'],
@@ -151,18 +155,29 @@ export default function AuditTrailPage() {
     return matchesSearch && matchesAction;
   });
 
-  const handleExport = () => {
-    // TODO: Implement actual CSV export
-    const csvContent = filteredLogs.map(log => 
-      `${log.timestamp},${log.actor},${log.action},${log.details}`
-    ).join('\n');
-    
-    const blob = new Blob([`Date,Actor,Action,Details\n${csvContent}`], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `audit-trail-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await downloadAuditTrailPdf(filteredLogs, {
+        search: searchQuery,
+        action: actionFilter,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+      });
+      toast({
+        title: 'Audit Trail Exported',
+        description: `${filteredLogs.length} record${filteredLogs.length === 1 ? '' : 's'} exported to PDF.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Export Failed',
+        description: error?.message || 'Could not generate the audit PDF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns = [
@@ -239,9 +254,9 @@ export default function AuditTrailPage() {
       title="Audit Trail"
       subtitle="Immutable log of all system activities and user actions"
       actions={
-        <Button variant="outline" onClick={handleExport}>
+        <Button variant="outline" onClick={handleExport} disabled={exporting}>
           <Download className="w-4 h-4 mr-2" />
-          Export CSV
+          {exporting ? 'Generating PDF…' : 'Export PDF'}
         </Button>
       }
     >

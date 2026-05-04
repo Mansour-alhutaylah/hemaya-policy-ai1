@@ -547,8 +547,9 @@ def get_policies(
 def get_audit_logs(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_admin),
 ):
+    """Admin-only: regular users cannot read the audit trail."""
     from sqlalchemy import text as _t
     params = dict(request.query_params)
     limit = int(params.get("limit", 100))
