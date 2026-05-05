@@ -131,7 +131,7 @@ export default function Settings() {
       }
     >
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="bg-slate-100 dark:bg-slate-800">
+        <TabsList>
           <TabsTrigger value="profile" className="gap-2">
             <User className="w-4 h-4" />
             Profile
@@ -159,7 +159,7 @@ export default function Settings() {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5 text-emerald-600" />
+                <User className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 Profile Information
               </CardTitle>
               <CardDescription>
@@ -173,19 +173,19 @@ export default function Settings() {
                   <Input
                     value={fullName}
                     disabled
-                    className="bg-slate-50 dark:bg-slate-800"
+                    className="bg-muted/50"
                   />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Contact support to change your name</p>
+                  <p className="text-xs text-muted-foreground">Contact support to change your name</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label>Email Address</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       value={user?.email || ''}
                       disabled
-                      className="pl-10 bg-slate-50 dark:bg-slate-800"
+                      className="pl-10 bg-muted/50"
                     />
                   </div>
                 </div>
@@ -193,11 +193,11 @@ export default function Settings() {
                 <div className="space-y-2">
                   <Label>Phone</Label>
                   <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       value={user?.phone || ''}
                       disabled
-                      className="pl-10 bg-slate-50 dark:bg-slate-800"
+                      className="pl-10 bg-muted/50"
                       placeholder="Not provided"
                     />
                   </div>
@@ -209,10 +209,10 @@ export default function Settings() {
               <div>
                 <Label className="text-base font-medium">Role</Label>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge className="bg-emerald-100 text-emerald-700 capitalize">
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 capitalize">
                     {user?.role || 'User'}
                   </Badge>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                  <span className="text-sm text-muted-foreground">
                     Contact your administrator to change your role
                   </span>
                 </div>
@@ -226,7 +226,7 @@ export default function Settings() {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-emerald-600" />
+                <Bell className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 Notification Preferences
               </CardTitle>
               <CardDescription>
@@ -237,7 +237,7 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-base">Email Notifications</Label>
-                  <p className="text-sm text-slate-500">Receive notifications via email</p>
+                  <p className="text-sm text-muted-foreground">Receive notifications via email</p>
                 </div>
                 <Switch
                   checked={settings.emailNotifications}
@@ -253,7 +253,7 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Analysis Complete</Label>
-                    <p className="text-sm text-slate-500">When a compliance analysis finishes</p>
+                    <p className="text-sm text-muted-foreground">When a compliance analysis finishes</p>
                   </div>
                   <Switch
                     checked={settings.analysisComplete}
@@ -265,7 +265,7 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Gap Alerts</Label>
-                    <p className="text-sm text-slate-500">When new critical gaps are identified</p>
+                    <p className="text-sm text-muted-foreground">When new critical gaps are identified</p>
                   </div>
                   <Switch
                     checked={settings.gapAlerts}
@@ -277,7 +277,7 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Weekly Digest</Label>
-                    <p className="text-sm text-slate-500">Summary of compliance status every week</p>
+                    <p className="text-sm text-muted-foreground">Summary of compliance status every week</p>
                   </div>
                   <Switch
                     checked={settings.weeklyDigest}
@@ -295,7 +295,7 @@ export default function Settings() {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-emerald-600" />
+                <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 Security Settings
               </CardTitle>
               <CardDescription>
@@ -306,7 +306,7 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-base">Two-Factor Authentication</Label>
-                  <p className="text-sm text-slate-500">Add an extra layer of security to your account</p>
+                  <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
                 </div>
                 <Switch
                   checked={settings.twoFactorAuth}
@@ -332,14 +332,14 @@ export default function Settings() {
                     <SelectItem value="120">2 hours</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-slate-500">Automatically log out after inactivity</p>
+                <p className="text-sm text-muted-foreground">Automatically log out after inactivity</p>
               </div>
 
               <Separator />
 
               <div>
                 <Label className="text-base font-medium">Password</Label>
-                <p className="text-sm text-slate-500 mb-3">Change your account password</p>
+                <p className="text-sm text-muted-foreground mb-3">Change your account password</p>
                 <Button variant="outline">
                   <Key className="w-4 h-4 mr-2" />
                   Change Password
@@ -354,7 +354,7 @@ export default function Settings() {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-emerald-600" />
+                <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 Compliance Settings
               </CardTitle>
               <CardDescription>
@@ -378,7 +378,7 @@ export default function Settings() {
                     <SelectItem value="NIST 800-53">NIST 800-53</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-slate-500">Default framework for new analyses</p>
+                <p className="text-sm text-muted-foreground">Default framework for new analyses</p>
               </div>
 
               <Separator />
@@ -386,7 +386,7 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-base">Auto-Analysis</Label>
-                  <p className="text-sm text-slate-500">Automatically analyze policies when uploaded</p>
+                  <p className="text-sm text-muted-foreground">Automatically analyze policies when uploaded</p>
                 </div>
                 <Switch
                   checked={settings.autoAnalysis}
@@ -412,7 +412,7 @@ export default function Settings() {
                     <SelectItem value="0.8">80% (High precision)</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-slate-500">Mappings below this threshold require human review</p>
+                <p className="text-sm text-muted-foreground">Mappings below this threshold require human review</p>
               </div>
             </CardContent>
           </Card>
@@ -423,7 +423,7 @@ export default function Settings() {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Palette className="w-5 h-5 text-emerald-600" />
+                <Palette className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 Display Settings
               </CardTitle>
               <CardDescription>

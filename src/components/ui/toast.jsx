@@ -27,11 +27,11 @@ const Toast = React.forwardRef(
         ref={ref}
         className={cn(
           "toast-notification group pointer-events-auto relative w-full overflow-hidden",
-          "rounded-xl border shadow-xl bg-white",
+          "rounded-xl border shadow-xl bg-popover text-popover-foreground",
           "flex flex-col gap-0",
           isDestructive
-            ? "border-l-4 border-l-red-500 border-red-100"
-            : "border-l-4 border-l-emerald-500 border-slate-100",
+            ? "border-l-4 border-l-red-500 border-red-100 dark:border-red-500/30"
+            : "border-l-4 border-l-emerald-500 border-border",
           entering && "toast-enter",
           exiting && "toast-exit",
           !entering && !exiting && "toast-visible",
@@ -44,7 +44,9 @@ const Toast = React.forwardRef(
           {/* Icon */}
           <div className={cn(
             "mt-0.5 shrink-0 rounded-full p-1",
-            isDestructive ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"
+            isDestructive
+              ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400"
+              : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
           )}>
             {isDestructive
               ? <AlertCircle className="h-4 w-4" />
@@ -60,7 +62,7 @@ const Toast = React.forwardRef(
           <button
             toast-close=""
             onClick={props.onClose}
-            className="shrink-0 rounded-md p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none"
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus:outline-none"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -68,7 +70,7 @@ const Toast = React.forwardRef(
 
         {/* Progress bar */}
         {typeof progress === "number" && (
-          <div className="h-0.5 w-full bg-slate-100">
+          <div className="h-0.5 w-full bg-muted">
             <div
               className={cn(
                 "h-full transition-none",
@@ -85,12 +87,12 @@ const Toast = React.forwardRef(
 Toast.displayName = "Toast";
 
 const ToastTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <p ref={ref} className={cn("text-sm font-semibold text-slate-900 leading-tight", className)} {...props} />
+  <p ref={ref} className={cn("text-sm font-semibold text-foreground leading-tight", className)} {...props} />
 ));
 ToastTitle.displayName = "ToastTitle";
 
 const ToastDescription = React.forwardRef(({ className, ...props }, ref) => (
-  <p ref={ref} className={cn("text-xs text-slate-500 mt-0.5 leading-relaxed", className)} {...props} />
+  <p ref={ref} className={cn("text-xs text-muted-foreground mt-0.5 leading-relaxed", className)} {...props} />
 ));
 ToastDescription.displayName = "ToastDescription";
 
@@ -102,7 +104,7 @@ ToastClose.displayName = "ToastClose";
 const ToastAction = React.forwardRef(({ className, ...props }, ref) => (
   <button
     ref={ref}
-    className={cn("mt-1 text-xs font-medium text-emerald-600 hover:underline focus:outline-none", className)}
+    className={cn("mt-1 text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400 focus:outline-none", className)}
     {...props}
   />
 ));

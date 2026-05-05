@@ -1,12 +1,12 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-export default function PageContainer({ 
-  children, 
-  title, 
+export default function PageContainer({
+  children,
+  title,
   subtitle,
   actions,
-  className 
+  className
 }) {
   return (
     <div className={cn("p-6 lg:p-8", className)}>
@@ -14,12 +14,12 @@ export default function PageContainer({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
             {title && (
-              <h1 className="text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+              <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
                 {title}
               </h1>
             )}
             {subtitle && (
-              <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm lg:text-base">
+              <p className="text-muted-foreground mt-1 text-sm lg:text-base">
                 {subtitle}
               </p>
             )}

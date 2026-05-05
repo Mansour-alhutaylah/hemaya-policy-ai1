@@ -81,7 +81,7 @@ export default function Topbar() {
   };
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-end px-6 sticky top-0 z-30">
+    <header className="h-16 bg-card border-b border-border flex items-center justify-end px-6 sticky top-0 z-30">
       {/* Actions */}
       <div className="flex items-center gap-3">
         {/* User Menu */}
@@ -95,15 +95,15 @@ export default function Topbar() {
               </Avatar>
 
               <div className="flex flex-col items-start">
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                <span className="text-sm font-medium text-foreground">
                   {displayName}
                 </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 capitalize">
+                <span className="text-[10px] text-muted-foreground capitalize">
                   {displayRole}
                 </span>
               </div>
 
-              <ChevronDown className="w-4 h-4 text-slate-400" />
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
 
@@ -120,7 +120,10 @@ export default function Topbar() {
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300"
+            >
               <LogOut className="w-4 h-4 mr-2" />
               Log out
             </DropdownMenuItem>

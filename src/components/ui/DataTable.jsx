@@ -20,12 +20,12 @@ export default function DataTable({
 }) {
   if (isLoading) {
     return (
-      <div className={cn("rounded-xl border border-slate-200 bg-white overflow-hidden", className)}>
+      <div className={cn("rounded-xl border border-border bg-card overflow-hidden", className)}>
         <Table>
           <TableHeader>
-            <TableRow className="bg-slate-50">
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
               {columns.map((col, i) => (
-                <TableHead key={i} className="font-semibold text-slate-700">
+                <TableHead key={i} className="font-semibold text-foreground">
                   {col.header}
                 </TableHead>
               ))}
@@ -49,22 +49,22 @@ export default function DataTable({
 
   if (!data || data.length === 0) {
     return (
-      <div className={cn("rounded-xl border border-slate-200 bg-white overflow-hidden", className)}>
+      <div className={cn("rounded-xl border border-border bg-card overflow-hidden", className)}>
         {emptyState}
       </div>
     );
   }
 
   return (
-    <div className={cn("rounded-xl border border-slate-200 bg-white overflow-hidden", className)}>
+    <div className={cn("rounded-xl border border-border bg-card overflow-hidden", className)}>
       <Table>
         <TableHeader>
-          <TableRow className="bg-slate-50 hover:bg-slate-50">
+          <TableRow className="bg-muted/50 hover:bg-muted/50 border-border">
             {columns.map((col, i) => (
-              <TableHead 
-                key={i} 
+              <TableHead
+                key={i}
                 className={cn(
-                  "font-semibold text-slate-700 text-xs uppercase tracking-wide",
+                  "font-semibold text-muted-foreground text-xs uppercase tracking-wide",
                   col.className
                 )}
               >
@@ -75,12 +75,12 @@ export default function DataTable({
         </TableHeader>
         <TableBody>
           {data.map((row, rowIndex) => (
-            <TableRow 
+            <TableRow
               key={row.id || rowIndex}
               onClick={() => onRowClick?.(row)}
               className={cn(
-                "transition-colors",
-                onRowClick && "cursor-pointer hover:bg-slate-50"
+                "transition-colors border-border",
+                onRowClick && "cursor-pointer hover:bg-muted/40"
               )}
             >
               {columns.map((col, colIndex) => (

@@ -111,12 +111,12 @@ export default function Dashboard() {
 
   const getActionIcon = (action) => {
     switch (action) {
-      case 'policy_upload': return <Upload className="w-4 h-4 text-blue-500" />;
+      case 'policy_upload': return <Upload className="w-4 h-4 text-blue-500 dark:text-blue-400" />;
       case 'analysis_complete':
-      case 'analysis_start': return <BarChart3 className="w-4 h-4 text-emerald-500" />;
-      case 'gap_update': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-      case 'report_generate': return <FileText className="w-4 h-4 text-purple-500" />;
-      default: return <CheckCircle2 className="w-4 h-4 text-slate-400" />;
+      case 'analysis_start': return <BarChart3 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />;
+      case 'gap_update': return <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />;
+      case 'report_generate': return <FileText className="w-4 h-4 text-purple-500 dark:text-purple-400" />;
+      default: return <CheckCircle2 className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
@@ -178,7 +178,7 @@ export default function Dashboard() {
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Shield className="w-5 h-5 text-emerald-600" />
+              <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Compliance Level by Framework
             </CardTitle>
           </CardHeader>
@@ -188,19 +188,13 @@ export default function Dashboard() {
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={complianceByFramework}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="framework" tick={{ fontSize: 12 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#fff', 
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
-                    }}
+                  <Tooltip
                     formatter={(value) => [`${value}%`, 'Compliance']}
                   />
-                  <Bar dataKey="score" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="score" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -211,7 +205,7 @@ export default function Dashboard() {
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               Gap Severity Distribution
             </CardTitle>
           </CardHeader>
@@ -241,12 +235,12 @@ export default function Dashboard() {
                 <div className="flex-1 space-y-3">
                   {riskData.map((item, index) => (
                     <div key={index} className="flex items-center gap-3">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
+                      <div
+                        className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="text-sm text-slate-600 flex-1">{item.name}</span>
-                      <span className="text-sm font-medium text-slate-900">{item.value}</span>
+                      <span className="text-sm text-muted-foreground flex-1">{item.name}</span>
+                      <span className="text-sm font-medium text-foreground">{item.value}</span>
                     </div>
                   ))}
                 </div>
@@ -262,7 +256,7 @@ export default function Dashboard() {
         <Card className="lg:col-span-2 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
+              <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               Controls Distribution
             </CardTitle>
           </CardHeader>
@@ -272,16 +266,10 @@ export default function Dashboard() {
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={controlsData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#fff', 
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
-                    }}
-                  />
+                  <Tooltip />
                   <Legend />
                   <Bar dataKey="Covered" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
                   <Bar dataKey="Partial" stackId="a" fill="#f59e0b" />
@@ -296,7 +284,7 @@ export default function Dashboard() {
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Clock className="w-5 h-5 text-slate-600" />
+              <Clock className="w-5 h-5 text-muted-foreground" />
               Recent Activity
             </CardTitle>
           </CardHeader>
@@ -308,23 +296,23 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : displayActivity.length === 0 ? (
-              <div className="text-center py-8 text-sm text-slate-500">
+              <div className="text-center py-8 text-sm text-muted-foreground">
                 No recent activity to show.
               </div>
             ) : (
               <div className="space-y-4">
                 {displayActivity.map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
                       {getActionIcon(activity.action)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {activity.action?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </p>
-                      <p className="text-xs text-slate-500 truncate">{activity.target || activity.actor}</p>
+                      <p className="text-xs text-muted-foreground truncate">{activity.target || activity.actor}</p>
                     </div>
-                    <span className="text-xs text-slate-400 flex-shrink-0">
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
                       {activity.time ? format(new Date(activity.time), 'HH:mm') : 'Now'}
                     </span>
                   </div>

@@ -193,22 +193,22 @@ export default function Simulation() {
       title="Compliance Simulation"
       subtitle="Predict the impact of implementing additional controls"
       actions={
-        <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1">
+        <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 gap-1">
           <FlaskConical className="w-3 h-3" />
           BETA
         </Badge>
       }
     >
       {/* Info Banner */}
-      <Card className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+      <Card className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 dark:from-amber-500/10 dark:to-orange-500/10 dark:border-amber-500/30">
         <CardContent className="p-4 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <Sparkles className="w-5 h-5 text-amber-600" />
+          <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-amber-600 dark:text-amber-400" />
           </div>
           <div>
-            <h3 className="font-semibold text-amber-900 mb-1">What-If Analysis</h3>
-            <p className="text-sm text-amber-700">
-              Select controls you plan to implement and see the predicted impact on your compliance scores. 
+            <h3 className="font-semibold text-amber-900 dark:text-amber-200 mb-1">What-If Analysis</h3>
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              Select controls you plan to implement and see the predicted impact on your compliance scores.
               This simulation helps prioritize remediation efforts for maximum compliance improvement.
             </p>
           </div>
@@ -220,7 +220,7 @@ export default function Simulation() {
         <Card className="lg:col-span-1 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Shield className="w-5 h-5 text-emerald-600" />
+              <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Select Controls to Implement
             </CardTitle>
           </CardHeader>
@@ -241,17 +241,17 @@ export default function Simulation() {
 
             <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
               {filteredControls.map(control => (
-                <div 
+                <div
                   key={control.id}
                   className={`p-3 rounded-lg border transition-all cursor-pointer ${
                     selectedControls.includes(control.id)
-                      ? 'bg-emerald-50 border-emerald-300'
-                      : 'bg-white border-slate-200 hover:border-emerald-200'
+                      ? 'bg-emerald-50 border-emerald-300 dark:bg-emerald-500/10 dark:border-emerald-500/40'
+                      : 'bg-card border-border hover:border-emerald-200 dark:hover:border-emerald-500/40'
                   }`}
                   onClick={() => toggleControl(control.id)}
                 >
                   <div className="flex items-start gap-3">
-                    <Checkbox 
+                    <Checkbox
                       checked={selectedControls.includes(control.id)}
                       onCheckedChange={() => toggleControl(control.id)}
                     />
@@ -260,20 +260,20 @@ export default function Simulation() {
                         <Badge variant="outline" className="font-mono text-xs">
                           {control.id}
                         </Badge>
-                        <Badge className="bg-slate-100 text-slate-600 text-xs">
+                        <Badge className="bg-muted text-foreground text-xs">
                           +{control.impact}%
                         </Badge>
                       </div>
-                      <p className="text-sm font-medium">{control.name}</p>
-                      <p className="text-xs text-slate-500">{control.framework}</p>
+                      <p className="text-sm font-medium text-foreground">{control.name}</p>
+                      <p className="text-xs text-muted-foreground">{control.framework}</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-200">
-              <p className="text-sm text-slate-500 mb-3">
+            <div className="mt-4 pt-4 border-t border-border">
+              <p className="text-sm text-muted-foreground mb-3">
                 {selectedControls.length} controls selected
               </p>
               <div className="flex gap-2">
@@ -301,17 +301,17 @@ export default function Simulation() {
         <Card className="lg:col-span-2 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
+              <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Simulation Results
             </CardTitle>
           </CardHeader>
           <CardContent>
             {!simulationRun ? (
               <div className="h-80 flex flex-col items-center justify-center text-center">
-                <FlaskConical className="w-16 h-16 text-slate-200 mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-1">No simulation run yet</h3>
-                <p className="text-sm text-slate-500 max-w-md">
-                  Select the controls you want to implement from the list on the left, 
+                <FlaskConical className="w-16 h-16 text-muted-foreground/40 mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-1">No simulation run yet</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Select the controls you want to implement from the list on the left,
                   then click "Run Simulation" to see the predicted impact.
                 </p>
               </div>
@@ -319,25 +319,25 @@ export default function Simulation() {
               <div className="space-y-6">
                 {/* Impact Summary */}
                 <div className="grid grid-cols-3 gap-4">
-                  <Card className="bg-emerald-50 border-emerald-200">
+                  <Card className="bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30">
                     <CardContent className="p-4 text-center">
-                      <TrendingUp className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-emerald-700">+{Math.round(totalImpact / 3)}%</p>
-                      <p className="text-xs text-emerald-600">Avg. Score Increase</p>
+                      <TrendingUp className="w-6 h-6 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
+                      <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">+{Math.round(totalImpact / 3)}%</p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">Avg. Score Increase</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-blue-50 border-blue-200">
+                  <Card className="bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30">
                     <CardContent className="p-4 text-center">
-                      <CheckCircle2 className="w-6 h-6 text-blue-600 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-blue-700">{simulationResults.controlsImplemented}</p>
-                      <p className="text-xs text-blue-600">Controls Implemented</p>
+                      <CheckCircle2 className="w-6 h-6 text-blue-600 dark:text-blue-400 mx-auto mb-2" />
+                      <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{simulationResults.controlsImplemented}</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400">Controls Implemented</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-amber-50 border-amber-200">
+                  <Card className="bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30">
                     <CardContent className="p-4 text-center">
-                      <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto mb-2" />
-                      <p className="text-2xl font-bold text-amber-700">{simulationResults.gapsResolved}</p>
-                      <p className="text-xs text-amber-600">Gaps Resolved</p>
+                      <AlertTriangle className="w-6 h-6 text-amber-600 dark:text-amber-400 mx-auto mb-2" />
+                      <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{simulationResults.gapsResolved}</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Gaps Resolved</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -346,15 +346,10 @@ export default function Simulation() {
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} />
                       <YAxis dataKey="framework" type="category" tick={{ fontSize: 12 }} width={100} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#fff', 
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px'
-                        }}
+                      <Tooltip
                         formatter={(value) => [`${value}%`]}
                       />
                       <Legend />
@@ -366,29 +361,29 @@ export default function Simulation() {
 
                 {/* Detailed Breakdown */}
                 <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-slate-700">Score Breakdown</h4>
+                  <h4 className="text-sm font-semibold text-foreground">Score Breakdown</h4>
                   {Object.keys(simulationResults.projectedScores).map(framework => {
                     const current = simulationResults.currentScores[framework];
                     const projected = simulationResults.projectedScores[framework];
                     const improvement = projected - current;
-                    
+
                     return (
                       <div key={framework} className="space-y-1">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium">{framework}</span>
+                          <span className="font-medium text-foreground">{framework}</span>
                           <span>
-                            <span className="text-slate-500">{current}%</span>
-                            <span className="mx-2">→</span>
-                            <span className="text-emerald-600 font-medium">{projected}%</span>
-                            <span className="text-emerald-600 text-xs ml-1">(+{improvement}%)</span>
+                            <span className="text-muted-foreground">{current}%</span>
+                            <span className="mx-2 text-muted-foreground">→</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">{projected}%</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 text-xs ml-1">(+{improvement}%)</span>
                           </span>
                         </div>
-                        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div 
-                            className="absolute h-full bg-slate-300 rounded-full"
+                        <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="absolute h-full bg-slate-300 dark:bg-slate-600 rounded-full"
                             style={{ width: `${current}%` }}
                           />
-                          <div 
+                          <div
                             className="absolute h-full bg-emerald-500 rounded-full transition-all"
                             style={{ width: `${projected}%` }}
                           />

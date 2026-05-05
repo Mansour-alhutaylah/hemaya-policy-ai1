@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { cn } from '@/lib/utils';
@@ -52,30 +52,30 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-slate-900 dark:bg-slate-950 text-white transition-all duration-300 flex flex-col",
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 flex flex-col",
         collapsed ? "w-20" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700/50">
+      <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
         <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
           <ShieldCheck className="w-6 h-6 text-white" />
         </div>
         {!collapsed && (
           <div className="flex flex-col">
-            <span className="font-bold text-lg tracking-tight">Himaya</span>
-            <span className="text-[10px] text-slate-400 uppercase tracking-widest">AI Compliance</span>
+            <span className="font-bold text-lg tracking-tight text-white">Himaya</span>
+            <span className="text-[10px] text-sidebar-foreground/70 uppercase tracking-widest">AI Compliance</span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav dir="rtl" className="flex-1 overflow-y-auto py-4 px-3">
+      <nav dir="rtl" className="flex-1 overflow-y-auto py-4 px-3 scrollbar-thin">
         <ul dir="ltr" className="space-y-1">
           {visibleNav.map((item) => {
             const isActive = currentPath === `/${item.page}` ||
               (item.page === 'Home' && currentPath === '/');
-            
+
             return (
               <li key={item.name}>
                 <Link
@@ -83,13 +83,13 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
                     isActive
-                      ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-400 border-l-2 border-emerald-400"
-                      : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                      ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-300 border-l-2 border-emerald-400"
+                      : "text-sidebar-foreground/70 hover:text-white hover:bg-sidebar-accent"
                   )}
                 >
                   <item.icon className={cn(
                     "w-5 h-5 flex-shrink-0 transition-colors",
-                    isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-emerald-400"
+                    isActive ? "text-emerald-300" : "text-sidebar-foreground/60 group-hover:text-emerald-300"
                   )} />
                   {!collapsed && (
                     <>
@@ -97,9 +97,9 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                       {item.badge && (
                         <span className={cn(
                           "ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded",
-                          item.badge === 'NEW' 
-                            ? "bg-emerald-500/20 text-emerald-400" 
-                            : "bg-amber-500/20 text-amber-400"
+                          item.badge === 'NEW'
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "bg-amber-500/20 text-amber-300"
                         )}>
                           {item.badge}
                         </span>
@@ -126,7 +126,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
               currentPath === '/admin'
-                ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-400 border-l-2 border-emerald-400"
+                ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-300 border-l-2 border-emerald-400"
                 : "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
             )}>
             <KeyRound className="w-5 h-5 flex-shrink-0" />
@@ -136,10 +136,10 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       )}
 
       {/* Collapse Toggle */}
-      <div className="p-3 border-t border-slate-700/50">
+      <div className="p-3 border-t border-sidebar-border">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sidebar-foreground/70 hover:text-white hover:bg-sidebar-accent transition-colors"
         >
           {collapsed ? (
             <ChevronRight className="w-5 h-5" />

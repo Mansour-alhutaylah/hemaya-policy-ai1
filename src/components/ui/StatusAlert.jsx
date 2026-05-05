@@ -3,27 +3,31 @@ import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 
 const VARIANTS = {
   success: {
-    wrapper: "border-emerald-200 bg-emerald-50",
-    iconClass: "text-emerald-500",
-    textClass: "text-emerald-700",
+    wrapper:
+      "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10",
+    iconClass: "text-emerald-500 dark:text-emerald-400",
+    textClass: "text-emerald-700 dark:text-emerald-300",
     Icon: CheckCircle2,
   },
   error: {
-    wrapper: "border-red-200 bg-red-50",
-    iconClass: "text-red-500",
-    textClass: "text-red-700",
+    wrapper:
+      "border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10",
+    iconClass: "text-red-500 dark:text-red-400",
+    textClass: "text-red-700 dark:text-red-300",
     Icon: XCircle,
   },
   warning: {
-    wrapper: "border-amber-200 bg-amber-50",
-    iconClass: "text-amber-500",
-    textClass: "text-amber-800",
+    wrapper:
+      "border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10",
+    iconClass: "text-amber-500 dark:text-amber-400",
+    textClass: "text-amber-800 dark:text-amber-200",
     Icon: AlertTriangle,
   },
   info: {
-    wrapper: "border-blue-200 bg-blue-50",
-    iconClass: "text-blue-400",
-    textClass: "text-blue-700",
+    wrapper:
+      "border-blue-200 bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/10",
+    iconClass: "text-blue-400 dark:text-blue-300",
+    textClass: "text-blue-700 dark:text-blue-300",
     Icon: Info,
   },
 };

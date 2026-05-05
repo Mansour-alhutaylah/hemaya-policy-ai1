@@ -13,7 +13,7 @@ export default function StatsCard({
   className
 }) {
   const variants = {
-    default: 'bg-white border-slate-200',
+    default: 'bg-card border-border text-card-foreground',
     emerald: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-transparent',
     blue: 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-transparent',
     amber: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white border-transparent',
@@ -34,14 +34,14 @@ export default function StatsCard({
         <div className="flex-1">
           <p className={cn(
             "text-sm font-medium",
-            isColored ? "text-white/80" : "text-slate-500"
+            isColored ? "text-white/80" : "text-muted-foreground"
           )}>
             {title}
           </p>
           <div className="mt-2 flex items-baseline gap-2">
             <span className={cn(
               "text-3xl font-bold tracking-tight",
-              isColored ? "text-white" : "text-slate-900"
+              isColored ? "text-white" : "text-foreground"
             )}>
               {value}
             </span>
@@ -49,9 +49,9 @@ export default function StatsCard({
               <span className={cn(
                 "flex items-center text-xs font-medium",
                 isColored ? "text-white/80" : (
-                  trend === 'up' ? "text-emerald-600" :
-                  trend === 'down' ? "text-red-600" :
-                  "text-slate-500"
+                  trend === 'up' ? "text-emerald-600 dark:text-emerald-400" :
+                  trend === 'down' ? "text-red-600 dark:text-red-400" :
+                  "text-muted-foreground"
                 )
               )}>
                 {trend === 'up' && <TrendingUp className="w-3 h-3 mr-0.5" />}
@@ -64,7 +64,7 @@ export default function StatsCard({
           {subtitle && (
             <p className={cn(
               "text-xs mt-1",
-              isColored ? "text-white/70" : "text-slate-400"
+              isColored ? "text-white/70" : "text-muted-foreground"
             )}>
               {subtitle}
             </p>
@@ -73,11 +73,11 @@ export default function StatsCard({
         {Icon && (
           <div className={cn(
             "w-10 h-10 rounded-lg flex items-center justify-center",
-            isColored ? "bg-white/20" : "bg-slate-100"
+            isColored ? "bg-white/20" : "bg-muted"
           )}>
             <Icon className={cn(
               "w-5 h-5",
-              isColored ? "text-white" : "text-slate-600"
+              isColored ? "text-white" : "text-muted-foreground"
             )} />
           </div>
         )}

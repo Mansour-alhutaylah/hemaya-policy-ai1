@@ -434,12 +434,12 @@ export default function Policies() {
       accessor: 'file_name',
       cell: (row) => (
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
-            <FileText className="w-5 h-5 text-emerald-600" />
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+            <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <p className="font-medium text-slate-900">{row.file_name}</p>
-            <p className="text-xs text-slate-500">{row.file_type?.toUpperCase()} • v{row.version || '1.0'}</p>
+            <p className="font-medium text-foreground">{row.file_name}</p>
+            <p className="text-xs text-muted-foreground">{row.file_type?.toUpperCase()} • v{row.version || '1.0'}</p>
           </div>
         </div>
       ),
@@ -451,13 +451,13 @@ export default function Policies() {
         row.framework_code ? (
           <Badge
             variant="outline"
-            className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 font-medium"
+            className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 font-medium"
           >
             <ShieldCheck className="w-3 h-3" />
             {row.framework_code}
           </Badge>
         ) : (
-          <span className="text-xs text-slate-400">—</span>
+          <span className="text-xs text-muted-foreground">—</span>
         ),
     },
     {
@@ -465,10 +465,10 @@ export default function Policies() {
       accessor: 'created_date',
       cell: (row) => (
         <div>
-          <p className="text-sm text-slate-900">
+          <p className="text-sm text-foreground">
             {row.created_at ? format(new Date(row.created_at), 'MMM d, yyyy') : '-'}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-foreground">
             {row.uploaded_by || '—'}
           </p>
         </div>
@@ -478,8 +478,8 @@ export default function Policies() {
       header: 'Last Analysis',
       accessor: 'last_analyzed_at',
       cell: (row) => (
-        <span className="text-sm text-slate-600">
-          {row.last_analyzed_at 
+        <span className="text-sm text-muted-foreground">
+          {row.last_analyzed_at
             ? format(new Date(row.last_analyzed_at), 'MMM d, yyyy HH:mm')
             : 'Never'}
         </span>
@@ -494,8 +494,8 @@ export default function Policies() {
 
         if (row.status === 'processing') {
           const pausing = !!row.pause_requested;
-          const labelColor = pausing ? 'text-slate-500' : 'text-amber-700';
-          const trackColor = pausing ? 'bg-slate-200' : 'bg-amber-100';
+          const labelColor = pausing ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300';
+          const trackColor = pausing ? 'bg-muted' : 'bg-amber-100 dark:bg-amber-500/20';
           const fillColor  = pausing
             ? 'bg-gradient-to-r from-slate-400 to-slate-500'
             : 'bg-gradient-to-r from-amber-400 to-emerald-500';
@@ -514,7 +514,7 @@ export default function Policies() {
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <p className="text-[10px] text-slate-500 truncate mt-1" title={stage}>
+              <p className="text-[10px] text-muted-foreground truncate mt-1" title={stage}>
                 {pausing ? 'Pause will take effect at the next safe checkpoint.' : stage}
               </p>
             </div>
@@ -525,19 +525,19 @@ export default function Policies() {
           return (
             <div className="min-w-[160px] max-w-[220px]">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
                   <PauseCircle className="w-3.5 h-3.5" />
                   Paused
                 </span>
-                <span className="text-xs font-semibold tabular-nums text-slate-700">{pct}%</span>
+                <span className="text-xs font-semibold tabular-nums text-foreground">{pct}%</span>
               </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-slate-400 transition-all duration-500"
+                  className="h-full bg-slate-400 dark:bg-slate-500 transition-all duration-500"
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <p className="text-[10px] text-slate-500 truncate mt-1">
+              <p className="text-[10px] text-muted-foreground truncate mt-1">
                 {stage || 'Resume to continue analysis'}
               </p>
             </div>
@@ -606,7 +606,7 @@ export default function Policies() {
                   deletePolicyMutation.mutate(row.id);
                 }
               }}
-              className="text-red-600"
+              className="text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Delete
@@ -634,7 +634,7 @@ export default function Policies() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search policies..."
             value={searchQuery}
@@ -685,7 +685,7 @@ export default function Policies() {
 
           <div className="space-y-4 py-4">
             {/* File Upload Area */}
-            <div className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center hover:border-emerald-400 transition-colors">
+            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-emerald-400 dark:hover:border-emerald-500 transition-colors">
               <input
                 type="file"
                 accept=".pdf,.docx,.txt,.xlsx,.xls"
@@ -697,22 +697,22 @@ export default function Policies() {
               <label htmlFor="file-upload" className="cursor-pointer">
                 {uploading ? (
                   <div className="space-y-2">
-                    <Loader2 className="w-10 h-10 text-emerald-600 mx-auto animate-spin" />
-                    <p className="text-sm text-slate-600">Uploading... {uploadProgress}%</p>
+                    <Loader2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400 mx-auto animate-spin" />
+                    <p className="text-sm text-muted-foreground">Uploading... {uploadProgress}%</p>
                   </div>
                 ) : newPolicy.file_name ? (
                   <div className="space-y-2">
-                    <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                    <p className="text-sm font-medium text-slate-900">{newPolicy.file_name}</p>
-                    <p className="text-xs text-slate-500">Click to change file</p>
+                    <CheckCircle2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400 mx-auto" />
+                    <p className="text-sm font-medium text-foreground">{newPolicy.file_name}</p>
+                    <p className="text-xs text-muted-foreground">Click to change file</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <Upload className="w-10 h-10 text-slate-400 mx-auto" />
-                    <p className="text-sm text-slate-600">
-                      Drag & drop or <span className="text-emerald-600 font-medium">browse</span>
+                    <Upload className="w-10 h-10 text-muted-foreground mx-auto" />
+                    <p className="text-sm text-muted-foreground">
+                      Drag & drop or <span className="text-emerald-600 dark:text-emerald-400 font-medium">browse</span>
                     </p>
-                    <p className="text-xs text-slate-400">Supports PDF, DOCX, TXT</p>
+                    <p className="text-xs text-muted-foreground">Supports PDF, DOCX, TXT</p>
                   </div>
                 )}
               </label>
@@ -721,7 +721,7 @@ export default function Policies() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>
-                  Framework <span className="text-red-500">*</span>
+                  Framework <span className="text-red-500 dark:text-red-400">*</span>
                 </Label>
                 <Select
                   value={newPolicy.framework}
@@ -750,12 +750,12 @@ export default function Policies() {
                   </SelectContent>
                 </Select>
                 {!frameworksLoading && frameworks.length === 0 && (
-                  <p className="text-xs text-amber-600">
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
                     Upload a reference document on the Frameworks page first.
                   </p>
                 )}
                 {!frameworksLoading && frameworks.length > 0 && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-muted-foreground">
                     The policy will be analyzed against this framework's controls.
                   </p>
                 )}
@@ -799,12 +799,12 @@ export default function Policies() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileBarChart className="w-5 h-5 text-emerald-600" />
+              <FileBarChart className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Generate Report
             </DialogTitle>
             <DialogDescription>
               Export a branded compliance report for{' '}
-              <span className="font-medium text-slate-700 dark:text-slate-200">
+              <span className="font-medium text-foreground">
                 {reportPolicy?.file_name || 'this policy'}
               </span>
               .
@@ -823,7 +823,7 @@ export default function Policies() {
                   <SelectItem value="csv">CSV — Tabular export for spreadsheets</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Includes policy details, compliance results, findings, gaps, mapped evidence and AI insights from the database.
               </p>
             </div>
@@ -863,7 +863,7 @@ export default function Policies() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400" />
               Framework Document Not Loaded
             </DialogTitle>
             <DialogDescription>
@@ -882,9 +882,9 @@ export default function Policies() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg my-2">
-            <Database className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-amber-700">
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg my-2">
+            <Database className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-200">
               Ask an administrator to upload the reference document for
               {pendingAnalysisPolicy?.framework_code
                 ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
@@ -917,7 +917,7 @@ export default function Policies() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-emerald-600" />
+              <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               {selectedPolicy?.file_name}
             </DialogTitle>
           </DialogHeader>
@@ -926,20 +926,20 @@ export default function Policies() {
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Status</p>
+                  <p className="text-sm text-muted-foreground">Status</p>
                   <StatusBadge status={selectedPolicy.status} />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Version</p>
-                  <p className="font-medium">{selectedPolicy.version || '1.0'}</p>
+                  <p className="text-sm text-muted-foreground">Version</p>
+                  <p className="font-medium text-foreground">{selectedPolicy.version || '1.0'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Framework</p>
-                  <p className="font-medium">{selectedPolicy.framework_code || '—'}</p>
+                  <p className="text-sm text-muted-foreground">Framework</p>
+                  <p className="font-medium text-foreground">{selectedPolicy.framework_code || '—'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Upload Date</p>
-                  <p className="font-medium">
+                  <p className="text-sm text-muted-foreground">Upload Date</p>
+                  <p className="font-medium text-foreground">
                     {selectedPolicy.created_at
                       ? format(new Date(selectedPolicy.created_at), 'MMM d, yyyy HH:mm')
                       : '-'}
@@ -949,15 +949,15 @@ export default function Policies() {
 
               {selectedPolicy.description && (
                 <div>
-                  <p className="text-sm text-slate-500 mb-1">Description</p>
-                  <p className="text-sm">{selectedPolicy.description}</p>
+                  <p className="text-sm text-muted-foreground mb-1">Description</p>
+                  <p className="text-sm text-foreground">{selectedPolicy.description}</p>
                 </div>
               )}
 
               {selectedPolicy.content_preview && (
                 <div>
-                  <p className="text-sm text-slate-500 mb-1">Content Preview</p>
-                  <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-700 max-h-48 overflow-auto">
+                  <p className="text-sm text-muted-foreground mb-1">Content Preview</p>
+                  <div className="bg-muted rounded-lg p-4 text-sm text-foreground max-h-48 overflow-auto">
                     {selectedPolicy.content_preview}
                   </div>
                 </div>

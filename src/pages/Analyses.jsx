@@ -95,15 +95,15 @@ export default function Analyses() {
   };
 
   const getScoreColor = (score) => {
-    if (score >= 80) return 'text-emerald-600';
-    if (score >= 60) return 'text-amber-600';
-    return 'text-red-600';
+    if (score >= 80) return 'text-emerald-600 dark:text-emerald-400';
+    if (score >= 60) return 'text-amber-600 dark:text-amber-400';
+    return 'text-red-600 dark:text-red-400';
   };
 
   const getScoreBg = (score) => {
-    if (score >= 80) return 'bg-emerald-50';
-    if (score >= 60) return 'bg-amber-50';
-    return 'bg-red-50';
+    if (score >= 80) return 'bg-emerald-50 dark:bg-emerald-500/10';
+    if (score >= 60) return 'bg-amber-50 dark:bg-amber-500/10';
+    return 'bg-red-50 dark:bg-red-500/10';
   };
 
   const columns = [
@@ -114,12 +114,12 @@ export default function Analyses() {
         const policy = policyMap[row.policy_id];
         return (
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="font-medium text-slate-900">{policy?.file_name || 'Unknown Policy'}</p>
-              <p className="text-xs text-slate-500">ID: {row.policy_id}</p>
+              <p className="font-medium text-foreground">{policy?.file_name || 'Unknown Policy'}</p>
+              <p className="text-xs text-muted-foreground">ID: {row.policy_id}</p>
             </div>
           </div>
         );
@@ -152,16 +152,16 @@ export default function Analyses() {
       cell: (row) => (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            <span className="text-sm font-medium">{row.controls_covered || 0}</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+            <span className="text-sm font-medium text-foreground">{row.controls_covered || 0}</span>
           </div>
           <div className="flex items-center gap-1">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span className="text-sm font-medium">{row.controls_partial || 0}</span>
+            <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+            <span className="text-sm font-medium text-foreground">{row.controls_partial || 0}</span>
           </div>
           <div className="flex items-center gap-1">
-            <XCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm font-medium">{row.controls_missing || 0}</span>
+            <XCircle className="w-4 h-4 text-red-500 dark:text-red-400" />
+            <span className="text-sm font-medium text-foreground">{row.controls_missing || 0}</span>
           </div>
         </div>
       ),
@@ -175,7 +175,7 @@ export default function Analyses() {
       header: 'Analyzed',
       accessor: 'analyzed_at',
       cell: (row) => (
-        <span className="text-sm text-slate-600">
+        <span className="text-sm text-muted-foreground">
           {row.analyzed_at ? format(new Date(row.analyzed_at), 'MMM d, yyyy HH:mm') : '-'}
         </span>
       ),
@@ -217,7 +217,7 @@ export default function Analyses() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by policy or framework..."
             value={searchQuery}
@@ -260,7 +260,7 @@ export default function Analyses() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-emerald-600" />
+              <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Analysis Details
             </DialogTitle>
           </DialogHeader>
@@ -268,33 +268,33 @@ export default function Analyses() {
           {selectedResult && (() => {
             const perControl = selectedResult.details?.per_control || [];
             const statusIcon = {
-              Compliant:     <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />,
-              Partial:       <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />,
-              'Non-Compliant': <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />,
+              Compliant:     <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />,
+              Partial:       <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />,
+              'Non-Compliant': <XCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />,
             };
             return (
               <div className="space-y-5 py-2">
                 {/* Summary Cards */}
                 <div className="grid grid-cols-3 gap-3">
-                  <Card className="bg-emerald-50 border-emerald-200">
+                  <Card className="bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30">
                     <CardContent className="p-3 text-center">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
-                      <p className="text-xl font-bold text-emerald-700">{selectedResult.controls_covered || 0}</p>
-                      <p className="text-xs text-emerald-600">Covered</p>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mx-auto mb-1" />
+                      <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{selectedResult.controls_covered || 0}</p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">Covered</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-amber-50 border-amber-200">
+                  <Card className="bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30">
                     <CardContent className="p-3 text-center">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 mx-auto mb-1" />
-                      <p className="text-xl font-bold text-amber-700">{selectedResult.controls_partial || 0}</p>
-                      <p className="text-xs text-amber-600">Partial</p>
+                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mx-auto mb-1" />
+                      <p className="text-xl font-bold text-amber-700 dark:text-amber-300">{selectedResult.controls_partial || 0}</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Partial</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-red-50 border-red-200">
+                  <Card className="bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/30">
                     <CardContent className="p-3 text-center">
-                      <XCircle className="w-5 h-5 text-red-600 mx-auto mb-1" />
-                      <p className="text-xl font-bold text-red-700">{selectedResult.controls_missing || 0}</p>
-                      <p className="text-xs text-red-600">Missing</p>
+                      <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 mx-auto mb-1" />
+                      <p className="text-xl font-bold text-red-700 dark:text-red-300">{selectedResult.controls_missing || 0}</p>
+                      <p className="text-xs text-red-600 dark:text-red-400">Missing</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -307,7 +307,7 @@ export default function Analyses() {
                         <p className={`text-3xl font-bold ${getScoreColor(selectedResult.compliance_score)}`}>
                           {Math.round(selectedResult.compliance_score || 0)}%
                         </p>
-                        <p className="text-xs text-slate-500">Compliance</p>
+                        <p className="text-xs text-muted-foreground">Compliance</p>
                       </div>
                     </div>
                   </div>
@@ -324,43 +324,43 @@ export default function Analyses() {
                     </ResponsiveContainer>
                   </div>
                   <div className="flex-1 space-y-1 text-sm">
-                    <div><p className="text-slate-500 text-xs">Framework</p><p className="font-medium">{selectedResult.framework}</p></div>
-                    <div><p className="text-slate-500 text-xs">Policy</p><p className="font-medium text-xs">{policyMap[selectedResult.policy_id]?.file_name || '—'}</p></div>
-                    <div><p className="text-slate-500 text-xs">Analyzed</p><p className="font-medium text-xs">{selectedResult.analyzed_at ? format(new Date(selectedResult.analyzed_at), 'MMM d HH:mm') : '—'}</p></div>
+                    <div><p className="text-muted-foreground text-xs">Framework</p><p className="font-medium text-foreground">{selectedResult.framework}</p></div>
+                    <div><p className="text-muted-foreground text-xs">Policy</p><p className="font-medium text-xs text-foreground">{policyMap[selectedResult.policy_id]?.file_name || '—'}</p></div>
+                    <div><p className="text-muted-foreground text-xs">Analyzed</p><p className="font-medium text-xs text-foreground">{selectedResult.analyzed_at ? format(new Date(selectedResult.analyzed_at), 'MMM d HH:mm') : '—'}</p></div>
                   </div>
                 </div>
 
                 {/* Per-control breakdown */}
                 {perControl.length > 0 && (
                   <div>
-                    <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                    <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1">
                       <Brain className="w-4 h-4" /> Per-Control Breakdown ({perControl.length} controls)
                     </p>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                    <div className="border border-border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="bg-slate-50 sticky top-0">
+                        <thead className="bg-muted/50 sticky top-0">
                           <tr>
-                            <th className="text-left py-2 px-3 font-semibold text-slate-600">Control</th>
-                            <th className="text-center py-2 px-2 font-semibold text-slate-600">Status</th>
-                            <th className="text-center py-2 px-2 font-semibold text-slate-600">Confidence</th>
-                            <th className="text-left py-2 px-2 font-semibold text-slate-600">Evidence</th>
+                            <th className="text-left py-2 px-3 font-semibold text-muted-foreground">Control</th>
+                            <th className="text-center py-2 px-2 font-semibold text-muted-foreground">Status</th>
+                            <th className="text-center py-2 px-2 font-semibold text-muted-foreground">Confidence</th>
+                            <th className="text-left py-2 px-2 font-semibold text-muted-foreground">Evidence</th>
                           </tr>
                         </thead>
                         <tbody>
                           {perControl.map((ctrl, idx) => (
                             <React.Fragment key={idx}>
                               <tr
-                                className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+                                className="border-t border-border hover:bg-muted/40 cursor-pointer"
                                 onClick={() => setExpandedControl(expandedControl === idx ? null : idx)}
                               >
                                 <td className="py-2 px-3">
                                   <div className="flex items-center gap-1">
                                     {expandedControl === idx
-                                      ? <ChevronDown className="w-3 h-3 text-slate-400" />
-                                      : <ChevronRight className="w-3 h-3 text-slate-400" />}
-                                    <span className="font-mono font-medium">{ctrl.control_code}</span>
+                                      ? <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                                      : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                                    <span className="font-mono font-medium text-foreground">{ctrl.control_code}</span>
                                   </div>
-                                  <p className="text-slate-500 ml-4 line-clamp-1">{ctrl.control_title}</p>
+                                  <p className="text-muted-foreground ml-4 line-clamp-1">{ctrl.control_title}</p>
                                 </td>
                                 <td className="py-2 px-2 text-center">
                                   <div className="flex items-center justify-center gap-1">
@@ -368,33 +368,33 @@ export default function Analyses() {
                                   </div>
                                 </td>
                                 <td className="py-2 px-2 text-center">
-                                  <span className={`font-medium ${(ctrl.confidence || 0) >= 0.7 ? 'text-emerald-600' : (ctrl.confidence || 0) >= 0.5 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  <span className={`font-medium ${(ctrl.confidence || 0) >= 0.7 ? 'text-emerald-600 dark:text-emerald-400' : (ctrl.confidence || 0) >= 0.5 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
                                     {Math.round((ctrl.confidence || 0) * 100)}%
                                   </span>
                                 </td>
-                                <td className="py-2 px-2 text-slate-600 max-w-xs">
+                                <td className="py-2 px-2 text-muted-foreground max-w-xs">
                                   <p className="line-clamp-1">{ctrl.evidence || '—'}</p>
                                 </td>
                               </tr>
                               {expandedControl === idx && (
-                                <tr className="bg-slate-50">
+                                <tr className="bg-muted/40">
                                   <td colSpan={4} className="px-4 py-3 text-xs">
                                     {ctrl.gaps && ctrl.gaps !== 'None' && (
                                       <div className="mb-2">
-                                        <p className="font-semibold text-red-600 mb-0.5">Gaps:</p>
-                                        <p className="text-slate-600">{ctrl.gaps}</p>
+                                        <p className="font-semibold text-red-600 dark:text-red-400 mb-0.5">Gaps:</p>
+                                        <p className="text-muted-foreground">{ctrl.gaps}</p>
                                       </div>
                                     )}
                                     {ctrl.rationale && (
                                       <div className="mb-2">
-                                        <p className="font-semibold text-slate-700 mb-0.5">Rationale:</p>
-                                        <p className="text-slate-600">{ctrl.rationale}</p>
+                                        <p className="font-semibold text-foreground mb-0.5">Rationale:</p>
+                                        <p className="text-muted-foreground">{ctrl.rationale}</p>
                                       </div>
                                     )}
                                     {ctrl.recommendation && ctrl.recommendation !== 'None needed' && (
                                       <div>
-                                        <p className="font-semibold text-emerald-700 mb-0.5">Recommendation:</p>
-                                        <p className="text-slate-600">{ctrl.recommendation}</p>
+                                        <p className="font-semibold text-emerald-700 dark:text-emerald-400 mb-0.5">Recommendation:</p>
+                                        <p className="text-muted-foreground">{ctrl.recommendation}</p>
                                       </div>
                                     )}
                                   </td>

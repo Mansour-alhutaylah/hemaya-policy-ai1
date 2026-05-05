@@ -98,10 +98,10 @@ export default function AIAssistant() {
 
   const getMessageIcon = (type) => {
     switch (type) {
-      case 'success': return <Shield className="w-4 h-4 text-emerald-500" />;
-      case 'warning': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-      case 'suggestion': return <Sparkles className="w-4 h-4 text-purple-500" />;
-      default: return <FileText className="w-4 h-4 text-blue-500" />;
+      case 'success': return <Shield className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />;
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />;
+      case 'suggestion': return <Sparkles className="w-4 h-4 text-purple-500 dark:text-purple-400" />;
+      default: return <FileText className="w-4 h-4 text-blue-500 dark:text-blue-400" />;
     }
   };
 
@@ -110,7 +110,7 @@ export default function AIAssistant() {
       title="AI Assistant"
       subtitle="Get intelligent answers about your compliance posture"
       actions={
-        <Badge className="bg-purple-100 text-purple-700 border-purple-200 gap-1">
+        <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30 gap-1">
           <Sparkles className="w-3 h-3" />
           AI Powered
         </Badge>
@@ -134,20 +134,20 @@ export default function AIAssistant() {
                     </Avatar>
                   )}
                   
-                  <div 
+                  <div
                     className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                      message.role === 'user' 
-                        ? 'bg-slate-900 text-white' 
-                        : 'bg-slate-100 text-slate-900'
+                      message.role === 'user'
+                        ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                        : 'bg-muted text-foreground'
                     }`}
                   >
                     {message.role === 'assistant' && message.type && message.type !== 'greeting' && (
                       <div className="flex items-center gap-1 mb-2">
                         {getMessageIcon(message.type)}
-                        <span className="text-xs font-medium text-slate-500 capitalize">{message.type}</span>
+                        <span className="text-xs font-medium text-muted-foreground capitalize">{message.type}</span>
                       </div>
                     )}
-                    <div className="text-sm prose prose-sm prose-slate max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                    <div className="text-sm prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                       <ReactMarkdown
                         components={{
                           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -163,15 +163,15 @@ export default function AIAssistant() {
                   </div>
 
                   {message.role === 'user' && (
-                    <Avatar className="h-8 w-8 bg-slate-200 flex-shrink-0">
+                    <Avatar className="h-8 w-8 bg-muted flex-shrink-0">
                       <AvatarFallback>
-                        <User className="w-4 h-4 text-slate-600" />
+                        <User className="w-4 h-4 text-muted-foreground" />
                       </AvatarFallback>
                     </Avatar>
                   )}
                 </div>
               ))}
-              
+
               {isTyping && (
                 <div className="flex gap-3">
                   <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-400 to-teal-600 flex-shrink-0">
@@ -179,10 +179,10 @@ export default function AIAssistant() {
                       <Bot className="w-4 h-4 text-white" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="bg-slate-100 rounded-2xl px-4 py-3">
+                  <div className="bg-muted rounded-2xl px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-                      <span className="text-sm text-slate-500">Thinking...</span>
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Thinking...</span>
                     </div>
                   </div>
                 </div>
@@ -192,8 +192,8 @@ export default function AIAssistant() {
 
           {/* Suggested Questions */}
           {messages.length <= 2 && (
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50">
-              <p className="text-xs font-medium text-slate-500 mb-2">Suggested questions:</p>
+            <div className="px-6 py-3 border-t border-border bg-muted/40">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Suggested questions:</p>
               <div className="flex flex-wrap gap-2">
                 {suggestedQuestions.map((question, idx) => (
                   <Button
@@ -214,7 +214,7 @@ export default function AIAssistant() {
           )}
 
           {/* Input */}
-          <div className="p-4 border-t border-slate-200 bg-white">
+          <div className="p-4 border-t border-border bg-card">
             <div className="flex gap-2">
               <Input
                 ref={inputRef}
@@ -225,7 +225,7 @@ export default function AIAssistant() {
                 disabled={isTyping}
                 className="flex-1"
               />
-              <Button 
+              <Button
                 onClick={handleSend}
                 disabled={!inputValue.trim() || isTyping}
                 className="bg-emerald-600 hover:bg-emerald-700"
@@ -233,7 +233,7 @@ export default function AIAssistant() {
                 <Send className="w-4 h-4" />
               </Button>
             </div>
-            <p className="text-xs text-slate-400 mt-2 text-center">
+            <p className="text-xs text-muted-foreground mt-2 text-center">
               AI responses are based on your compliance data. For complex queries, consult with your compliance team.
             </p>
           </div>

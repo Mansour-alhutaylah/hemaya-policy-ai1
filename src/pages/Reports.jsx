@@ -177,9 +177,9 @@ export default function Reports() {
   const getFormatIcon = (fmt) => {
     switch ((fmt || '').toUpperCase()) {
       case 'CSV':
-        return <FileSpreadsheet className="w-4 h-4 text-green-600" />;
+        return <FileSpreadsheet className="w-4 h-4 text-green-600 dark:text-green-400" />;
       default:
-        return <FileText className="w-4 h-4 text-red-600" />;
+        return <FileText className="w-4 h-4 text-red-600 dark:text-red-400" />;
     }
   };
 
@@ -189,14 +189,14 @@ export default function Reports() {
       accessor: 'policy_id',
       cell: (row) => (
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
-            <FileBarChart className="w-5 h-5 text-emerald-600" />
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+            <FileBarChart className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <p className="font-medium text-slate-900 dark:text-slate-100">
+            <p className="font-medium text-foreground">
               {policyMap[row.policy_id]?.file_name || 'Unknown Policy'}
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-muted-foreground">
               {row.report_type || 'Compliance Report'}
             </p>
           </div>
@@ -217,7 +217,7 @@ export default function Reports() {
       header: 'Generated',
       accessor: 'generated_at',
       cell: (row) => (
-        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Calendar className="w-4 h-4" />
           {row.generated_at
             ? format(new Date(row.generated_at), 'MMM d, yyyy HH:mm')
@@ -250,7 +250,7 @@ export default function Reports() {
             variant="ghost"
             size="sm"
             onClick={() => handleDelete(row)}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-500/10"
             aria-label="Delete report"
           >
             <Trash2 className="w-4 h-4" />
@@ -277,7 +277,7 @@ export default function Reports() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search reports..."
             value={searchQuery}
@@ -311,7 +311,7 @@ export default function Reports() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileBarChart className="w-5 h-5 text-emerald-600" />
+              <FileBarChart className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Generate Compliance Report
             </DialogTitle>
             <DialogDescription>
@@ -357,7 +357,7 @@ export default function Reports() {
                   <SelectItem value="CSV">CSV — Tabular export for spreadsheets</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Includes policy details, compliance results, findings, gaps, mapped evidence and AI insights from the database.
               </p>
             </div>

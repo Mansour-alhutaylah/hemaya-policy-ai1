@@ -136,9 +136,21 @@ export default function Explainability() {
   });
 
   const getConfidenceColor = (score) => {
-    if (score >= 0.8) return { bg: 'bg-emerald-100', text: 'text-emerald-700', bar: 'bg-emerald-500' };
-    if (score >= 0.6) return { bg: 'bg-amber-100', text: 'text-amber-700', bar: 'bg-amber-500' };
-    return { bg: 'bg-red-100', text: 'text-red-700', bar: 'bg-red-500' };
+    if (score >= 0.8) return {
+      bg: 'bg-emerald-100 dark:bg-emerald-500/15',
+      text: 'text-emerald-700 dark:text-emerald-300',
+      bar: 'bg-emerald-500'
+    };
+    if (score >= 0.6) return {
+      bg: 'bg-amber-100 dark:bg-amber-500/15',
+      text: 'text-amber-700 dark:text-amber-300',
+      bar: 'bg-amber-500'
+    };
+    return {
+      bg: 'bg-red-100 dark:bg-red-500/15',
+      text: 'text-red-700 dark:text-red-300',
+      bar: 'bg-red-500'
+    };
   };
 
   return (
@@ -146,23 +158,23 @@ export default function Explainability() {
       title="Explainability (XAI)"
       subtitle="Understand why AI made each compliance mapping decision"
       actions={
-        <Badge className="bg-purple-100 text-purple-700 border-purple-200 gap-1">
+        <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30 gap-1">
           <Brain className="w-3 h-3" />
           Explainable AI
         </Badge>
       }
     >
       {/* Info Banner */}
-      <Card className="mb-6 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
+      <Card className="mb-6 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 dark:from-purple-500/10 dark:to-indigo-500/10 dark:border-purple-500/30">
         <CardContent className="p-4 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-            <Info className="w-5 h-5 text-purple-600" />
+          <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+            <Info className="w-5 h-5 text-purple-600 dark:text-purple-400" />
           </div>
           <div>
-            <h3 className="font-semibold text-purple-900 mb-1">Understanding AI Decisions</h3>
-            <p className="text-sm text-purple-700">
-              This page provides transparency into how the AI system maps policy content to compliance controls. 
-              Each mapping includes the matched evidence, confidence score, and AI rationale. 
+            <h3 className="font-semibold text-purple-900 dark:text-purple-200 mb-1">Understanding AI Decisions</h3>
+            <p className="text-sm text-purple-700 dark:text-purple-300">
+              This page provides transparency into how the AI system maps policy content to compliance controls.
+              Each mapping includes the matched evidence, confidence score, and AI rationale.
               Low confidence mappings ({`<${CONFIDENCE_THRESHOLD * 100}%`}) are flagged for human review.
             </p>
           </div>
@@ -172,7 +184,7 @@ export default function Explainability() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by control ID or evidence..."
             value={searchQuery}
@@ -215,29 +227,29 @@ export default function Explainability() {
           return (
             <Card key={mapping.id} className="shadow-sm overflow-hidden">
               {isLowConfidence && (
-                <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-700">
+                <div className="bg-amber-50 border-b border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-2 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
                     Low Confidence - Human Review Recommended
                   </span>
                 </div>
               )}
-              
+
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Badge variant="outline" className="font-mono text-sm">
                       {mapping.control_id}
                     </Badge>
-                    <Badge className="bg-slate-100 text-slate-700">
+                    <Badge className="bg-muted text-foreground border border-border">
                       <Shield className="w-3 h-3 mr-1" />
                       {mapping.framework}
                     </Badge>
                     {mapping.decision && mapping.decision !== 'Pending' && (
                       <Badge className={
-                        mapping.decision === 'Accepted' ? 'bg-emerald-100 text-emerald-700' :
-                        mapping.decision === 'Rejected' ? 'bg-red-100 text-red-700' :
-                        'bg-purple-100 text-purple-700'
+                        mapping.decision === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' :
+                        mapping.decision === 'Rejected' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' :
+                        'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
                       }>
                         {mapping.decision === 'Accepted' && <CheckCircle2 className="w-3 h-3 mr-1" />}
                         {mapping.decision}
@@ -255,13 +267,13 @@ export default function Explainability() {
                   <AccordionItem value="evidence" className="border-0">
                     <AccordionTrigger className="hover:no-underline py-2">
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <FileText className="w-4 h-4 text-slate-500" />
+                        <FileText className="w-4 h-4 text-muted-foreground" />
                         Matched Evidence
                       </div>
                     </AccordionTrigger>
                     <AccordionContent>
-                      <div className="bg-slate-50 rounded-lg p-4 mt-2">
-                        <p className="text-sm text-slate-700 italic">
+                      <div className="bg-muted/50 border border-border rounded-lg p-4 mt-2">
+                        <p className="text-sm text-foreground italic">
                           "{mapping.evidence_snippet}"
                         </p>
                       </div>
@@ -271,35 +283,35 @@ export default function Explainability() {
                   <AccordionItem value="rationale" className="border-0">
                     <AccordionTrigger className="hover:no-underline py-2">
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <Brain className="w-4 h-4 text-purple-500" />
+                        <Brain className="w-4 h-4 text-purple-500 dark:text-purple-400" />
                         AI Rationale
                       </div>
                     </AccordionTrigger>
                     <AccordionContent>
-                      <div className="bg-purple-50 rounded-lg p-4 mt-2 border border-purple-200">
-                        <p className="text-sm text-purple-800">{mapping.ai_rationale}</p>
-                        
+                      <div className="bg-purple-50 rounded-lg p-4 mt-2 border border-purple-200 dark:bg-purple-500/10 dark:border-purple-500/30">
+                        <p className="text-sm text-purple-800 dark:text-purple-200">{mapping.ai_rationale}</p>
+
                         {/* Matched Keywords */}
                         {mapping.matched_keywords && (
                           <div className="mt-3">
-                            <p className="text-xs font-medium text-purple-600 mb-1">Matched Keywords:</p>
+                            <p className="text-xs font-medium text-purple-600 dark:text-purple-300 mb-1">Matched Keywords:</p>
                             <div className="flex flex-wrap gap-1">
                               {mapping.matched_keywords.map((keyword, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs bg-white">
+                                <Badge key={idx} variant="outline" className="text-xs bg-card">
                                   {keyword}
                                 </Badge>
                               ))}
                             </div>
                           </div>
                         )}
-                        
+
                         {/* Similarity Score */}
                         {mapping.similarity_score && (
                           <div className="mt-3">
-                            <p className="text-xs font-medium text-purple-600 mb-1">Semantic Similarity:</p>
+                            <p className="text-xs font-medium text-purple-600 dark:text-purple-300 mb-1">Semantic Similarity:</p>
                             <div className="flex items-center gap-2">
                               <Progress value={mapping.similarity_score * 100} className="h-2 flex-1" />
-                              <span className="text-xs font-medium">{Math.round(mapping.similarity_score * 100)}%</span>
+                              <span className="text-xs font-medium text-foreground">{Math.round(mapping.similarity_score * 100)}%</span>
                             </div>
                           </div>
                         )}
@@ -311,14 +323,14 @@ export default function Explainability() {
                   {isLowConfidence && mapping.uncertainty_reason && (
                     <AccordionItem value="uncertainty" className="border-0">
                       <AccordionTrigger className="hover:no-underline py-2">
-                        <div className="flex items-center gap-2 text-sm font-medium text-amber-700">
+                        <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
                           <AlertTriangle className="w-4 h-4" />
                           Uncertainty Explanation
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>
-                        <div className="bg-amber-50 rounded-lg p-4 mt-2 border border-amber-200">
-                          <p className="text-sm text-amber-800">{mapping.uncertainty_reason}</p>
+                        <div className="bg-amber-50 rounded-lg p-4 mt-2 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30">
+                          <p className="text-sm text-amber-800 dark:text-amber-200">{mapping.uncertainty_reason}</p>
                         </div>
                       </AccordionContent>
                     </AccordionItem>
@@ -327,7 +339,7 @@ export default function Explainability() {
 
                 <div className="flex justify-end mt-4">
                   <Link to={createPageUrl(`MappingReview?control=${mapping.control_id}`)}>
-                    <Button variant="ghost" size="sm" className="text-emerald-600">
+                    <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400">
                       Review Mapping
                       <ExternalLink className="w-3 h-3 ml-1" />
                     </Button>
@@ -342,9 +354,9 @@ export default function Explainability() {
       {filteredMappings.length === 0 && (
         <Card className="shadow-sm">
           <CardContent className="py-16 text-center">
-            <Brain className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">No mappings found</h3>
-            <p className="text-sm text-slate-500">
+            <Brain className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-1">No mappings found</h3>
+            <p className="text-sm text-muted-foreground">
               Run a compliance analysis to generate AI mappings with explanations
             </p>
           </CardContent>

@@ -104,16 +104,16 @@ export default function Home() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {primaryActions.map((item) => (
           <Link key={item.page} to={createPageUrl(item.page)} className="group">
-            <Card className="h-full shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 border-slate-200 dark:border-slate-800">
+            <Card className="h-full shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
               <CardContent className="p-5">
                 <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.accent} flex items-center justify-center shadow-sm mb-4`}>
                   <item.icon className="w-5 h-5 text-white" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-slate-900 dark:text-slate-100">{item.label}</p>
-                  <ArrowRight className="w-4 h-4 text-slate-400 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                  <p className="font-semibold text-foreground">{item.label}</p>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                   {item.description}
                 </p>
               </CardContent>
@@ -128,29 +128,29 @@ export default function Home() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="font-semibold text-slate-900 dark:text-slate-100">Recent policies</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="font-semibold text-foreground">Recent policies</p>
+                <p className="text-xs text-muted-foreground">
                   Latest documents uploaded to Himaya
                 </p>
               </div>
               <Link to={createPageUrl('Policies')}>
-                <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700">
+                <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300">
                   View all
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </Link>
             </div>
-            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            <ul className="divide-y divide-border">
               {policies.slice(0, 5).map((p) => (
                 <li key={p.id} className="flex items-center gap-3 py-3">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                    <FileText className="w-4 h-4 text-slate-500 dark:text-slate-300" />
+                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                    <p className="text-sm font-medium text-foreground truncate">
                       {p.file_name || 'Untitled'}
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    <p className="text-xs text-muted-foreground truncate">
                       {(p.file_type || '').toUpperCase() || 'Document'} · {p.status || 'uploaded'}
                     </p>
                   </div>

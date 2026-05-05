@@ -36,38 +36,38 @@ const ComplianceResult = api.entities.ComplianceResult;
 const Gap = api.entities.Gap;
 
 const insightTypeConfig = {
-  gap_priority: { 
-    icon: AlertTriangle, 
-    color: 'bg-red-100 text-red-700',
+  gap_priority: {
+    icon: AlertTriangle,
+    color: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
     bgGradient: 'from-red-500 to-rose-600'
   },
-  policy_improvement: { 
-    icon: FileText, 
-    color: 'bg-blue-100 text-blue-700',
+  policy_improvement: {
+    icon: FileText,
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
     bgGradient: 'from-blue-500 to-indigo-600'
   },
-  control_recommendation: { 
-    icon: Shield, 
-    color: 'bg-purple-100 text-purple-700',
+  control_recommendation: {
+    icon: Shield,
+    color: 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300',
     bgGradient: 'from-purple-500 to-violet-600'
   },
-  risk_alert: { 
-    icon: AlertTriangle, 
-    color: 'bg-amber-100 text-amber-700',
+  risk_alert: {
+    icon: AlertTriangle,
+    color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
     bgGradient: 'from-amber-500 to-orange-600'
   },
-  trend_analysis: { 
-    icon: TrendingUp, 
-    color: 'bg-emerald-100 text-emerald-700',
+  trend_analysis: {
+    icon: TrendingUp,
+    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
     bgGradient: 'from-emerald-500 to-teal-600'
   },
 };
 
 const priorityColors = {
-  Critical: 'bg-red-100 text-red-700 border-red-200',
-  High: 'bg-orange-100 text-orange-700 border-orange-200',
-  Medium: 'bg-amber-100 text-amber-700 border-amber-200',
-  Low: 'bg-green-100 text-green-700 border-green-200',
+  Critical: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30',
+  High: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
+  Medium: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
+  Low: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30',
 };
 
 export default function AIInsightsPage() {
@@ -210,7 +210,7 @@ export default function AIInsightsPage() {
       title="AI Insights"
       subtitle="AI-powered recommendations and compliance intelligence"
       actions={
-        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 gap-1">
           <Sparkles className="w-3 h-3" />
           Powered by AI
         </Badge>
@@ -266,9 +266,9 @@ export default function AIInsightsPage() {
       {filteredInsights.length === 0 ? (
         <Card className="shadow-sm">
           <CardContent className="py-16 text-center">
-            <Brain className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">No insights available</h3>
-            <p className="text-sm text-slate-500">
+            <Brain className="w-12 h-12 text-muted-foreground/60 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-1">No insights available</h3>
+            <p className="text-sm text-muted-foreground">
               Run a compliance analysis to generate AI-powered insights
             </p>
           </CardContent>
@@ -280,8 +280,8 @@ export default function AIInsightsPage() {
             const Icon = config.icon;
 
             return (
-              <Card 
-                key={insight.id} 
+              <Card
+                key={insight.id}
                 className="shadow-sm hover:shadow-md transition-all cursor-pointer group"
                 onClick={() => handleViewInsight(insight)}
               >
@@ -306,10 +306,10 @@ export default function AIInsightsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <h3 className="font-semibold text-slate-900 mb-2 line-clamp-2">
+                  <h3 className="font-semibold text-foreground mb-2 line-clamp-2">
                     {insight.title}
                   </h3>
-                  <p className="text-sm text-slate-600 line-clamp-2 mb-3">
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                     {insight.description}
                   </p>
                   <div className="flex items-center justify-between">
@@ -320,7 +320,7 @@ export default function AIInsightsPage() {
                       </Badge>
                     )}
                     {insight.confidence && (
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-muted-foreground">
                         {Math.round(insight.confidence * 100)}% confidence
                       </span>
                     )}
@@ -337,7 +337,7 @@ export default function AIInsightsPage() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Lightbulb className="w-5 h-5 text-emerald-600" />
+              <Lightbulb className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               AI Insight
             </DialogTitle>
           </DialogHeader>
@@ -346,7 +346,7 @@ export default function AIInsightsPage() {
             <div className="space-y-6 py-4">
               {/* Header */}
               <div className="flex items-start gap-4">
-                <div className={`w-12 h-12 rounded-xl ${insightTypeConfig[selectedInsight.insight_type]?.color || 'bg-slate-100'} flex items-center justify-center`}>
+                <div className={`w-12 h-12 rounded-xl ${insightTypeConfig[selectedInsight.insight_type]?.color || 'bg-muted text-muted-foreground'} flex items-center justify-center`}>
                   {(() => {
                     const Icon = insightTypeConfig[selectedInsight.insight_type]?.icon || Lightbulb;
                     return <Icon className="w-6 h-6" />;
@@ -364,21 +364,21 @@ export default function AIInsightsPage() {
                       </Badge>
                     )}
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900">{selectedInsight.title}</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{selectedInsight.title}</h3>
                 </div>
               </div>
 
               {/* Description */}
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-slate-700">{selectedInsight.description}</p>
+              <div className="bg-muted/50 border border-border rounded-lg p-4">
+                <p className="text-foreground">{selectedInsight.description}</p>
               </div>
 
               {/* Evidence */}
               {selectedInsight.evidence_snippet && (
                 <div>
-                  <p className="text-sm font-medium text-slate-500 mb-2">Evidence Reference</p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-700 italic">"{selectedInsight.evidence_snippet}"</p>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Evidence Reference</p>
+                  <div className="bg-blue-50 border border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30 rounded-lg p-4">
+                    <p className="text-sm text-blue-700 dark:text-blue-300 italic">"{selectedInsight.evidence_snippet}"</p>
                   </div>
                 </div>
               )}
@@ -386,7 +386,7 @@ export default function AIInsightsPage() {
               {/* Control Reference */}
               {selectedInsight.control_reference && (
                 <div>
-                  <p className="text-sm font-medium text-slate-500 mb-2">Control Reference</p>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Control Reference</p>
                   <Badge variant="outline" className="font-mono">
                     {selectedInsight.control_reference}
                   </Badge>
@@ -396,8 +396,8 @@ export default function AIInsightsPage() {
               {/* Confidence */}
               {selectedInsight.confidence && (
                 <div className="flex items-center gap-2">
-                  <Brain className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm text-slate-500">
+                  <Brain className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
                     AI Confidence: {Math.round(selectedInsight.confidence * 100)}%
                   </span>
                 </div>
@@ -406,10 +406,10 @@ export default function AIInsightsPage() {
           )}
 
           <div className="flex justify-between">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => handleActionInsight(selectedInsight, 'Dismissed')}
-              className="text-slate-600"
+              className="text-muted-foreground"
             >
               <X className="w-4 h-4 mr-1" />
               Dismiss

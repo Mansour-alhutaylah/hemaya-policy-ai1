@@ -141,9 +141,18 @@ export default function MappingReviewPage() {
   };
 
   const getConfidenceBadge = (score) => {
-    if (score >= 0.8) return { color: 'text-emerald-600 bg-emerald-50', label: 'High' };
-    if (score >= 0.5) return { color: 'text-amber-600 bg-amber-50', label: 'Medium' };
-    return { color: 'text-red-600 bg-red-50', label: 'Low' };
+    if (score >= 0.8) return {
+      color: 'text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-500/15',
+      label: 'High'
+    };
+    if (score >= 0.5) return {
+      color: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-500/15',
+      label: 'Medium'
+    };
+    return {
+      color: 'text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-500/15',
+      label: 'Low'
+    };
   };
 
   const columns = [
@@ -156,7 +165,7 @@ export default function MappingReviewPage() {
             {row.control_id}
           </Badge>
           {(row.confidence_score || 0) < 0.5 && (
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
+            <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
           )}
         </div>
       ),
@@ -165,7 +174,7 @@ export default function MappingReviewPage() {
       header: 'Framework',
       accessor: 'framework',
       cell: (row) => (
-        <Badge className="bg-slate-100 text-slate-700">
+        <Badge className="bg-muted text-foreground border border-border">
           {row.framework}
         </Badge>
       ),
@@ -174,7 +183,7 @@ export default function MappingReviewPage() {
       header: 'Evidence Snippet',
       accessor: 'evidence_snippet',
       cell: (row) => (
-        <p className="text-sm text-slate-600 line-clamp-2 max-w-md">
+        <p className="text-sm text-muted-foreground line-clamp-2 max-w-md">
           {row.evidence_snippet || 'No evidence available'}
         </p>
       ),
@@ -202,7 +211,7 @@ export default function MappingReviewPage() {
       header: 'Reviewer',
       accessor: 'reviewer',
       cell: (row) => (
-        <span className="text-sm text-slate-600">{row.reviewer || '-'}</span>
+        <span className="text-sm text-muted-foreground">{row.reviewer || '-'}</span>
       ),
     },
     {
@@ -233,38 +242,38 @@ export default function MappingReviewPage() {
     >
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="bg-amber-50 border-amber-200">
+        <Card className="bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 text-amber-600" />
+            <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-amber-700">{pendingCount}</p>
-              <p className="text-sm text-amber-600">Pending Reviews</p>
+              <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{pendingCount}</p>
+              <p className="text-sm text-amber-600 dark:text-amber-400">Pending Reviews</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-red-50 border-red-200">
+        <Card className="bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/30">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
-              <Brain className="w-6 h-6 text-red-600" />
+            <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-500/20 flex items-center justify-center">
+              <Brain className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-red-700">{lowConfidenceCount}</p>
-              <p className="text-sm text-red-600">Needs Review</p>
+              <p className="text-2xl font-bold text-red-700 dark:text-red-300">{lowConfidenceCount}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">Needs Review</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-emerald-50 border-emerald-200">
+        <Card className="bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-emerald-700">
+              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
                 {mappings.filter(m => m.decision === 'Accepted').length}
               </p>
-              <p className="text-sm text-emerald-600">Accepted</p>
+              <p className="text-sm text-emerald-600 dark:text-emerald-400">Accepted</p>
             </div>
           </CardContent>
         </Card>
@@ -273,7 +282,7 @@ export default function MappingReviewPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by control ID or evidence..."
             value={searchQuery}
@@ -327,7 +336,7 @@ export default function MappingReviewPage() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <GitCompare className="w-5 h-5 text-emerald-600" />
+              <GitCompare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Review Mapping
             </DialogTitle>
             <DialogDescription>
@@ -339,11 +348,11 @@ export default function MappingReviewPage() {
             <div className="space-y-6 py-4">
               {/* Confidence Warning */}
               {(selectedMapping.confidence_score || 0) < 0.5 && (
-                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5" />
                   <div>
-                    <p className="font-medium text-amber-800">Needs Review - Low Confidence</p>
-                    <p className="text-sm text-amber-700">
+                    <p className="font-medium text-amber-800 dark:text-amber-200">Needs Review - Low Confidence</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
                       This mapping has low confidence. The AI found ambiguous or conflicting evidence across multiple passes. Please review carefully.
                     </p>
                   </div>
@@ -353,19 +362,19 @@ export default function MappingReviewPage() {
               {/* Mapping Details */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Control ID</p>
+                  <p className="text-sm text-muted-foreground">Control ID</p>
                   <Badge variant="outline" className="font-mono mt-1">
                     {selectedMapping.control_id}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Framework</p>
-                  <Badge className="bg-slate-100 text-slate-700 mt-1">
+                  <p className="text-sm text-muted-foreground">Framework</p>
+                  <Badge className="bg-muted text-foreground border border-border mt-1">
                     {selectedMapping.framework}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Confidence Score</p>
+                  <p className="text-sm text-muted-foreground">Confidence Score</p>
                   {(() => {
                     const s = selectedMapping.confidence_score || 0;
                     const b = getConfidenceBadge(s);
@@ -378,8 +387,8 @@ export default function MappingReviewPage() {
                   })()}
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Policy</p>
-                  <p className="font-medium mt-1">
+                  <p className="text-sm text-muted-foreground">Policy</p>
+                  <p className="font-medium mt-1 text-foreground">
                     {policyMap[selectedMapping.policy_id]?.file_name || selectedMapping.policy_id}
                   </p>
                 </div>
@@ -387,9 +396,9 @@ export default function MappingReviewPage() {
 
               {/* Evidence */}
               <div>
-                <p className="text-sm text-slate-500 mb-2">Evidence Snippet</p>
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                  <p className="text-sm text-slate-700 italic">
+                <p className="text-sm text-muted-foreground mb-2">Evidence Snippet</p>
+                <div className="bg-muted/50 border border-border rounded-lg p-4">
+                  <p className="text-sm text-foreground italic">
                     "{selectedMapping.evidence_snippet || 'No evidence available'}"
                   </p>
                 </div>
@@ -398,12 +407,12 @@ export default function MappingReviewPage() {
               {/* AI Rationale */}
               {selectedMapping.ai_rationale && (
                 <div>
-                  <p className="text-sm text-slate-500 mb-2 flex items-center gap-1">
+                  <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
                     <Brain className="w-4 h-4" />
                     AI Rationale
                   </p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-700">{selectedMapping.ai_rationale}</p>
+                  <div className="bg-blue-50 border border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30 rounded-lg p-4">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">{selectedMapping.ai_rationale}</p>
                   </div>
                 </div>
               )}
