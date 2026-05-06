@@ -596,7 +596,10 @@ async def process_policy_background(
                     set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
                     embeddings = await get_embeddings([c["text"] for c in chunks])
                     set_policy_progress(db, policy_id, 85, "Storing embeddings")
-                    await asyncio.to_thread(store_chunks_with_embeddings, db, policy_id, chunks, embeddings)
+                    # Keep DB writes on the same thread as the SQLAlchemy session.
+                    # SQLAlchemy sessions are not thread-safe, so avoid passing `db`
+                    # into asyncio.to_thread for vector persistence.
+                    store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
                     chunks_count = len(chunks)
                     print(f"  Embedded {chunks_count} chunks for {original_name}")
             except Exception as e:
