@@ -2,6 +2,7 @@ import json
 import os
 import traceback
 import uuid
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -549,9 +550,96 @@ def update_me(settings: Dict[str, Any], current_user: models.User = Depends(get_
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".xlsx", ".xls"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
+
+async def process_policy_background(
+    policy_id: str,
+    file_path: str,
+    file_ext: str,
+    original_name: str,
+    actor_id: Optional[str] = None,
+) -> None:
+    """Process an uploaded policy file asynchronously after the HTTP response is returned.
+
+    Heavy pipeline stages (extract/chunk/embed/store) run here so the upload endpoint
+    can return immediately. A dedicated DB session is used because request-scoped sessions
+    are closed once the endpoint returns.
+    """
+    from sqlalchemy import text as _sql
+
+    db = database.SessionLocal()
+    chunks_count = 0
+    content = ""
+    try:
+        # Extract text off the event loop because extractor libraries are sync and CPU/IO heavy.
+        set_policy_progress(db, policy_id, 15, "Extracting text")
+        try:
+            content = await asyncio.to_thread(extract_text, file_path, file_ext)
+        except TypeError:
+            content = await asyncio.to_thread(extract_text, file_path)
+        if not content or content.startswith("[Extraction error"):
+            content = ""
+        set_policy_progress(db, policy_id, 30, "Text extracted")
+
+        # Persist full content early so existing keyword search/analysis behavior remains unchanged.
+        if content:
+            db.execute(_sql(
+                "UPDATE policies SET content_preview = :content WHERE id = :pid"
+            ), {"content": content, "pid": policy_id})
+            db.commit()
+
+        # Chunk + embed in the background worker.
+        if content:
+            try:
+                set_policy_progress(db, policy_id, 45, "Chunking document")
+                chunks = await asyncio.to_thread(chunk_text, content)
+                if chunks:
+                    set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
+                    embeddings = await get_embeddings([c["text"] for c in chunks])
+                    set_policy_progress(db, policy_id, 85, "Storing embeddings")
+                    await asyncio.to_thread(store_chunks_with_embeddings, db, policy_id, chunks, embeddings)
+                    chunks_count = len(chunks)
+                    print(f"  Embedded {chunks_count} chunks for {original_name}")
+            except Exception as e:
+                print(f"  Embedding error (will auto-embed during analysis): {e}")
+
+        # Mark ready once all background steps finish.
+        db.execute(_sql(
+            "UPDATE policies SET status='uploaded', progress=100, progress_stage='Ready' WHERE id=:pid"
+        ), {"pid": policy_id})
+        db.commit()
+        print(f"Policy saved: {original_name}")
+
+        # Keep existing audit logging behavior after processing is complete.
+        try:
+            db.execute(_sql("""
+                INSERT INTO audit_logs
+                (id, actor_id, action, target_type, target_id, details, timestamp)
+                VALUES (:id,:aid,'upload_policy','policy',:tid,:det,:ts)
+            """), {
+                "id": str(uuid.uuid4()),
+                "aid": actor_id,
+                "tid": policy_id,
+                "det": json.dumps({"file_name": original_name, "chunks": chunks_count}),
+                "ts": datetime.now(timezone.utc),
+            })
+            db.commit()
+        except Exception as _e:
+            print(f"Audit log warning: {_e}")
+    except Exception as e:
+        # Preserve error visibility + progress semantics for frontend polling.
+        print(f"[process_policy_background] {policy_id} failed: {e}")
+        db.execute(_sql(
+            "UPDATE policies SET status='error', progress_stage=:stage WHERE id=:pid"
+        ), {"pid": policy_id, "stage": f"Failed: {type(e).__name__}"})
+        db.commit()
+    finally:
+        db.close()
+
+
 # Policy upload — creates policy row, embeds chunks, returns policy id
 @app.post("/api/integrations/upload")
 async def upload_policy(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     department: str = Form("General"),
     version: str = Form("1.0"),
@@ -616,70 +704,24 @@ async def upload_policy(
     })
     db.commit()
 
-    # Extract text
-    set_policy_progress(db, policy_id, 15, "Extracting text")
-    try:
-        content = extract_text(str(dest), ext)
-    except TypeError:
-        content = extract_text(str(dest))
-    if not content or content.startswith("[Extraction error"):
-        content = ""
-    set_policy_progress(db, policy_id, 30, "Text extracted")
-
-    # Save full content for keyword search during analysis
-    if content:
-        db.execute(_sql(
-            "UPDATE policies SET content_preview = :content WHERE id = :pid"
-        ), {"content": content, "pid": policy_id})
-        db.commit()
-
-    # Chunk and embed the full text
-    chunks_count = 0
-    if content:
-        try:
-            set_policy_progress(db, policy_id, 45, "Chunking document")
-            chunks = chunk_text(content)
-            if chunks:
-                set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
-                embeddings = await get_embeddings([c["text"] for c in chunks])
-                set_policy_progress(db, policy_id, 85, "Storing embeddings")
-                store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
-                chunks_count = len(chunks)
-                print(f"  Embedded {chunks_count} chunks for {original_name}")
-        except Exception as e:
-            print(f"  Embedding error (will auto-embed during analysis): {e}")
-
-    # Mark as uploaded (100%, ready for analysis)
-    db.execute(_sql(
-        "UPDATE policies SET status='uploaded', progress=100, progress_stage='Ready' WHERE id=:pid"
-    ), {"pid": policy_id})
-    db.commit()
-    print(f"Policy saved: {original_name}")
-
-    # Audit log
-    try:
-        db.execute(_sql("""
-            INSERT INTO audit_logs
-            (id, actor_id, action, target_type, target_id, details, timestamp)
-            VALUES (:id,:aid,'upload_policy','policy',:tid,:det,:ts)
-        """), {
-            "id": str(uuid.uuid4()),
-            "aid": str(current_user.id) if hasattr(current_user, "id") else None,
-            "tid": policy_id,
-            "det": json.dumps({"file_name": original_name, "chunks": chunks_count}),
-            "ts": datetime.now(timezone.utc),
-        })
-        db.commit()
-    except Exception as _e:
-        print(f"Audit log warning: {_e}")
+    # Dispatch heavy AI pipeline to a background task so this endpoint returns immediately.
+    background_tasks.add_task(
+        process_policy_background,
+        policy_id=policy_id,
+        file_path=str(dest),
+        file_ext=ext,
+        original_name=original_name,
+        actor_id=str(current_user.id) if hasattr(current_user, "id") else None,
+    )
 
     return {
         "id": policy_id,
         "file_name": original_name,
         "file_url": f"/uploads/{file_name}",
-        "content_preview": content[:500] if content else "",
-        "status": "uploaded",
-        "chunks": chunks_count,
+        # Content/chunk metrics are now produced asynchronously by background processing.
+        "content_preview": "",
+        "status": "processing",
+        "chunks": 0,
     }
 
 
@@ -2798,4 +2840,3 @@ def admin_activity_logs(
         }
         for r in rows
     ]
-
