@@ -70,6 +70,7 @@ export const api = {
   auth: {
     me: () => request("GET", "/auth/me"),
     updateMe: (data) => request("POST", "/auth/updateMe", data),
+    changePassword: (data) => request("POST", "/auth/change-password", data),
     logout: (redirectUrl) => {
       localStorage.removeItem("token");
       localStorage.removeItem("user");

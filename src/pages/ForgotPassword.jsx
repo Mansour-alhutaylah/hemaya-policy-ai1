@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
 import {
   InputOTP,
   InputOTPGroup,
@@ -7,6 +8,10 @@ import {
 } from "@/components/ui/input-otp";
 import StatusAlert from "@/components/ui/StatusAlert";
 import PasswordStrengthChecker from "@/components/ui/PasswordStrengthChecker";
+import ThemeToggle from "@/components/ThemeToggle";
+
+const inputClass =
+  "mt-1 w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground/70 px-3 py-2 outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-colors";
 
 // Step 1 — enter email and request a reset code
 function StepEmail({ onSuccess }) {
@@ -36,8 +41,8 @@ function StepEmail({ onSuccess }) {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold">Forgot password</h1>
-      <p className="text-slate-500 mt-1">
+      <h1 className="text-2xl font-semibold tracking-tight">Forgot password</h1>
+      <p className="text-muted-foreground mt-1 text-sm">
         Enter your email and we&apos;ll send you a reset code.
       </p>
 
@@ -45,9 +50,9 @@ function StepEmail({ onSuccess }) {
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>
-          <label className="text-sm text-slate-600">Email</label>
+          <label className="text-sm text-muted-foreground">Email</label>
           <input
-            className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-200"
+            className={inputClass}
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -58,7 +63,7 @@ function StepEmail({ onSuccess }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-xl bg-emerald-600 text-white py-2.5 font-medium hover:bg-emerald-700 disabled:opacity-60"
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 font-medium shadow-sm shadow-emerald-500/20 disabled:opacity-60 transition-colors"
         >
           {loading ? "Sending…" : "Send reset code"}
         </button>
@@ -125,9 +130,8 @@ function StepOTP({ email, onSuccess }) {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold">Enter reset code</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Enter reset code</h1>
 
-      {/* Silent-drop info banner — matches the generic backend message */}
       <StatusAlert
         type="info"
         message={`If an account exists for ${email}, a 6-digit code has been sent. Check your inbox and spam folder.`}
@@ -150,21 +154,21 @@ function StepOTP({ email, onSuccess }) {
         <button
           type="submit"
           disabled={loading || otp.length !== 6}
-          className="w-full rounded-xl bg-emerald-600 text-white py-2.5 font-medium hover:bg-emerald-700 disabled:opacity-60"
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 font-medium shadow-sm shadow-emerald-500/20 disabled:opacity-60 transition-colors"
         >
           {loading ? "Verifying…" : "Verify code"}
         </button>
       </form>
 
-      <div className="mt-5 text-sm text-slate-600 text-center">
+      <div className="mt-5 text-sm text-muted-foreground text-center">
         Didn&apos;t receive the code?{" "}
         {cooldown > 0 ? (
-          <span className="text-slate-400">Resend in {cooldown}s</span>
+          <span className="text-muted-foreground/70">Resend in {cooldown}s</span>
         ) : (
           <button
             onClick={handleResend}
             disabled={loading}
-            className="text-emerald-700 font-medium hover:underline disabled:opacity-60"
+            className="font-medium text-emerald-600 dark:text-emerald-400 hover:underline disabled:opacity-60"
           >
             Resend code
           </button>
@@ -208,16 +212,18 @@ function StepNewPassword({ resetToken }) {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold">Set new password</h1>
-      <p className="text-slate-500 mt-1">Choose a strong password for your account.</p>
+      <h1 className="text-2xl font-semibold tracking-tight">Set new password</h1>
+      <p className="text-muted-foreground mt-1 text-sm">
+        Choose a strong password for your account.
+      </p>
 
       <StatusAlert type="error" message={error} className="mt-4" />
 
       <form onSubmit={handleReset} className="mt-6 space-y-4">
         <div>
-          <label className="text-sm text-slate-600">New password</label>
+          <label className="text-sm text-muted-foreground">New password</label>
           <input
-            className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-200"
+            className={inputClass}
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -228,9 +234,9 @@ function StepNewPassword({ resetToken }) {
           <PasswordStrengthChecker password={password} />
         </div>
         <div>
-          <label className="text-sm text-slate-600">Confirm password</label>
+          <label className="text-sm text-muted-foreground">Confirm password</label>
           <input
-            className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-200"
+            className={inputClass}
             type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
@@ -242,7 +248,7 @@ function StepNewPassword({ resetToken }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-xl bg-emerald-600 text-white py-2.5 font-medium hover:bg-emerald-700 disabled:opacity-60"
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 font-medium shadow-sm shadow-emerald-500/20 disabled:opacity-60 transition-colors"
         >
           {loading ? "Resetting…" : "Reset password"}
         </button>
@@ -257,43 +263,72 @@ export default function ForgotPassword() {
   const [resetToken, setResetToken] = useState("");
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border p-6">
-        {/* Step indicator */}
-        <div className="flex gap-1.5 mb-6">
-          {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              className={`h-1 flex-1 rounded-full transition-colors ${
-                s <= step ? "bg-emerald-500" : "bg-slate-200"
-              }`}
-            />
-          ))}
+    <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10">
+      <ThemeToggle />
+
+      <div className="w-full max-w-md">
+        <div className="mb-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Home
+          </Link>
         </div>
 
-        {step === 1 && (
-          <StepEmail
-            onSuccess={(e) => {
-              setEmail(e);
-              setStep(2);
-            }}
-          />
-        )}
-        {step === 2 && (
-          <StepOTP
-            email={email}
-            onSuccess={(token) => {
-              setResetToken(token);
-              setStep(3);
-            }}
-          />
-        )}
-        {step === 3 && <StepNewPassword resetToken={resetToken} />}
+        <div className="rounded-2xl bg-card text-card-foreground border border-border shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-sm shadow-emerald-500/20">
+              <ShieldCheck className="w-5 h-5 text-white" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-semibold tracking-tight">Himaya</p>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                AI Compliance
+              </p>
+            </div>
+          </div>
 
-        <div className="mt-5 text-sm text-center">
-          <Link className="text-slate-500 hover:underline" to="/login">
-            Back to login
-          </Link>
+          {/* Step indicator */}
+          <div className="flex gap-1.5 mb-6">
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                className={`h-1 flex-1 rounded-full transition-colors ${
+                  s <= step ? "bg-emerald-500" : "bg-muted"
+                }`}
+              />
+            ))}
+          </div>
+
+          {step === 1 && (
+            <StepEmail
+              onSuccess={(e) => {
+                setEmail(e);
+                setStep(2);
+              }}
+            />
+          )}
+          {step === 2 && (
+            <StepOTP
+              email={email}
+              onSuccess={(token) => {
+                setResetToken(token);
+                setStep(3);
+              }}
+            />
+          )}
+          {step === 3 && <StepNewPassword resetToken={resetToken} />}
+
+          <div className="mt-5 text-sm text-center">
+            <Link
+              className="text-muted-foreground hover:text-foreground hover:underline"
+              to="/login"
+            >
+              Back to login
+            </Link>
+          </div>
         </div>
       </div>
     </div>

@@ -39,7 +39,6 @@ import {
   Pause,
   Eye,
   Trash2,
-  Archive,
   Search,
   Filter,
   CheckCircle2,
@@ -595,12 +594,6 @@ export default function Policies() {
               Generate Report
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => updatePolicyMutation.mutate({ id: row.id, data: { status: 'archived' } })}
-            >
-              <Archive className="w-4 h-4 mr-2" />
-              Archive
-            </DropdownMenuItem>
-            <DropdownMenuItem
               onClick={() => {
                 if (window.confirm(`Delete "${row.file_name}"? This removes it permanently along with its analyses.`)) {
                   deletePolicyMutation.mutate(row.id);
@@ -652,7 +645,6 @@ export default function Policies() {
             <SelectItem value="uploaded">Uploaded</SelectItem>
             <SelectItem value="processing">Processing</SelectItem>
             <SelectItem value="analyzed">Analyzed</SelectItem>
-            <SelectItem value="archived">Archived</SelectItem>
           </SelectContent>
         </Select>
       </div>

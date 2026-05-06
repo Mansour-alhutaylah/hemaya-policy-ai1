@@ -207,6 +207,16 @@ class ResetPasswordRequest(BaseModel):
         return _check_password_strength(v)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=64)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        return _check_password_strength(v)
+
+
 class AnalyzeRequest(BaseModel):
     policy_id: str
     frameworks: List[str]

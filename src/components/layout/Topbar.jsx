@@ -14,6 +14,7 @@ import { LogOut, Settings, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/lib/AuthContext";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Topbar() {
   const { user: ctxUser, logout: ctxLogout } = useAuth();
@@ -83,7 +84,9 @@ export default function Topbar() {
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-end px-6 sticky top-0 z-30">
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <ThemeToggle variant="inline" />
+
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

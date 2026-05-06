@@ -5,8 +5,8 @@ export default function PageContainer({
   children,
   title,
   subtitle,
-  actions,
-  className
+  actions = null,
+  className = ''
 }) {
   return (
     <div className={cn("p-6 lg:p-8", className)}>

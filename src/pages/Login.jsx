@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
+import ThemeToggle from "@/components/ThemeToggle";
+import StatusAlert from "@/components/ui/StatusAlert";
 
 export default function Login() {
   const nav = useNavigate();
@@ -24,7 +27,7 @@ export default function Login() {
     return "";
   });
 
-  // ✅ يحاول يقرأ JSON لو موجود، ولو الرد نص/فاضي يرجّع object مناسب
+  // Try to parse a JSON body when present; otherwise fall back to text/empty.
   async function safeJson(res) {
     const contentType = res.headers.get("content-type") || "";
     const text = await res.text();
@@ -97,68 +100,103 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border p-6">
-        <h1 className="text-2xl font-semibold">Login</h1>
-        <p className="text-slate-500 mt-1">Sign in to Himaya</p>
+    <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10">
+      <ThemeToggle />
 
-        {notice && !error && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            {notice}
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="text-sm text-slate-600">Email</label>
-            <input
-              className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-200"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              placeholder="you@company.com"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-slate-600">Password</label>
-            <input
-              className="mt-1 w-full rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-200"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-emerald-600 text-white py-2.5 font-medium hover:bg-emerald-700 disabled:opacity-60"
+      <div className="w-full max-w-md">
+        {/* Back to Home — sits above the card so it never collides with the form */}
+        <div className="mb-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            {loading ? "Signing in..." : "Login"}
-          </button>
-        </form>
-
-        <div className="mt-4 text-right">
-          <Link className="text-sm text-slate-500 hover:underline" to="/forgot-password">
-            Forgot password?
+            <ArrowLeft className="h-4 w-4" />
+            Back to Home
           </Link>
         </div>
 
-        <div className="mt-3 text-sm text-slate-600">
-          Don&apos;t have an account?{" "}
-          <Link className="text-emerald-700 font-medium hover:underline" to="/signup">
-            Sign up
-          </Link>
+        <div className="rounded-2xl bg-card text-card-foreground border border-border shadow-sm p-6">
+          {/* Logo / brand block — matches Landing's identity */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-sm shadow-emerald-500/20">
+              <ShieldCheck className="w-5 h-5 text-white" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-semibold tracking-tight">Himaya</p>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                AI Compliance
+              </p>
+            </div>
+          </div>
+
+          <h1 className="text-2xl font-semibold tracking-tight">Login</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Sign in to Himaya</p>
+
+          {notice && !error && (
+            <StatusAlert type="warning" message={notice} className="mt-4" />
+          )}
+          {error && (
+            <StatusAlert type="error" message={error} className="mt-4" />
+          )}
+
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <div>
+              <label htmlFor="login-email" className="text-sm text-muted-foreground">
+                Email
+              </label>
+              <input
+                id="login-email"
+                className="mt-1 w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground/70 px-3 py-2 outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-colors"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="you@company.com"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="login-password" className="text-sm text-muted-foreground">
+                Password
+              </label>
+              <input
+                id="login-password"
+                className="mt-1 w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground/70 px-3 py-2 outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-colors"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 font-medium shadow-sm shadow-emerald-500/20 disabled:opacity-60 transition-colors"
+            >
+              {loading ? "Signing in..." : "Login"}
+            </button>
+          </form>
+
+          <div className="mt-4 text-right">
+            <Link
+              className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+              to="/forgot-password"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          <div className="mt-3 text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link
+              className="font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
+              to="/signup"
+            >
+              Sign up
+            </Link>
+          </div>
         </div>
       </div>
     </div>

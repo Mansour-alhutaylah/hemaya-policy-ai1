@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import ThemeToggle from '@/components/ThemeToggle';
+import { useTheme } from '@/lib/ThemeContext';
 import {
   ShieldCheck,
   ArrowRight,
@@ -94,8 +96,8 @@ function Logo() {
         <ShieldCheck className="w-6 h-6 text-white" />
       </div>
       <div className="flex flex-col leading-none">
-        <span className="font-bold text-lg tracking-tight text-slate-900">Himaya</span>
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">
+        <span className="font-bold text-lg tracking-tight text-foreground">Himaya</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
           AI Compliance
         </span>
       </div>
@@ -117,7 +119,7 @@ function PublicNav() {
     <header
       className={`sticky top-0 z-40 transition-all duration-300 ${
         scrolled
-          ? 'bg-white/80 backdrop-blur border-b border-slate-200 shadow-sm'
+          ? 'bg-background/80 backdrop-blur border-b border-border shadow-sm'
           : 'bg-transparent border-b border-transparent'
       }`}
     >
@@ -129,29 +131,31 @@ function PublicNav() {
         <nav className="hidden md:flex items-center gap-8">
           <a
             href="#features"
-            className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Features
           </a>
           <a
             href="#how"
-            className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             How it works
           </a>
           <a
             href="#frameworks"
-            className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Frameworks
           </a>
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* Inline toggle inside the navbar so it doesn't overlap the floating one */}
+          <ThemeToggle variant="inline" className="mr-1" />
           <Link to="/login">
             <Button
               variant="ghost"
-              className="text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+              className="text-foreground/80 hover:text-foreground hover:bg-accent"
             >
               Log in
             </Button>
@@ -168,10 +172,12 @@ function PublicNav() {
   );
 }
 
-// Mock dashboard preview that mirrors the real product Dashboard:
-// emerald StatsCards, "Compliance Level by Framework" bar chart, severity donut.
-// Rendered with inline SVG so it stays crisp without pulling in recharts.
+// Mock dashboard preview that mirrors the real product Dashboard. Pulls colors
+// from CSS variables so it adapts to dark mode along with the rest of the page.
 function DashboardPreview() {
+  const { resolved } = useTheme();
+  const isDark = resolved === 'dark';
+
   const frameworks = [
     { label: 'NCA ECC', score: 96 },
     { label: 'ISO 27001', score: 89 },
@@ -192,11 +198,7 @@ function DashboardPreview() {
   let offset = 0;
   const donutSegments = severity.map((s) => {
     const length = (s.value / sevTotal) * circumference;
-    const seg = {
-      ...s,
-      length,
-      offset,
-    };
+    const seg = { ...s, length, offset };
     offset += length;
     return seg;
   });
@@ -210,21 +212,25 @@ function DashboardPreview() {
   const barW = 32;
   const slot = innerW / frameworks.length;
 
+  // Theme-aware swatches for the inline SVG mock
+  const gridStroke = isDark ? '#334155' : '#e2e8f0';
+  const labelMuted = isDark ? '#94a3b8' : '#64748b';
+  const labelStrong = isDark ? '#f1f5f9' : '#0f172a';
+  const donutTrack = isDark ? '#1e293b' : '#f1f5f9';
+
   return (
     <div className="relative">
-      {/* outer glow */}
       <div className="absolute -inset-6 bg-gradient-to-br from-emerald-300/40 via-teal-300/30 to-transparent blur-2xl rounded-3xl -z-10" />
 
-      {/* App-chrome window */}
-      <div className="relative rounded-2xl bg-white ring-1 ring-slate-200 shadow-2xl shadow-slate-900/10 overflow-hidden">
-        {/* Faux topbar (matches real Topbar's white + slate-200 border) */}
-        <div className="flex items-center justify-between h-10 px-4 border-b border-slate-200 bg-white">
+      <div className="relative rounded-2xl bg-card ring-1 ring-border shadow-2xl shadow-black/10 overflow-hidden">
+        {/* Faux topbar */}
+        <div className="flex items-center justify-between h-10 px-4 border-b border-border bg-card">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-300" />
             <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-300" />
           </div>
-          <span className="text-[10px] uppercase tracking-widest text-slate-400">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
             Executive Dashboard
           </span>
           <div className="flex items-center gap-1.5">
@@ -234,11 +240,9 @@ function DashboardPreview() {
           </div>
         </div>
 
-        {/* Body — mirrors the real Dashboard layout */}
-        <div className="p-4 bg-slate-50/60">
+        <div className="p-4 bg-muted/30">
           {/* Stats row */}
           <div className="grid grid-cols-3 gap-3">
-            {/* Emerald gradient card — matches StatsCard variant="emerald" */}
             <div className="rounded-xl border border-transparent bg-gradient-to-br from-emerald-500 to-teal-600 p-3 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
@@ -259,42 +263,40 @@ function DashboardPreview() {
               </div>
             </div>
 
-            {/* Default card — matches StatsCard variant="default" */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     Controls Mapped
                   </p>
-                  <p className="mt-1.5 text-2xl font-bold text-slate-900 tracking-tight leading-none">
+                  <p className="mt-1.5 text-2xl font-bold text-foreground tracking-tight leading-none">
                     418
                   </p>
-                  <p className="text-[10px] text-emerald-600 mt-1 inline-flex items-center gap-1">
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 inline-flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" />
                     +12 this week
                   </p>
                 </div>
-                <div className="w-7 h-7 rounded-md bg-slate-100 flex items-center justify-center">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 </div>
               </div>
             </div>
 
-            {/* Warning card — Open Gaps */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     Open Gaps
                   </p>
-                  <p className="mt-1.5 text-2xl font-bold text-slate-900 tracking-tight leading-none">
+                  <p className="mt-1.5 text-2xl font-bold text-foreground tracking-tight leading-none">
                     11
                   </p>
-                  <p className="text-[10px] text-rose-600 mt-1 inline-flex items-center gap-1">
+                  <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 inline-flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" />2 critical
                   </p>
                 </div>
-                <div className="w-7 h-7 rounded-md bg-amber-50 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-md bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                 </div>
               </div>
@@ -303,14 +305,13 @@ function DashboardPreview() {
 
           {/* Charts row */}
           <div className="mt-3 grid grid-cols-5 gap-3">
-            {/* Compliance by framework — bar chart */}
-            <div className="col-span-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="col-span-3 rounded-xl border border-border bg-card p-3 shadow-sm">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-900 inline-flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <p className="text-xs font-semibold text-foreground inline-flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   Compliance by framework
                 </p>
-                <span className="text-[10px] text-slate-400">Last 30 days</span>
+                <span className="text-[10px] text-muted-foreground">Last 30 days</span>
               </div>
 
               <svg
@@ -319,7 +320,6 @@ function DashboardPreview() {
                 height={barChartH}
                 className="mt-2"
               >
-                {/* gridlines */}
                 {[0.25, 0.5, 0.75, 1].map((t) => (
                   <line
                     key={t}
@@ -327,7 +327,7 @@ function DashboardPreview() {
                     x2={barChartW - barPad.right}
                     y1={barPad.top + innerH * (1 - t)}
                     y2={barPad.top + innerH * (1 - t)}
-                    stroke="#e2e8f0"
+                    stroke={gridStroke}
                     strokeWidth="1"
                     strokeDasharray="3 3"
                   />
@@ -358,7 +358,7 @@ function DashboardPreview() {
                         textAnchor="middle"
                         fontSize="9"
                         fontWeight="600"
-                        fill="#0f172a"
+                        fill={labelStrong}
                       >
                         {f.score}%
                       </text>
@@ -367,7 +367,7 @@ function DashboardPreview() {
                         y={barChartH - 6}
                         textAnchor="middle"
                         fontSize="9"
-                        fill="#64748b"
+                        fill={labelMuted}
                       >
                         {f.label}
                       </text>
@@ -377,16 +377,15 @@ function DashboardPreview() {
               </svg>
             </div>
 
-            {/* Gap Severity Distribution — donut */}
-            <div className="col-span-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <p className="text-xs font-semibold text-slate-900 inline-flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+            <div className="col-span-2 rounded-xl border border-border bg-card p-3 shadow-sm">
+              <p className="text-xs font-semibold text-foreground inline-flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 Gap severity
               </p>
               <div className="mt-2 flex items-center gap-3">
                 <svg width="80" height="80" viewBox="0 0 80 80">
                   <g transform="translate(40 40) rotate(-90)">
-                    <circle r={radius} cx="0" cy="0" fill="none" stroke="#f1f5f9" strokeWidth="9" />
+                    <circle r={radius} cx="0" cy="0" fill="none" stroke={donutTrack} strokeWidth="9" />
                     {donutSegments.map((s) => (
                       <circle
                         key={s.label}
@@ -408,7 +407,7 @@ function DashboardPreview() {
                     textAnchor="middle"
                     fontSize="13"
                     fontWeight="700"
-                    fill="#0f172a"
+                    fill={labelStrong}
                   >
                     {sevTotal}
                   </text>
@@ -420,8 +419,8 @@ function DashboardPreview() {
                         className="w-2 h-2 rounded-full flex-shrink-0"
                         style={{ backgroundColor: s.color }}
                       />
-                      <span className="text-slate-600 flex-1">{s.label}</span>
-                      <span className="font-semibold text-slate-900">{s.value}</span>
+                      <span className="text-muted-foreground flex-1">{s.label}</span>
+                      <span className="font-semibold text-foreground">{s.value}</span>
                     </li>
                   ))}
                 </ul>
@@ -429,32 +428,30 @@ function DashboardPreview() {
             </div>
           </div>
 
-          {/* Recent activity strip */}
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-3 shadow-sm">
-            <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+          <div className="mt-3 rounded-xl border border-border bg-card px-3 py-2.5 flex items-center gap-3 shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
               <FileText className="w-3.5 h-3.5 text-blue-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-slate-900 truncate">
+              <p className="text-[11px] font-semibold text-foreground truncate">
                 Analysis Complete · Access Control Policy v2.1
               </p>
-              <p className="text-[10px] text-slate-500 truncate">
+              <p className="text-[10px] text-muted-foreground truncate">
                 89 mappings · 3 critical gaps detected
               </p>
             </div>
-            <span className="text-[10px] text-slate-400 flex-shrink-0">2m ago</span>
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">2m ago</span>
           </div>
         </div>
       </div>
 
-      {/* floating "Audit-ready" chip — preserved from previous design */}
-      <div className="hidden sm:flex absolute -bottom-5 -left-5 items-center gap-2 rounded-xl bg-white shadow-lg shadow-slate-200 ring-1 ring-slate-200 px-3 py-2">
-        <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+      <div className="hidden sm:flex absolute -bottom-5 -left-5 items-center gap-2 rounded-xl bg-card shadow-lg shadow-black/10 ring-1 ring-border px-3 py-2">
+        <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
         </div>
         <div className="leading-tight">
-          <div className="text-[11px] font-semibold text-slate-800">Audit-ready</div>
-          <div className="text-[10px] text-slate-500">Explainable scoring</div>
+          <div className="text-[11px] font-semibold text-foreground">Audit-ready</div>
+          <div className="text-[10px] text-muted-foreground">Explainable scoring</div>
         </div>
       </div>
     </div>
@@ -464,20 +461,19 @@ function DashboardPreview() {
 function Hero() {
   return (
     <section className="relative">
-      {/* soft background gradient */}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/60 via-white to-white" />
+      {/* soft background gradient — emerald glow tints work in both themes */}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-emerald-50/60 via-background to-background dark:from-emerald-500/5" />
       <div className="absolute inset-x-0 top-0 -z-10 h-[600px] bg-[radial-gradient(ellipse_at_top,_rgba(16,185,129,0.18),_transparent_60%)]" />
 
       <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-16 lg:pt-24 pb-12 lg:pb-20">
         <div className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-          {/* Left: copy */}
           <div className="lg:col-span-7">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
               <ShieldCheck className="w-3.5 h-3.5" />
               Himaya · AI Compliance Platform
             </div>
 
-            <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 leading-[1.05]">
+            <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.05]">
               Compliance that runs
               <br />
               <span className="bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">
@@ -485,7 +481,7 @@ function Hero() {
               </span>
             </h1>
 
-            <p className="mt-6 text-lg text-slate-600 leading-relaxed max-w-xl">
+            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
               Himaya transforms dense security documentation into structured, mapped, and
               scored compliance evidence. Analyze policies against NCA ECC, ISO 27001, and
               NIST 800-53 in minutes — not months — with full traceability behind every
@@ -494,7 +490,7 @@ function Hero() {
 
             <ul className="mt-8 grid sm:grid-cols-2 gap-y-2 gap-x-6 max-w-xl">
               {benefits.map((b) => (
-                <li key={b} className="flex items-start gap-2 text-sm text-slate-600">
+                <li key={b} className="flex items-start gap-2 text-sm text-muted-foreground">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
                   <span>{b}</span>
                 </li>
@@ -502,7 +498,6 @@ function Hero() {
             </ul>
           </div>
 
-          {/* Right: preview */}
           <div className="lg:col-span-5">
             <DashboardPreview />
           </div>
@@ -515,19 +510,19 @@ function Hero() {
 function Frameworks() {
   const items = ['NCA ECC', 'ISO 27001', 'NIST 800-53'];
   return (
-    <section id="frameworks" className="border-y border-slate-200 bg-white">
+    <section id="frameworks" className="border-y border-border bg-card">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Aligned with the standards that matter most
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {items.map((f) => (
               <span
                 key={f}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium text-foreground"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 {f}
               </span>
             ))}
@@ -543,13 +538,13 @@ function Features() {
     <section id="features" className="py-20 lg:py-24">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
             Capabilities
           </p>
-          <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-slate-900">
+          <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-foreground">
             From raw policy to audit-ready evidence.
           </h2>
-          <p className="mt-4 text-slate-600 text-base lg:text-lg leading-relaxed">
+          <p className="mt-4 text-muted-foreground text-base lg:text-lg leading-relaxed">
             Replace fragmented spreadsheets and manual review cycles with a single
             intelligent compliance workspace.
           </p>
@@ -559,7 +554,7 @@ function Features() {
           {features.map((f) => (
             <Card
               key={f.title}
-              className="h-full border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-200"
+              className="h-full border-border shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-200 dark:hover:border-emerald-500/30"
             >
               <CardContent className="p-6">
                 <div
@@ -567,8 +562,10 @@ function Features() {
                 >
                   <f.icon className="w-5 h-5 text-white" />
                 </div>
-                <p className="font-semibold text-slate-900 tracking-tight">{f.title}</p>
-                <p className="text-sm text-slate-500 mt-2 leading-relaxed">{f.description}</p>
+                <p className="font-semibold text-foreground tracking-tight">{f.title}</p>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                  {f.description}
+                </p>
               </CardContent>
             </Card>
           ))}
@@ -580,16 +577,16 @@ function Features() {
 
 function HowItWorks() {
   return (
-    <section id="how" className="py-20 lg:py-24 bg-slate-50/70 border-y border-slate-200">
+    <section id="how" className="py-20 lg:py-24 bg-muted/30 border-y border-border">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
             How it works
           </p>
-          <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-slate-900">
+          <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-foreground">
             From upload to audit in four steps.
           </h2>
-          <p className="mt-4 text-slate-600 text-base lg:text-lg leading-relaxed">
+          <p className="mt-4 text-muted-foreground text-base lg:text-lg leading-relaxed">
             A streamlined workflow your compliance team can adopt from day one.
           </p>
         </div>
@@ -597,25 +594,24 @@ function HowItWorks() {
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {workflow.map((w, idx) => (
             <div key={w.step} className="relative">
-              <Card className="h-full border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+              <Card className="h-full border-border shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
-                    <div className="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-                      <w.icon className="w-5 h-5 text-emerald-600" />
+                    <div className="w-11 h-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm">
+                      <w.icon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                     </div>
-                    <span className="text-xs font-bold tracking-widest text-slate-400">
+                    <span className="text-xs font-bold tracking-widest text-muted-foreground">
                       {w.step}
                     </span>
                   </div>
-                  <p className="mt-4 font-semibold text-slate-900 tracking-tight">{w.title}</p>
-                  <p className="text-sm text-slate-500 mt-2 leading-relaxed">{w.description}</p>
+                  <p className="mt-4 font-semibold text-foreground tracking-tight">{w.title}</p>
+                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{w.description}</p>
                 </CardContent>
               </Card>
 
-              {/* connector arrow on large screens */}
               {idx < workflow.length - 1 && (
                 <div className="hidden lg:flex absolute top-1/2 -right-2 -translate-y-1/2 w-4 h-4 items-center justify-center pointer-events-none">
-                  <ChevronRight className="w-4 h-4 text-slate-300" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
                 </div>
               )}
             </div>
@@ -630,6 +626,7 @@ function FinalCTA() {
   return (
     <section className="py-20 lg:py-24">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        {/* Intentionally dark in both themes — this is a marketing CTA panel */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-emerald-900 to-teal-900 p-8 lg:p-12 shadow-xl">
           <div className="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_top_right,_rgba(16,185,129,0.45),_transparent_60%)]" />
           <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_bottom_left,_rgba(45,212,191,0.35),_transparent_60%)]" />
@@ -674,10 +671,10 @@ function FinalCTA() {
 
 function Footer() {
   return (
-    <footer className="border-t border-slate-200 bg-white">
+    <footer className="border-t border-border bg-card">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <Logo />
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-muted-foreground">
           © {new Date().getFullYear()} Himaya · AI Compliance
         </p>
       </div>
@@ -686,21 +683,6 @@ function Footer() {
 }
 
 export default function Landing() {
-  // Force light mode while the public landing is mounted. ThemeContext persists
-  // the user's last theme in localStorage; after logout that may still be "dark"
-  // and would clash with this marketing page's intentionally light surfaces.
-  useEffect(() => {
-    const html = document.documentElement;
-    const hadDark = html.classList.contains('dark');
-    if (hadDark) html.classList.remove('dark');
-    const previousTitle = document.title;
-    document.title = 'Himaya · AI Compliance Platform';
-    return () => {
-      if (hadDark) html.classList.add('dark');
-      document.title = previousTitle;
-    };
-  }, []);
-
   // Surface a one-time notice when the user lands here because of inactivity logout.
   const [inactivityNotice, setInactivityNotice] = useState(false);
   useEffect(() => {
@@ -714,16 +696,24 @@ export default function Landing() {
     }
   }, []);
 
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'Himaya · AI Compliance Platform';
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-white text-slate-900 antialiased">
+    <div className="min-h-screen bg-background text-foreground antialiased">
       <PublicNav />
       {inactivityNotice && (
-        <div className="bg-amber-50 border-b border-amber-200 text-amber-800">
+        <div className="bg-amber-50 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-200">
           <div className="max-w-7xl mx-auto px-6 lg:px-8 py-2 flex items-center justify-between gap-4 text-xs">
             <span>You were signed out after 15 minutes of inactivity.</span>
             <button
               onClick={() => setInactivityNotice(false)}
-              className="text-amber-700 hover:text-amber-900 font-medium"
+              className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-medium"
               aria-label="Dismiss notice"
             >
               Dismiss

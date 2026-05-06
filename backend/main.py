@@ -29,7 +29,7 @@ from backend.email_utils import (
 )
 from backend.text_extractor import extract_text
 from backend.checkpoint_analyzer import (
-    run_checkpoint_analysis, chat_with_context,
+    run_checkpoint_analysis, chat_with_context, chat_with_user_context,
     run_simulation, generate_insights, explain_mapping,
 )
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
@@ -532,6 +532,32 @@ def reset_password(req: schemas.ResetPasswordRequest, db: Session = Depends(get_
     user.password_hash = auth.get_password_hash(req.new_password)
     db.commit()
     return {"message": "Password reset successfully. You can now log in."}
+
+
+@app.post("/api/auth/change-password")
+def change_password(
+    req: schemas.ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Authenticated password change. Verifies the current password before
+    re-hashing the new one. Authorization is implicit: the JWT identifies the
+    only account that can be modified."""
+    if not auth.verify_password(req.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    if req.current_password == req.new_password:
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from the current password.",
+        )
+
+    if len(req.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Password must be <= 72 bytes")
+
+    current_user.password_hash = auth.get_password_hash(req.new_password)
+    db.commit()
+    return {"message": "Password updated successfully."}
 
 
 @app.get("/api/auth/me", response_model=schemas.User)
@@ -1480,11 +1506,43 @@ async def generate_report(request: schemas.GenerateReportRequest, db: Session = 
 
 
 @app.post("/api/functions/chat_assistant")
-async def chat_assistant(payload: Dict[str, Any], db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    message = payload.get("message") or ""
-    policy_id = payload.get("policy_id")
-    response = await chat_with_context(db, message, policy_id=policy_id)
-    return {"response": response, "timestamp": datetime.now(timezone.utc).isoformat()}
+@app.post("/api/assistant/chat")
+async def chat_assistant(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """User-scoped compliance Q&A. The assistant only sees policies and gaps
+    belonging to the caller (admins see everything). On any LLM/DB failure we
+    return a clean, user-facing error string — never a raw stack trace."""
+    message = (payload.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    is_admin = current_user.email == ADMIN_EMAIL
+
+    try:
+        result = await chat_with_user_context(
+            db, message, current_user, is_admin=is_admin
+        )
+    except Exception as exc:
+        # Log internally; surface a friendly message.
+        print(f"[chat_assistant] {type(exc).__name__}: {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The assistant is temporarily unavailable. "
+                "Please try again in a moment."
+            ),
+        )
+
+    return {
+        "response": result["response"],
+        "has_policies": result["has_policies"],
+        "has_analysis_data": result["has_analysis_data"],
+        "policies_in_scope": result["policies_in_scope"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @app.get("/api/functions/db_health")

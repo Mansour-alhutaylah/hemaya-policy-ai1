@@ -1,66 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/api/apiClient';
 import { useAuth } from '@/lib/AuthContext';
-import { useTheme } from '@/lib/ThemeContext';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
+import PasswordStrengthChecker from '@/components/ui/PasswordStrengthChecker';
 import {
   User,
-  Bell,
-  Shield,
-  Database,
-  Palette,
-  Globe,
-  Save,
   Key,
   Mail,
   Phone,
-  Loader2
+  Loader2,
 } from 'lucide-react';
 
 export default function Settings() {
   const { user: ctxUser, login } = useAuth();
-  const { theme, setTheme } = useTheme();
   const [user, setUser] = useState(ctxUser || null);
-  const [loading, setLoading] = useState(false);
-  const [settings, setSettings] = useState({
-    // Notifications
-    emailNotifications: true,
-    analysisComplete: true,
-    gapAlerts: true,
-    weeklyDigest: true,
-
-    // Security
-    twoFactorAuth: false,
-    sessionTimeout: '30',
-
-    // Compliance
-    defaultFramework: 'all',
-    autoAnalysis: false,
-    confidenceThreshold: '0.6',
-
-    // Display
-    language: 'en',
-    dateFormat: 'MM/dd/yyyy',
-    theme,
-  });
-
+  const [loadingPassword, setLoadingPassword] = useState(false);
   const { toast } = useToast();
+
+  const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
 
   useEffect(() => {
     let cancelled = false;
@@ -71,423 +35,224 @@ export default function Settings() {
         setUser(userData);
         const token = localStorage.getItem('token');
         if (token) login({ token, user: userData });
-        if (userData?.settings) {
-          setSettings(prev => ({ ...prev, ...userData.settings, theme: userData.settings.theme || prev.theme }));
-        }
       } catch {
         // fall back to cached ctx user
       }
     };
     loadUser();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSave = async () => {
-    setLoading(true);
-    try {
-      await api.auth.updateMe({ settings });
-      // Commit theme only on explicit save so the UI doesn't preview on dropdown change.
-      if (settings.theme && settings.theme !== theme) {
-        setTheme(settings.theme);
-      }
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+
+    if (!pwd.current || !pwd.next || !pwd.confirm) {
       toast({
-        title: 'Settings Saved',
-        description: 'Your preferences have been updated successfully.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save settings. Please try again.',
+        title: 'Missing fields',
+        description: 'Please fill in all password fields.',
         variant: 'destructive',
       });
+      return;
     }
-    setLoading(false);
+    if (pwd.next !== pwd.confirm) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'New password and confirmation must be identical.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (pwd.next === pwd.current) {
+      toast({
+        title: 'Choose a different password',
+        description: 'New password must differ from the current one.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoadingPassword(true);
+    try {
+      await api.auth.changePassword({
+        current_password: pwd.current,
+        new_password: pwd.next,
+      });
+      toast({
+        title: 'Password updated',
+        description: 'Your password has been changed successfully.',
+      });
+      setPwd({ current: '', next: '', confirm: '' });
+    } catch (err) {
+      // Surface the backend's user-facing message (e.g. "Current password is
+      // incorrect.") but never the raw stack/JSON shape.
+      const msg =
+        typeof err?.message === 'string' && err.message.length < 200
+          ? err.message
+          : 'Could not update password. Please try again.';
+      toast({
+        title: 'Could not update password',
+        description: msg,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPassword(false);
+    }
   };
 
-  const updateSetting = (key, value) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  };
-
-  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email || '';
+  const fullName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email || '';
 
   return (
     <PageContainer
       title="Settings"
-      subtitle="Manage your account and application preferences"
-      actions={
-        <Button 
-          onClick={handleSave}
-          disabled={loading}
-          className="bg-emerald-600 hover:bg-emerald-700"
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4 mr-2" />
-          )}
-          Save Changes
-        </Button>
-      }
+      subtitle="Manage your account"
     >
-      <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="profile" className="gap-2">
-            <User className="w-4 h-4" />
-            Profile
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2">
-            <Bell className="w-4 h-4" />
-            Notifications
-          </TabsTrigger>
-          <TabsTrigger value="security" className="gap-2">
-            <Shield className="w-4 h-4" />
-            Security
-          </TabsTrigger>
-          <TabsTrigger value="compliance" className="gap-2">
-            <Database className="w-4 h-4" />
-            Compliance
-          </TabsTrigger>
-          <TabsTrigger value="display" className="gap-2">
-            <Palette className="w-4 h-4" />
-            Display
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Profile Tab */}
-        <TabsContent value="profile">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                Profile Information
-              </CardTitle>
-              <CardDescription>
-                Your account details on file
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>Full Name</Label>
-                  <Input
-                    value={fullName}
-                    disabled
-                    className="bg-muted/50"
-                  />
-                  <p className="text-xs text-muted-foreground">Contact support to change your name</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Email Address</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      value={user?.email || ''}
-                      disabled
-                      className="pl-10 bg-muted/50"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      value={user?.phone || ''}
-                      disabled
-                      className="pl-10 bg-muted/50"
-                      placeholder="Not provided"
-                    />
-                  </div>
-                </div>
+      <div className="space-y-6 max-w-3xl">
+        {/* Profile Information — read-only by design; admin owns these fields */}
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              Profile Information
+            </CardTitle>
+            <CardDescription>Your account details on file</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>Full Name</Label>
+                <Input value={fullName} disabled className="bg-muted/50" />
+                <p className="text-xs text-muted-foreground">
+                  Contact support to change your name
+                </p>
               </div>
-
-              <Separator />
-
-              <div>
-                <Label className="text-base font-medium">Role</Label>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 capitalize">
-                    {user?.role || 'User'}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">
-                    Contact your administrator to change your role
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                Notification Preferences
-              </CardTitle>
-              <CardDescription>
-                Configure how and when you receive notifications
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-base">Email Notifications</Label>
-                  <p className="text-sm text-muted-foreground">Receive notifications via email</p>
-                </div>
-                <Switch
-                  checked={settings.emailNotifications}
-                  onCheckedChange={(checked) => updateSetting('emailNotifications', checked)}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <Label className="text-base font-medium">Notification Types</Label>
-                
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Analysis Complete</Label>
-                    <p className="text-sm text-muted-foreground">When a compliance analysis finishes</p>
-                  </div>
-                  <Switch
-                    checked={settings.analysisComplete}
-                    onCheckedChange={(checked) => updateSetting('analysisComplete', checked)}
-                    disabled={!settings.emailNotifications}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Gap Alerts</Label>
-                    <p className="text-sm text-muted-foreground">When new critical gaps are identified</p>
-                  </div>
-                  <Switch
-                    checked={settings.gapAlerts}
-                    onCheckedChange={(checked) => updateSetting('gapAlerts', checked)}
-                    disabled={!settings.emailNotifications}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Weekly Digest</Label>
-                    <p className="text-sm text-muted-foreground">Summary of compliance status every week</p>
-                  </div>
-                  <Switch
-                    checked={settings.weeklyDigest}
-                    onCheckedChange={(checked) => updateSetting('weeklyDigest', checked)}
-                    disabled={!settings.emailNotifications}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                Security Settings
-              </CardTitle>
-              <CardDescription>
-                Manage your account security and authentication
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-base">Two-Factor Authentication</Label>
-                  <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
-                </div>
-                <Switch
-                  checked={settings.twoFactorAuth}
-                  onCheckedChange={(checked) => updateSetting('twoFactorAuth', checked)}
-                />
-              </div>
-
-              <Separator />
 
               <div className="space-y-2">
-                <Label>Session Timeout (minutes)</Label>
-                <Select 
-                  value={settings.sessionTimeout} 
-                  onValueChange={(value) => updateSetting('sessionTimeout', value)}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 minutes</SelectItem>
-                    <SelectItem value="30">30 minutes</SelectItem>
-                    <SelectItem value="60">1 hour</SelectItem>
-                    <SelectItem value="120">2 hours</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">Automatically log out after inactivity</p>
+                <Label>Email Address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={user?.email || ''}
+                    disabled
+                    className="pl-10 bg-muted/50"
+                  />
+                </div>
               </div>
 
-              <Separator />
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={user?.phone || ''}
+                    disabled
+                    className="pl-10 bg-muted/50"
+                    placeholder="Not provided"
+                  />
+                </div>
+              </div>
+            </div>
 
-              <div>
-                <Label className="text-base font-medium">Password</Label>
-                <p className="text-sm text-muted-foreground mb-3">Change your account password</p>
-                <Button variant="outline">
-                  <Key className="w-4 h-4 mr-2" />
-                  Change Password
+            <Separator />
+
+            <div>
+              <Label className="text-base font-medium">Role</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 capitalize">
+                  {user?.role || 'User'}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Contact your administrator to change your role
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Change Password */}
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              Change Password
+            </CardTitle>
+            <CardDescription>
+              Use a strong password you don&apos;t use elsewhere
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleChangePassword} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Current Password</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  value={pwd.current}
+                  onChange={(e) =>
+                    setPwd((p) => ({ ...p, current: e.target.value }))
+                  }
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  value={pwd.next}
+                  onChange={(e) =>
+                    setPwd((p) => ({ ...p, next: e.target.value }))
+                  }
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+                <PasswordStrengthChecker password={pwd.next} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm New Password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={pwd.confirm}
+                  onChange={(e) =>
+                    setPwd((p) => ({ ...p, confirm: e.target.value }))
+                  }
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+                {pwd.confirm && pwd.next !== pwd.confirm && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    Passwords do not match.
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  disabled={loadingPassword}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {loadingPassword ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Key className="w-4 h-4 mr-2" />
+                  )}
+                  Update Password
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Compliance Tab */}
-        <TabsContent value="compliance">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                Compliance Settings
-              </CardTitle>
-              <CardDescription>
-                Configure compliance analysis preferences
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label>Default Framework</Label>
-                <Select 
-                  value={settings.defaultFramework} 
-                  onValueChange={(value) => updateSetting('defaultFramework', value)}
-                >
-                  <SelectTrigger className="w-64">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Frameworks</SelectItem>
-                    <SelectItem value="NCA ECC">NCA ECC</SelectItem>
-                    <SelectItem value="ISO 27001">ISO 27001</SelectItem>
-                    <SelectItem value="NIST 800-53">NIST 800-53</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">Default framework for new analyses</p>
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-base">Auto-Analysis</Label>
-                  <p className="text-sm text-muted-foreground">Automatically analyze policies when uploaded</p>
-                </div>
-                <Switch
-                  checked={settings.autoAnalysis}
-                  onCheckedChange={(checked) => updateSetting('autoAnalysis', checked)}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>Confidence Threshold</Label>
-                <Select 
-                  value={settings.confidenceThreshold} 
-                  onValueChange={(value) => updateSetting('confidenceThreshold', value)}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0.5">50% (More results)</SelectItem>
-                    <SelectItem value="0.6">60% (Balanced)</SelectItem>
-                    <SelectItem value="0.7">70% (More accurate)</SelectItem>
-                    <SelectItem value="0.8">80% (High precision)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">Mappings below this threshold require human review</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Display Tab */}
-        <TabsContent value="display">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                Display Settings
-              </CardTitle>
-              <CardDescription>
-                Customize the application appearance
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label>Language</Label>
-                <Select 
-                  value={settings.language} 
-                  onValueChange={(value) => updateSetting('language', value)}
-                >
-                  <SelectTrigger className="w-48">
-                    <Globe className="w-4 h-4 mr-2" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>Date Format</Label>
-                <Select 
-                  value={settings.dateFormat} 
-                  onValueChange={(value) => updateSetting('dateFormat', value)}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MM/dd/yyyy">MM/DD/YYYY</SelectItem>
-                    <SelectItem value="dd/MM/yyyy">DD/MM/YYYY</SelectItem>
-                    <SelectItem value="yyyy-MM-dd">YYYY-MM-DD</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>Theme</Label>
-                <Select 
-                  value={settings.theme} 
-                  onValueChange={(value) => updateSetting('theme', value)}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="system">System Default</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </PageContainer>
   );
 }
