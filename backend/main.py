@@ -731,20 +731,27 @@ def dashboard_stats(
 ):
     from sqlalchemy import text as _t
 
-    # Build an optional WHERE clause fragment that scopes results to one policy.
-    # When policy_id is None we return aggregated data across all policies.
-    policy_filter_cr  = "AND cr.policy_id = :pid" if policy_id else ""
-    policy_filter_gap = "AND policy_id = :pid"    if policy_id else ""
-    bind = {"pid": policy_id} if policy_id else {}
+    is_admin = current_user.email == ADMIN_EMAIL
 
-    # Latest compliance result per framework (optionally scoped to one policy)
+    # Build WHERE fragments — scope by specific policy and/or current user.
+    # Admin sees all; regular users only see their own policies.
+    policy_filter_cr  = "AND cr.policy_id = :pid" if policy_id else ""
+    policy_filter_gap = "AND g.policy_id = :pid"  if policy_id else ""
+    user_filter_cr    = "" if is_admin else "AND p.owner_id = :uid"
+    user_filter_gap   = "" if is_admin else (
+        "AND g.policy_id IN (SELECT id FROM policies WHERE owner_id = :uid)"
+    )
+    bind = {"pid": policy_id, "uid": str(current_user.id)}
+
+    # Latest compliance result per framework (scoped to user's policies)
     rows = db.execute(_t(f"""
         SELECT DISTINCT ON (f.name)
                f.name, cr.compliance_score,
                cr.controls_covered, cr.controls_partial, cr.controls_missing
         FROM compliance_results cr
+        JOIN policies p ON p.id = cr.policy_id
         LEFT JOIN frameworks f ON cr.framework_id = f.id
-        WHERE 1=1 {policy_filter_cr}
+        WHERE 1=1 {policy_filter_cr} {user_filter_cr}
         ORDER BY f.name, cr.analyzed_at DESC
     """), bind).fetchall()
 
@@ -757,15 +764,16 @@ def dashboard_stats(
         round(sum(r[1] or 0 for r in rows) / len(rows), 1) if rows else 0
     )
 
-    # Open gaps (optionally scoped to one policy)
+    # Open gaps (scoped to user's policies)
     open_gaps = db.execute(_t(
-        f"SELECT COUNT(*) FROM gaps WHERE status='Open' {policy_filter_gap}"
+        f"SELECT COUNT(*) FROM gaps g WHERE g.status='Open' "
+        f"{policy_filter_gap} {user_filter_gap}"
     ), bind).fetchone()[0]
 
-    # Severity distribution (optionally scoped to one policy)
+    # Severity distribution
     sev_rows = db.execute(_t(
-        f"SELECT severity, COUNT(*) FROM gaps WHERE status='Open' "
-        f"{policy_filter_gap} GROUP BY severity"
+        f"SELECT g.severity, COUNT(*) FROM gaps g WHERE g.status='Open' "
+        f"{policy_filter_gap} {user_filter_gap} GROUP BY g.severity"
     ), bind).fetchall()
     severity_distribution = {r[0]: r[1] for r in sev_rows}
 
@@ -899,11 +907,15 @@ def get_policies(
     limit = int(params.get("limit", 100))
     status_filter = params.get("status")
 
-    where = "WHERE p.status = :st" if status_filter else ""
+    is_admin = current_user.email == ADMIN_EMAIL
+    where_parts = []
+    if status_filter:
+        where_parts.append("p.status = :st")
+    if not is_admin:
+        where_parts.append("p.owner_id = :uid")
+    where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
-    # Defensive: progress columns are added by setup_policy_progress_columns
-    # at startup, but if the migration didn't apply we still want this query
-    # to succeed. Fall back to a basic SELECT in that case.
+    # Defensive: progress columns may not exist on older DBs — fall back gracefully.
     rich_sql = f"""
         SELECT p.id, p.file_name, p.description, p.department, p.version,
                p.status, p.file_url, p.file_type, p.content_preview,
@@ -945,9 +957,10 @@ def get_policies(
         LIMIT :lim
     """
 
+    params = {"lim": limit, "st": status_filter, "uid": str(current_user.id)}
     rich = True
     try:
-        rows = db.execute(_t(rich_sql), {"lim": limit, "st": status_filter}).fetchall()
+        rows = db.execute(_t(rich_sql), params).fetchall()
     except Exception as e:
         print(f"[get_policies] rich query failed, falling back: {e}")
         try:
@@ -955,7 +968,7 @@ def get_policies(
         except Exception:
             pass
         rich = False
-        rows = db.execute(_t(basic_sql), {"lim": limit, "st": status_filter}).fetchall()
+        rows = db.execute(_t(basic_sql), params).fetchall()
 
     return [
         {"id": r[0], "file_name": r[1], "description": r[2],
@@ -1013,7 +1026,13 @@ def get_compliance_results(
     params = dict(request.query_params)
     limit = int(params.get("limit", 100))
     policy_id = params.get("policy_id")
-    where = "WHERE cr.policy_id = :pid" if policy_id else ""
+    is_admin = current_user.email == ADMIN_EMAIL
+    where_parts = []
+    if policy_id:
+        where_parts.append("cr.policy_id = :pid")
+    if not is_admin:
+        where_parts.append("p.owner_id = :uid")
+    where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
     rows = db.execute(_t(f"""
         SELECT cr.id, cr.policy_id, f.name AS framework,
                cr.compliance_score, cr.controls_covered,
@@ -1021,11 +1040,12 @@ def get_compliance_results(
                cr.status, cr.analyzed_at, cr.analysis_duration,
                cr.details::text AS details
         FROM compliance_results cr
+        JOIN policies p ON p.id = cr.policy_id
         LEFT JOIN frameworks f ON cr.framework_id = f.id
         {where}
         ORDER BY cr.analyzed_at DESC
         LIMIT :lim
-    """), {"lim": limit, "pid": policy_id}).fetchall()
+    """), {"lim": limit, "pid": policy_id, "uid": str(current_user.id)}).fetchall()
     return [
         {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
          "compliance_score": r[3], "controls_covered": r[4],
@@ -1048,11 +1068,14 @@ def get_gaps(
     limit = int(params.get("limit", 100))
     policy_id = params.get("policy_id")
     status_filter = params.get("status")
+    is_admin = current_user.email == ADMIN_EMAIL
     where_parts = []
     if policy_id:
         where_parts.append("g.policy_id = :pid")
     if status_filter:
         where_parts.append("g.status = :st")
+    if not is_admin:
+        where_parts.append("p.owner_id = :uid")
     where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
     rows = db.execute(_t(f"""
         SELECT g.id, g.policy_id, f.name AS framework,
@@ -1060,12 +1083,14 @@ def get_gaps(
                g.severity, g.status, g.description, g.remediation,
                g.created_at, g.owner_name, g.mapping_id
         FROM gaps g
+        JOIN policies p ON p.id = g.policy_id
         LEFT JOIN frameworks f ON g.framework_id = f.id
         LEFT JOIN control_library cl ON g.control_id = cl.id
         {where}
         ORDER BY g.created_at DESC
         LIMIT :lim
-    """), {"lim": limit, "pid": policy_id, "st": status_filter}).fetchall()
+    """), {"lim": limit, "pid": policy_id, "st": status_filter,
+           "uid": str(current_user.id)}).fetchall()
     return [
         {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
          "control_id": r[3] or "", "control_name": r[4],
@@ -1087,7 +1112,13 @@ def get_mapping_reviews(
     params = dict(request.query_params)
     limit = int(params.get("limit", 100))
     policy_id = params.get("policy_id")
-    where = "WHERE mr.policy_id = :pid" if policy_id else ""
+    is_admin = current_user.email == ADMIN_EMAIL
+    where_parts = []
+    if policy_id:
+        where_parts.append("mr.policy_id = :pid")
+    if not is_admin:
+        where_parts.append("p.owner_id = :uid")
+    where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
     rows = db.execute(_t(f"""
         SELECT mr.id, mr.policy_id, f.name AS framework,
                cl.control_code AS control_id,
@@ -1095,12 +1126,13 @@ def get_mapping_reviews(
                mr.ai_rationale, mr.decision, mr.review_notes,
                mr.reviewed_at, mr.created_at
         FROM mapping_reviews mr
+        JOIN policies p ON p.id = mr.policy_id
         LEFT JOIN frameworks f ON mr.framework_id = f.id
         LEFT JOIN control_library cl ON mr.control_id = cl.id
         {where}
         ORDER BY mr.created_at DESC
         LIMIT :lim
-    """), {"lim": limit, "pid": policy_id}).fetchall()
+    """), {"lim": limit, "pid": policy_id, "uid": str(current_user.id)}).fetchall()
     return [
         {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
          "control_id": r[3] or "", "evidence_snippet": r[4],
@@ -1366,6 +1398,8 @@ def delete_policy(item_id: str, db: Session = Depends(get_db), current_user: mod
     policy = db.query(models.Policy).filter(models.Policy.id == item_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Not found")
+    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised")
 
     # Clean children that are not declared as cascade relationships on Policy.
     db.query(models.AIInsight).filter(models.AIInsight.policy_id == item_id).delete(synchronize_session=False)
@@ -1420,6 +1454,8 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     policy = db.query(models.Policy).filter(models.Policy.id == request.policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised")
 
     resume = bool(getattr(request, "resume", False))
 
@@ -1486,6 +1522,8 @@ def pause_policy(payload: Dict[str, Any], db: Session = Depends(get_db), current
     policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised")
     if policy.status != "processing":
         raise HTTPException(
             status_code=409,
@@ -1590,6 +1628,8 @@ async def resume_policy(payload: Dict[str, Any], db: Session = Depends(get_db), 
     policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorised")
     if policy.status != "paused":
         raise HTTPException(
             status_code=409,
@@ -2186,6 +2226,32 @@ def setup_framework_file_columns():
                 db.rollback()
                 print(f"[startup] Framework column migration warning: {sql} → {e}")
         print("[startup] Framework file columns ensured")
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def setup_policy_owner_column():
+    """Ensure policies.owner_id exists for user isolation."""
+    from sqlalchemy import text as _t
+    db = database.SessionLocal()
+    try:
+        db.execute(_t(
+            "ALTER TABLE policies ADD COLUMN IF NOT EXISTS owner_id UUID "
+            "REFERENCES users(id) ON DELETE SET NULL"
+        ))
+        db.commit()
+        # Back-fill: policies already uploaded without an owner_id get the admin's id
+        db.execute(_t("""
+            UPDATE policies SET owner_id = (
+                SELECT id FROM users WHERE email = :admin LIMIT 1
+            ) WHERE owner_id IS NULL
+        """), {"admin": ADMIN_EMAIL})
+        db.commit()
+        print("[startup] policies.owner_id ensured")
+    except Exception as e:
+        db.rollback()
+        print(f"[startup] owner_id migration warning: {e}")
     finally:
         db.close()
 

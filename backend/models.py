@@ -57,6 +57,7 @@ class Policy(Base):
     __tablename__ = "policies"
 
     id = Column(String, primary_key=True, default=generate_uuid)
+    owner_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     file_name = Column(String)
     description = Column(Text, nullable=True)
     department = Column(String, nullable=True)
