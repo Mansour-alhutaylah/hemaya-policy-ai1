@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/api/apiClient';
+import { useAuth } from '@/lib/AuthContext';
+import { ASSISTANT_CHAT_PREFIX, purgeLegacyAssistantSessions } from '@/lib/utils';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +21,17 @@ import {
   Database,
 } from 'lucide-react';
 
+// Hard ceiling for any single chat call. Slightly above the backend's 50s
+// asyncio.wait_for so a server-side timeout surfaces as a 504 first; this
+// abort is the safety net for genuine network drops where the server never
+// answers at all.
+const REQUEST_TIMEOUT_MS = 75000;
+
+// Cap stored history so a long-running session can't pile up unbounded JSON
+// in sessionStorage. Older messages still showed in the current page; only
+// the persisted slice is trimmed.
+const MAX_PERSISTED_MESSAGES = 50;
+
 const INITIAL_MESSAGE = {
   id: 'welcome',
   role: 'assistant',
@@ -36,83 +49,272 @@ const SUGGESTED_QUESTIONS = [
   'Explain my latest analysis results.',
 ];
 
+// ── Persistence helpers (sessionStorage, scoped per user) ─────────────────
+//
+// We deliberately use sessionStorage instead of localStorage so the chat
+// vanishes when the tab/browser closes, which matches the spec ("persist
+// during the user session"). Logout paths additionally call
+// clearAssistantSessions() to wipe history immediately, so a different user
+// signing in on the same browser starts fresh.
+
+function userScopeKey(user) {
+  // Prefer the immutable user id; fall back to email if id isn't on the
+  // cached user object yet. Without either we can't safely scope, so we
+  // disable persistence for that render.
+  const id = user?.id || user?.email;
+  return id ? `${ASSISTANT_CHAT_PREFIX}${id}` : null;
+}
+
+// A persisted message is "transient" if it represents an error or pending
+// state we don't want to resurrect across navigations. Transient bubbles get
+// stripped on both save and restore, so a stale "request took too long" can
+// never come back from sessionStorage.
+function _isTransient(m) {
+  if (!m) return true;
+  if (m.type === 'error') return true;
+  if (m.type === 'pending' || m.type === 'loading') return true;
+  if (typeof m.content !== 'string' || m.content.trim() === '') return true;
+  return false;
+}
+
+function loadPersistedMessages(key) {
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    // Defensive: only keep the fields we render, drop anything transient,
+    // and keep only valid roles. This protects against any older build
+    // having persisted the wrong shape.
+    const cleaned = parsed
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+      .filter((m) => !_isTransient(m))
+      .map((m) => ({
+        id:
+          typeof m.id === 'string' || typeof m.id === 'number'
+            ? m.id
+            : `r-${Math.random()}`,
+        role: m.role,
+        content: m.content,
+        type: typeof m.type === 'string' ? m.type : undefined,
+        sources: Array.isArray(m.sources) ? m.sources : undefined,
+      }));
+    return cleaned.length ? cleaned : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedMessages(key, messages) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    // Only persist what's needed to re-render. No tokens, no system prompts,
+    // no backend internals — just the visible non-transient bubbles.
+    const slim = messages
+      .filter((m) => !_isTransient(m))
+      .slice(-MAX_PERSISTED_MESSAGES)
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        type: m.type,
+        sources: m.sources,
+      }));
+    if (slim.length === 0) {
+      sessionStorage.removeItem(key);
+      return;
+    }
+    sessionStorage.setItem(key, JSON.stringify(slim));
+  } catch {
+    // Quota exceeded or storage disabled — drop silently; the UI stays
+    // functional, only the persistence layer is degraded.
+  }
+}
+
+function clearPersistedMessages(key) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* noop */
+  }
+}
+
 export default function AIAssistant() {
-  const [messages, setMessages] = useState([INITIAL_MESSAGE]);
+  const { user } = useAuth();
+  const storageKey = useMemo(() => userScopeKey(user), [user]);
+
+  // Lazy initial state: hydrate from sessionStorage on first render so the
+  // user sees their previous conversation immediately.
+  const [messages, setMessages] = useState(() => {
+    const restored = loadPersistedMessages(storageKey);
+    return restored && restored.length ? restored : [INITIAL_MESSAGE];
+  });
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [contextSummary, setContextSummary] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const abortRef = useRef(null);
+
+  // If the user identity arrives after first paint (auth hydration race),
+  // re-hydrate once we have a key. We compare lengths to avoid clobbering an
+  // already-active conversation.
+  useEffect(() => {
+    if (!storageKey) return;
+    const restored = loadPersistedMessages(storageKey);
+    if (restored && restored.length && messages.length <= 1) {
+      setMessages(restored);
+    }
+    // Intentionally only react to storageKey changes (user identity becoming
+    // available). Re-running on every messages change would create a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  // Persist on every message change. We skip the trivial single-greeting
+  // state so navigating to the page without typing anything doesn't write
+  // an empty conversation to storage.
+  useEffect(() => {
+    if (!storageKey) return;
+    const isInitialOnly =
+      messages.length === 1 && messages[0]?.id === INITIAL_MESSAGE.id;
+    if (isInitialOnly) return;
+    savePersistedMessages(storageKey, messages);
+  }, [messages, storageKey]);
 
   // Auto-scroll to the newest message whenever the message list grows.
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
-    // Radix ScrollArea exposes a viewport child; fall back to the root.
-    const viewport = node.querySelector?.('[data-radix-scroll-area-viewport]') || node;
+    const viewport =
+      node.querySelector?.('[data-radix-scroll-area-viewport]') || node;
     viewport.scrollTop = viewport.scrollHeight;
   }, [messages, isTyping]);
 
-  const sendMessage = useCallback(async (text) => {
-    const trimmed = (text ?? '').trim();
-    if (!trimmed || isTyping) return;
+  // One-shot legacy-key sweep: any pre-v2 entries are removed on mount so
+  // older broken history (which persisted timeout error bubbles) can never
+  // resurface even if logout never ran.
+  useEffect(() => {
+    purgeLegacyAssistantSessions();
+  }, []);
 
-    const userMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: trimmed,
+  // Cancel any pending request when the component unmounts (page navigation).
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
     };
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
-    setIsTyping(true);
+  }, []);
 
-    try {
-      const result = await api.functions.invoke('chat_assistant', {
-        message: trimmed,
-      });
+  const sendMessage = useCallback(
+    async (text) => {
+      const trimmed = (text ?? '').trim();
+      if (!trimmed || isTyping) return;
 
-      setContextSummary({
-        hasPolicies: !!result?.has_policies,
-        hasAnalysis: !!result?.has_analysis_data,
-        policiesInScope: result?.policies_in_scope ?? 0,
-      });
+      // Abort any leftover controller from a previous (already-finished)
+      // call before starting a fresh one. Belt-and-suspenders: the finally
+      // block already nulls abortRef when the previous call ends, but if a
+      // pathological race ever leaves one behind, this guarantees the new
+      // call gets its own clean controller and signal.
+      if (abortRef.current) {
+        try {
+          abortRef.current.abort();
+        } catch {
+          /* noop */
+        }
+        abortRef.current = null;
+      }
 
-      const assistantMessage = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content:
-          (typeof result?.response === 'string' && result.response.trim()) ||
-          "I couldn't generate a response. Please try rephrasing your question.",
-        type: result?.has_analysis_data ? 'grounded' : 'no-data',
+      const userMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: trimmed,
       };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      // The shared API client formats backend `detail` into error.message.
-      // Keep it short to avoid leaking anything verbose.
-      const raw = typeof error?.message === 'string' ? error.message : '';
-      const friendly =
-        raw && raw.length < 200
+      setMessages((prev) => [...prev, userMessage]);
+      setInputValue('');
+      setIsTyping(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+      const t0 = Date.now();
+      // eslint-disable-next-line no-console
+      console.log('[assistant ui] sending', { len: trimmed.length });
+
+      try {
+        const result = await api.assistant.chat(trimmed, {
+          signal: controller.signal,
+        });
+
+        const answer =
+          (typeof result?.answer === 'string' && result.answer.trim()) ||
+          (typeof result?.response === 'string' && result.response.trim()) ||
+          "I couldn't generate a response. Please try rephrasing your question.";
+
+        setContextSummary({
+          hasPolicies: !!result?.has_policies,
+          hasData: !!result?.has_data,
+          policiesInScope: result?.policies_in_scope ?? 0,
+        });
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: answer,
+            type: result?.has_data ? 'grounded' : 'no-data',
+            sources: Array.isArray(result?.sources) ? result.sources : [],
+          },
+        ]);
+        // eslint-disable-next-line no-console
+        console.log('[assistant ui] answered', {
+          ms: Date.now() - t0,
+          has_data: !!result?.has_data,
+        });
+      } catch (error) {
+        const isAbort =
+          error?.name === 'AbortError' ||
+          /aborted/i.test(error?.message || '');
+        const raw = typeof error?.message === 'string' ? error.message : '';
+        const friendly = isAbort
+          ? 'The request took too long. Please try again with a simpler question.'
+          : raw && raw.length > 0 && raw.length < 240
           ? raw
-          : 'The assistant is temporarily unavailable. Please try again in a moment.';
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `e-${Date.now()}`,
-          role: 'assistant',
-          content: friendly,
-          type: 'error',
-        },
-      ]);
-    } finally {
-      setIsTyping(false);
-      // Return focus to the input for fast follow-ups.
-      inputRef.current?.focus();
-    }
-  }, [isTyping]);
+          : 'The assistant is temporarily unavailable. Please try again.';
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e-${Date.now()}`,
+            role: 'assistant',
+            content: friendly,
+            type: 'error',
+          },
+        ]);
+        // eslint-disable-next-line no-console
+        console.log('[assistant ui] error', {
+          ms: Date.now() - t0,
+          aborted: isAbort,
+          msg: raw?.slice?.(0, 120),
+        });
+      } finally {
+        clearTimeout(timer);
+        if (abortRef.current === controller) abortRef.current = null;
+        setIsTyping(false);
+        inputRef.current?.focus();
+      }
+    },
+    [isTyping]
+  );
 
   const handleSend = () => sendMessage(inputValue);
 
-  const handleKeyPress = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -120,13 +322,18 @@ export default function AIAssistant() {
   };
 
   const handleReset = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
     setMessages([INITIAL_MESSAGE]);
     setInputValue('');
     setContextSummary(null);
+    setIsTyping(false);
+    clearPersistedMessages(storageKey);
     inputRef.current?.focus();
   };
 
-  // Suggested chips show only at the start of a conversation.
   const showSuggestions = messages.length === 1 && !isTyping;
 
   return (
@@ -143,7 +350,7 @@ export default function AIAssistant() {
             variant="outline"
             size="sm"
             onClick={handleReset}
-            disabled={messages.length <= 1 || isTyping}
+            disabled={messages.length <= 1 && !isTyping}
             title="Clear conversation"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
@@ -153,9 +360,7 @@ export default function AIAssistant() {
       }
     >
       <div className="max-w-4xl mx-auto">
-        {contextSummary && (
-          <ContextStrip summary={contextSummary} />
-        )}
+        {contextSummary && <ContextStrip summary={contextSummary} />}
 
         <Card className="shadow-sm overflow-hidden">
           {/* Chat Messages */}
@@ -216,7 +421,7 @@ export default function AIAssistant() {
                 placeholder="Ask about your compliance status, gaps, or what to fix first…"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 disabled={isTyping}
                 className="flex-1"
                 aria-label="Message"
@@ -248,6 +453,7 @@ export default function AIAssistant() {
 function MessageBubble({ message }) {
   const isUser = message.role === 'user';
   const isError = message.type === 'error';
+  const sources = Array.isArray(message.sources) ? message.sources : [];
 
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -302,6 +508,22 @@ function MessageBubble({ message }) {
             {message.content}
           </ReactMarkdown>
         </div>
+
+        {!isUser && !isError && sources.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {sources.slice(0, 6).map((s, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground"
+                title={`${s.framework || ''} ${s.control || ''} (${s.severity || ''})`}
+              >
+                <Database className="w-2.5 h-2.5" />
+                {s.framework ? `${s.framework} · ` : ''}
+                {s.control || 'Source'}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {isUser && (
@@ -316,18 +538,23 @@ function MessageBubble({ message }) {
 }
 
 function ContextStrip({ summary }) {
-  const { hasPolicies, hasAnalysis, policiesInScope } = summary;
+  const { hasPolicies, hasData, policiesInScope } = summary;
 
   let text;
   let tone;
   if (!hasPolicies) {
-    text = 'No policies uploaded yet — upload one and run analysis for grounded answers.';
+    text =
+      'No policies uploaded yet — upload one and run analysis for grounded answers.';
     tone = 'warn';
-  } else if (!hasAnalysis) {
-    text = `${policiesInScope} polic${policiesInScope === 1 ? 'y' : 'ies'} on file, but no completed analysis yet — run analysis to unlock gap-level answers.`;
+  } else if (!hasData) {
+    text = `${policiesInScope} polic${
+      policiesInScope === 1 ? 'y' : 'ies'
+    } on file, but no completed analysis yet — run analysis to unlock gap-level answers.`;
     tone = 'warn';
   } else {
-    text = `Based on your latest analysis across ${policiesInScope} polic${policiesInScope === 1 ? 'y' : 'ies'}.`;
+    text = `Based on your latest analysis across ${policiesInScope} polic${
+      policiesInScope === 1 ? 'y' : 'ies'
+    }.`;
     tone = 'ok';
   }
 

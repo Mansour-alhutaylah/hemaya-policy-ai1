@@ -1720,22 +1720,62 @@ async def chat_assistant(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """User-scoped compliance Q&A. The assistant only sees policies and gaps
-    belonging to the caller (admins see everything). On any LLM/DB failure we
-    return a clean, user-facing error string — never a raw stack trace."""
+    """User-scoped compliance Q&A.
+
+    Always returns within ~50s — the helper is wrapped in asyncio.wait_for so
+    a stalled embedding/LLM call surfaces as a clean 504 instead of leaving
+    the client hanging. On any other failure we surface a friendly 503; raw
+    stack traces never reach the client.
+    """
+    import asyncio as _asyncio
+
     message = (payload.get("message") or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    if len(message) > 4000:
+        raise HTTPException(
+            status_code=400,
+            detail="Message is too long (max 4000 characters).",
+        )
+
+    if not os.environ.get("OPENAI_API_KEY"):
+        # Catch this before we burn a request on the LLM.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The assistant is not configured (missing API key). "
+                "Please contact your administrator."
+            ),
+        )
 
     is_admin = current_user.email == ADMIN_EMAIL
+    print(
+        f"[/api/assistant/chat] user={current_user.email} admin={is_admin} "
+        f"len={len(message)}",
+        flush=True,
+    )
 
     try:
-        result = await chat_with_user_context(
-            db, message, current_user, is_admin=is_admin
+        result = await _asyncio.wait_for(
+            chat_with_user_context(db, message, current_user, is_admin=is_admin),
+            timeout=50.0,
         )
+    except _asyncio.TimeoutError:
+        print("[/api/assistant/chat] TIMEOUT after 50s", flush=True)
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "The assistant took too long to respond. "
+                "Please try a simpler question or try again."
+            ),
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
-        # Log internally; surface a friendly message.
-        print(f"[chat_assistant] {type(exc).__name__}: {exc}")
+        print(
+            f"[/api/assistant/chat] {type(exc).__name__}: {exc}",
+            flush=True,
+        )
         raise HTTPException(
             status_code=503,
             detail=(
@@ -1745,10 +1785,13 @@ async def chat_assistant(
         )
 
     return {
-        "response": result["response"],
-        "has_policies": result["has_policies"],
-        "has_analysis_data": result["has_analysis_data"],
-        "policies_in_scope": result["policies_in_scope"],
+        "answer": result.get("answer") or "",
+        "sources": result.get("sources") or [],
+        "has_data": bool(result.get("has_data")),
+        "has_policies": bool(result.get("has_policies")),
+        "policies_in_scope": result.get("policies_in_scope") or 0,
+        # Back-compat alias for any client still reading `response`.
+        "response": result.get("answer") or "",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

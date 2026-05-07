@@ -19,12 +19,16 @@ export default function PasswordStrengthChecker({ password }) {
           <li
             key={label}
             className={`flex items-center gap-2 text-xs transition-colors duration-200 ${
-              ok ? "text-emerald-600" : "text-slate-400"
+              ok
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-muted-foreground"
             }`}
           >
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-colors duration-200 ${
-                ok ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"
+                ok
+                  ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {ok ? "✓" : "·"}

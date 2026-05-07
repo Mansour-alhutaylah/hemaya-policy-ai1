@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from "react";
 import { api } from "@/api/apiClient";
+import { clearAssistantSessions } from "@/lib/utils";
 
 const AuthContext = createContext(null);
 
@@ -123,6 +124,10 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("session_timeout_minutes");
+
+    // Wipe any AI Assistant chat history so it doesn't leak into the next
+    // user's session on this browser.
+    clearAssistantSessions();
 
     // Persist reason so Login page can display the correct notice after reload
     if (reason) {

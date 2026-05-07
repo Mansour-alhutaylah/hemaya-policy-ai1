@@ -83,7 +83,7 @@ function FileExtBadge({ ext }) {
     xls: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
   };
   const label = { pdf: 'PDF', doc: 'DOC', xls: 'XLS' };
-  if (!ext) return <Filter className="w-4 h-4 text-slate-400" />;
+  if (!ext) return <Filter className="w-4 h-4 text-muted-foreground" />;
   return (
     <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${styles[ext]}`}>
       {label[ext]}
@@ -106,22 +106,22 @@ function FilterDropdown({ options, selected, onSelect, icon: Icon, loading }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all duration-150 shadow-sm min-w-[176px]"
+        className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:border-foreground/20 hover:bg-muted/40 transition-all duration-150 shadow-sm min-w-[176px]"
       >
         {loading
-          ? <Loader2 className="w-4 h-4 text-slate-400 flex-shrink-0 animate-spin" />
-          : <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />}
+          ? <Loader2 className="w-4 h-4 text-muted-foreground flex-shrink-0 animate-spin" />
+          : <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
         <span className="flex-1 text-left truncate">{selectedOption?.label ?? 'All Uploaded Files'}</span>
-        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 w-64 bg-white rounded-xl border border-slate-200 shadow-xl z-50 py-1.5 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1.5 w-64 bg-popover text-popover-foreground rounded-xl border border-border shadow-xl z-50 py-1.5 overflow-hidden">
           {options.map(opt => (
             <button
               key={opt.id}
               onClick={() => { onSelect(opt.id); setOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
             >
               <span className="flex-shrink-0 w-8 flex items-center justify-center">
                 <FileExtBadge ext={opt.ext} />
@@ -141,7 +141,7 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, accent
   if (isLoading) {
     return (
       <div
-        className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4"
+        className="bg-card rounded-2xl border border-border shadow-sm p-5 flex flex-col gap-4"
         style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
       >
         <div className="flex items-start justify-between">
@@ -158,19 +158,21 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, accent
 
   return (
     <div
-      className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200 p-5 flex flex-col gap-4"
+      className="bg-card rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow duration-200 p-5 flex flex-col gap-4"
       style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
     >
       <div className="flex items-start justify-between">
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: `${accentColor}18` }}
+          style={{ backgroundColor: `${accentColor}26` }}
         >
           <Icon className="w-4 h-4" style={{ color: accentColor }} />
         </div>
         {trend && (
           <span className={`flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${
-            trend === 'up' ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'
+            trend === 'up'
+              ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300'
+              : 'text-red-600 bg-red-50 dark:bg-red-500/15 dark:text-red-300'
           }`}>
             {trend === 'up'
               ? <TrendingUp className="w-3 h-3 mr-0.5" />
@@ -180,9 +182,9 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, accent
         )}
       </div>
       <div>
-        <p className="text-2xl font-bold tracking-tight text-slate-900 leading-none">{value}</p>
-        <p className="text-sm font-medium text-slate-600 mt-1.5">{title}</p>
-        {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+        <p className="text-2xl font-bold tracking-tight text-foreground leading-none">{value}</p>
+        <p className="text-sm font-medium text-muted-foreground mt-1.5">{title}</p>
+        {subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -199,13 +201,13 @@ function CardIcon({ children, bg }) {
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3.5 py-2.5 text-sm">
-      {label && <p className="text-xs font-semibold text-slate-500 mb-1.5">{label}</p>}
+    <div className="bg-popover text-popover-foreground border border-border rounded-xl shadow-lg px-3.5 py-2.5 text-sm">
+      {label && <p className="text-xs font-semibold text-muted-foreground mb-1.5">{label}</p>}
       {payload.map((p, i) => (
         <p key={i} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color || p.fill }} />
-          <span className="text-slate-600">{p.name}:</span>
-          <span className="font-semibold text-slate-900">{p.value}{p.unit || ''}</span>
+          <span className="text-muted-foreground">{p.name}:</span>
+          <span className="font-semibold text-foreground">{p.value}{p.unit || ''}</span>
         </p>
       ))}
     </div>
@@ -324,7 +326,7 @@ export default function Dashboard() {
       case 'report_generate':
         return <FileText className="w-4 h-4 text-purple-500" />;
       default:
-        return <CheckCircle2 className="w-4 h-4 text-slate-400" />;
+        return <CheckCircle2 className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
@@ -406,15 +408,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
         {/* Compliance by Framework */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-slate-800">
-              <CardIcon bg="bg-emerald-50">
-                <Shield className="w-4 h-4 text-emerald-600" />
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon bg="bg-emerald-50 dark:bg-emerald-500/15">
+                <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               </CardIcon>
               Compliance Level by Framework
               {statsRefreshing && (
-                <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin ml-auto" />
+                <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin ml-auto" />
               )}
             </CardTitle>
           </CardHeader>
@@ -428,21 +430,21 @@ export default function Dashboard() {
                   barSize={30}
                   margin={{ top: 4, right: 4, left: -18, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="framework"
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
                     domain={[0, 100]}
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={v => `${v}%`}
                   />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc', radius: 4 }} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
                   <Bar dataKey="score" fill="#10b981" radius={[4, 4, 0, 0]} name="Compliance" unit="%" />
                 </BarChart>
               </ResponsiveContainer>
@@ -451,15 +453,15 @@ export default function Dashboard() {
         </Card>
 
         {/* Gap Severity Distribution */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-slate-800">
-              <CardIcon bg="bg-amber-50">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon bg="bg-amber-50 dark:bg-amber-500/15">
+                <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
               </CardIcon>
               Gap Severity Distribution
               {statsRefreshing && (
-                <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin ml-auto" />
+                <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin ml-auto" />
               )}
             </CardTitle>
           </CardHeader>
@@ -495,8 +497,8 @@ export default function Dashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-bold text-slate-900 leading-none">{totalGaps}</span>
-                    <span className="text-xs text-slate-400 mt-1 font-medium">Total Gaps</span>
+                    <span className="text-2xl font-bold text-foreground leading-none">{totalGaps}</span>
+                    <span className="text-xs text-muted-foreground mt-1 font-medium">Total Gaps</span>
                   </div>
                 </div>
 
@@ -505,13 +507,13 @@ export default function Dashboard() {
                     <button
                       key={index}
                       onClick={() => navigate(`/GapsRisks?severity=${item.name}`)}
-                      className="flex items-center gap-3 w-full text-left hover:bg-slate-50 rounded-lg px-2 py-1 -mx-2 transition-colors cursor-pointer"
+                      className="flex items-center gap-3 w-full text-left hover:bg-muted/50 rounded-lg px-2 py-1 -mx-2 transition-colors cursor-pointer"
                     >
                       <div
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="text-sm text-slate-600 flex-1">{item.name}</span>
+                      <span className="text-sm text-muted-foreground flex-1">{item.name}</span>
                       <span
                         className="text-xs font-semibold text-white px-2 py-0.5 rounded-full tabular-nums"
                         style={{ backgroundColor: item.color }}
@@ -531,15 +533,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Controls Distribution */}
-        <Card className="lg:col-span-2 border-slate-200 shadow-sm">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-slate-800">
-              <CardIcon bg="bg-blue-50">
-                <BarChart3 className="w-4 h-4 text-blue-600" />
+        <Card className="lg:col-span-2 shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon bg="bg-blue-50 dark:bg-blue-500/15">
+                <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </CardIcon>
               Controls Distribution
               {statsRefreshing && (
-                <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin ml-auto" />
+                <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin ml-auto" />
               )}
             </CardTitle>
           </CardHeader>
@@ -553,23 +555,23 @@ export default function Dashboard() {
                   barSize={22}
                   margin={{ top: 4, right: 4, left: -18, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc', radius: 4 }} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
                   <Legend
                     iconType="circle"
                     iconSize={8}
-                    formatter={v => <span style={{ color: '#64748b', fontSize: 12 }}>{v}</span>}
+                    formatter={v => <span className="text-muted-foreground" style={{ fontSize: 12 }}>{v}</span>}
                   />
                   <Bar dataKey="Covered" stackId="a" fill={SEVERITY_COLORS.Low}      radius={[0, 0, 0, 0]} />
                   <Bar dataKey="Partial"  stackId="a" fill={SEVERITY_COLORS.Medium} />
@@ -581,11 +583,11 @@ export default function Dashboard() {
         </Card>
 
         {/* Recent Activity */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="pb-3 border-b border-slate-100">
-            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-slate-800">
-              <CardIcon bg="bg-slate-100">
-                <Clock className="w-4 h-4 text-slate-500" />
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon bg="bg-muted">
+                <Clock className="w-4 h-4 text-muted-foreground" />
               </CardIcon>
               Recent Activity
             </CardTitle>
@@ -600,32 +602,32 @@ export default function Dashboard() {
             ) : displayActivity.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <div className="relative mb-4">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">
-                    <Activity className="w-6 h-6 text-slate-300" />
+                  <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+                    <Activity className="w-6 h-6 text-muted-foreground/60" />
                   </div>
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center">
-                    <Clock className="w-3 h-3 text-slate-300" />
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-card border border-border shadow-sm flex items-center justify-center">
+                    <Clock className="w-3 h-3 text-muted-foreground/60" />
                   </div>
                 </div>
-                <p className="text-sm font-medium text-slate-500">No recent activity to show</p>
-                <p className="text-xs text-slate-400 mt-1 max-w-[160px]">Events will appear here as they occur</p>
+                <p className="text-sm font-medium text-muted-foreground">No recent activity to show</p>
+                <p className="text-xs text-muted-foreground/70 mt-1 max-w-[160px]">Events will appear here as they occur</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {displayActivity.map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3 group">
-                    <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0 group-hover:border-slate-200 transition-colors">
+                    <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/60 flex items-center justify-center flex-shrink-0 group-hover:border-border transition-colors">
                       {getActionIcon(activity.action)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {activity.action?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </p>
-                      <p className="text-xs text-slate-400 truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         {activity.target || activity.actor}
                       </p>
                     </div>
-                    <span className="text-xs text-slate-400 flex-shrink-0 tabular-nums">
+                    <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
                       {activity.time ? format(new Date(activity.time), 'HH:mm') : 'Now'}
                     </span>
                   </div>

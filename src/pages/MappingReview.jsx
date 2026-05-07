@@ -71,6 +71,59 @@ async function authPost(url, body) {
   return res.json();
 }
 
+// ─── Summary card ─────────────────────────────────────────────────────────────
+//
+// One shared card for all three top-of-page metrics. The card uses the app's
+// neutral surface (bg-card / border-border) and applies the semantic color
+// only as accents: a left border, a tinted icon container, and the number.
+// This avoids the pale pastel blocks that read as "light-mode leftovers" in
+// dark mode while keeping the meaning obvious at a glance.
+
+const SUMMARY_TONES = {
+  amber: {
+    bar: 'bg-amber-500/80 dark:bg-amber-400/70',
+    iconBg: 'bg-amber-100 dark:bg-amber-500/15',
+    iconText: 'text-amber-600 dark:text-amber-400',
+    value: 'text-amber-700 dark:text-amber-300',
+    label: 'text-amber-700/80 dark:text-amber-300/80',
+  },
+  red: {
+    bar: 'bg-red-500/80 dark:bg-red-400/70',
+    iconBg: 'bg-red-100 dark:bg-red-500/15',
+    iconText: 'text-red-600 dark:text-red-400',
+    value: 'text-red-700 dark:text-red-300',
+    label: 'text-red-700/80 dark:text-red-300/80',
+  },
+  emerald: {
+    bar: 'bg-emerald-500/80 dark:bg-emerald-400/70',
+    iconBg: 'bg-emerald-100 dark:bg-emerald-500/15',
+    iconText: 'text-emerald-600 dark:text-emerald-400',
+    value: 'text-emerald-700 dark:text-emerald-300',
+    label: 'text-emerald-700/80 dark:text-emerald-300/80',
+  },
+};
+
+function SummaryCard({ tone, icon: Icon, value, label }) {
+  const t = SUMMARY_TONES[tone] || SUMMARY_TONES.amber;
+  return (
+    <Card className="relative overflow-hidden shadow-sm">
+      {/* Accent bar — only colored hint on the chrome itself */}
+      <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${t.bar}`} />
+      <CardContent className="p-4 pl-5 flex items-center gap-4">
+        <div
+          className={`w-12 h-12 rounded-xl flex items-center justify-center ${t.iconBg}`}
+        >
+          <Icon className={`w-6 h-6 ${t.iconText}`} />
+        </div>
+        <div>
+          <p className={`text-2xl font-bold leading-none ${t.value}`}>{value}</p>
+          <p className={`text-sm mt-1 font-medium ${t.label}`}>{label}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function MappingReviewPage() {
@@ -228,10 +281,32 @@ export default function MappingReviewPage() {
   const lowConfidenceCount = mappings.filter(m => (m.confidence_score || 0) < 0.5).length;
   const acceptedCount      = mappings.filter(m => m.decision === 'Accepted').length;
 
+  // Tinted, dark-mode-aware confidence chips. Same semantic meaning as
+  // before, but the dark variants use translucent tints (bg-color/15) so
+  // they stop looking like pale-mode leftovers on a dark surface.
   const getConfidenceBadge = (score) => {
-    if (score >= 0.8) return { color: 'text-emerald-600 bg-emerald-50', label: 'High' };
-    if (score >= 0.5) return { color: 'text-amber-600 bg-amber-50',   label: 'Medium' };
-    return              { color: 'text-red-600 bg-red-50',             label: 'Low' };
+    if (score >= 0.8) {
+      return {
+        color:
+          'text-emerald-700 bg-emerald-50 border border-emerald-200 ' +
+          'dark:text-emerald-300 dark:bg-emerald-500/15 dark:border-emerald-500/30',
+        label: 'High',
+      };
+    }
+    if (score >= 0.5) {
+      return {
+        color:
+          'text-amber-700 bg-amber-50 border border-amber-200 ' +
+          'dark:text-amber-300 dark:bg-amber-500/15 dark:border-amber-500/30',
+        label: 'Medium',
+      };
+    }
+    return {
+      color:
+        'text-red-700 bg-red-50 border border-red-200 ' +
+        'dark:text-red-300 dark:bg-red-500/15 dark:border-red-500/30',
+      label: 'Low',
+    };
   };
 
   const isPending = selectedMapping?.decision === 'Pending';
@@ -256,14 +331,14 @@ export default function MappingReviewPage() {
       header: 'Framework',
       accessor: 'framework',
       cell: (row) => (
-        <Badge className="bg-slate-100 text-slate-700">{row.framework}</Badge>
+        <Badge className="bg-muted text-foreground border border-border/60 hover:bg-muted">{row.framework}</Badge>
       ),
     },
     {
       header: 'Evidence Snippet',
       accessor: 'evidence_snippet',
       cell: (row) => (
-        <p className="text-sm text-slate-600 line-clamp-2 max-w-md">
+        <p className="text-sm text-muted-foreground line-clamp-2 max-w-md">
           {row.evidence_snippet || 'No evidence available'}
         </p>
       ),
@@ -309,47 +384,32 @@ export default function MappingReviewPage() {
       title="Mapping Review"
       subtitle="Human-in-the-loop validation of AI-generated control mappings"
     >
-      {/* Stats */}
+      {/* Stats — semantic accents on a shared dark/light surface */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="bg-amber-50 border-amber-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-amber-700">{pendingCount}</p>
-              <p className="text-sm text-amber-600">Pending Reviews</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-red-50 border-red-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
-              <Brain className="w-6 h-6 text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-700">{lowConfidenceCount}</p>
-              <p className="text-sm text-red-600">Needs Review</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-emerald-50 border-emerald-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-emerald-700">{acceptedCount}</p>
-              <p className="text-sm text-emerald-600">Accepted</p>
-            </div>
-          </CardContent>
-        </Card>
+        <SummaryCard
+          tone="amber"
+          icon={AlertTriangle}
+          value={pendingCount}
+          label="Pending Reviews"
+        />
+        <SummaryCard
+          tone="red"
+          icon={Brain}
+          value={lowConfidenceCount}
+          label="Needs Review"
+        />
+        <SummaryCard
+          tone="emerald"
+          icon={CheckCircle2}
+          value={acceptedCount}
+          label="Accepted"
+        />
       </div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by control ID or evidence..."
             value={searchQuery}
@@ -418,11 +478,11 @@ export default function MappingReviewPage() {
 
               {/* Low-confidence warning */}
               {(selectedMapping.confidence_score || 0) < 0.5 && (
-                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg dark:bg-amber-500/10 dark:border-amber-500/30">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-amber-800">Needs Review — Low Confidence</p>
-                    <p className="text-sm text-amber-700">
+                    <p className="font-medium text-amber-800 dark:text-amber-200">Needs Review — Low Confidence</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-200/90">
                       The AI found ambiguous or conflicting evidence. Please review carefully.
                     </p>
                   </div>
@@ -432,17 +492,17 @@ export default function MappingReviewPage() {
               {/* Meta */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-slate-500 mb-1">Control ID</p>
+                  <p className="text-xs text-muted-foreground mb-1">Control ID</p>
                   <Badge variant="outline" className="font-mono">
                     {selectedMapping.control_id}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 mb-1">Framework</p>
-                  <Badge className="bg-slate-100 text-slate-700">{selectedMapping.framework}</Badge>
+                  <p className="text-xs text-muted-foreground mb-1">Framework</p>
+                  <Badge className="bg-muted text-foreground border border-border/60 hover:bg-muted">{selectedMapping.framework}</Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 mb-1">Confidence</p>
+                  <p className="text-xs text-muted-foreground mb-1">Confidence</p>
                   {(() => {
                     const s = selectedMapping.confidence_score || 0;
                     const b = getConfidenceBadge(s);
@@ -455,7 +515,7 @@ export default function MappingReviewPage() {
                   })()}
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 mb-1">Policy</p>
+                  <p className="text-xs text-muted-foreground mb-1">Policy</p>
                   <p className="text-sm font-medium">
                     {policyMap[selectedMapping.policy_id]?.file_name || selectedMapping.policy_id}
                   </p>
@@ -464,7 +524,7 @@ export default function MappingReviewPage() {
 
               {/* Evidence */}
               <div>
-                <p className="text-xs text-slate-500 mb-1.5">Evidence Snippet</p>
+                <p className="text-xs text-muted-foreground mb-1.5">Evidence Snippet</p>
                 {isEditing ? (
                   <Textarea
                     value={editedEvidence}
@@ -473,8 +533,8 @@ export default function MappingReviewPage() {
                     className="text-sm"
                   />
                 ) : (
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                    <p className="text-sm text-slate-700 italic">
+                  <div className="bg-muted/50 border border-border rounded-lg p-4">
+                    <p className="text-sm text-foreground/90 italic">
                       "{selectedMapping.evidence_snippet || 'No evidence available'}"
                     </p>
                   </div>
@@ -484,11 +544,11 @@ export default function MappingReviewPage() {
               {/* AI Rationale */}
               {(selectedMapping.ai_rationale || isEditing) && (
                 <div>
-                  <p className="text-xs text-slate-500 mb-1.5 flex items-center gap-1">
+                  <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
                     <Brain className="w-3.5 h-3.5" />
                     AI Rationale
                     {!isEditing && (
-                      <span className="text-[10px] text-slate-400 ml-1">
+                      <span className="text-[10px] text-muted-foreground/70 ml-1">
                         ({cleanAiRationale(selectedMapping.ai_rationale) !== selectedMapping.ai_rationale
                           ? 'cleaned'
                           : 'raw'})
@@ -503,8 +563,8 @@ export default function MappingReviewPage() {
                       className="text-sm"
                     />
                   ) : (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <p className="text-sm text-blue-700">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-500/10 dark:border-blue-500/30">
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
                         {cleanAiRationale(selectedMapping.ai_rationale)}
                       </p>
                     </div>
@@ -518,7 +578,7 @@ export default function MappingReviewPage() {
                   <Label className={notesError ? 'text-red-600' : ''}>
                     Review Notes
                     {isPending && (
-                      <span className="text-slate-400 font-normal ml-1">
+                      <span className="text-muted-foreground font-normal ml-1">
                         (required when rejecting)
                       </span>
                     )}
@@ -543,7 +603,7 @@ export default function MappingReviewPage() {
           )}
 
           {/* ── Action buttons ──────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
+          <div className="flex items-center justify-between pt-2 border-t border-border/60 mt-2">
 
             {isEditing ? (
               /* Edit mode footer */

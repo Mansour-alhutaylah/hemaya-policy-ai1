@@ -1,6 +1,8 @@
+import { clearAssistantSessions } from "@/lib/utils";
+
 const API_BASE = "/api";
 
-async function request(method, url, data) {
+async function request(method, url, data, opts = {}) {
   const token = localStorage.getItem("token");
   const headers = {};
 
@@ -9,6 +11,7 @@ async function request(method, url, data) {
 
   const options = { method, headers };
   if (data) options.body = data instanceof FormData ? data : JSON.stringify(data);
+  if (opts.signal) options.signal = opts.signal;
 
   const res = await fetch(`${API_BASE}${url}`, options);
 
@@ -24,6 +27,7 @@ async function request(method, url, data) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       localStorage.removeItem("session_timeout_minutes");
+      clearAssistantSessions();
       window.location.href = "/login";
       // Throw so any awaiting caller also stops execution
       throw new Error("Session expired. Please log in again.");
@@ -74,11 +78,18 @@ export const api = {
     logout: (redirectUrl) => {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      clearAssistantSessions();
       window.location.href = redirectUrl || "/";
     },
   },
   entities: new Proxy({}, entityHandler),
-  functions: { invoke: (name, args) => request("POST", `/functions/${name}`, args) },
+  functions: {
+    invoke: (name, args, opts) => request("POST", `/functions/${name}`, args, opts),
+  },
+  assistant: {
+    chat: (message, opts) =>
+      request("POST", "/assistant/chat", { message }, opts),
+  },
   integrations: {
     Core: {
       UploadFile: async ({ file }) => {

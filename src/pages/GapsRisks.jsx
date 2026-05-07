@@ -6,7 +6,6 @@ import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
-import StatsCard from '@/components/ui/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,12 +55,80 @@ const Gap = api.entities.Gap;
 const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
 
+// Severity tints — same translucent dark-mode style used by StatusBadge,
+// AIAssistant context strip, and the MappingReview low-confidence banner so
+// chips read consistently in both modes.
 const severityConfig = {
-  Critical: { color: 'bg-red-100 text-red-700 border-red-200', chartColor: '#ef4444', icon: ArrowUpCircle },
-  High: { color: 'bg-orange-100 text-orange-700 border-orange-200', chartColor: '#f97316', icon: ArrowUpCircle },
-  Medium: { color: 'bg-amber-100 text-amber-700 border-amber-200', chartColor: '#f59e0b', icon: Minus },
-  Low: { color: 'bg-green-100 text-green-700 border-green-200', chartColor: '#22c55e', icon: ArrowDownCircle },
+  Critical: {
+    color:
+      'bg-red-100 text-red-700 border-red-200 ' +
+      'dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30',
+    chartColor: '#ef4444',
+    accent: '#ef4444',
+    icon: ArrowUpCircle,
+  },
+  High: {
+    color:
+      'bg-orange-100 text-orange-700 border-orange-200 ' +
+      'dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
+    chartColor: '#f97316',
+    accent: '#f97316',
+    icon: ArrowUpCircle,
+  },
+  Medium: {
+    color:
+      'bg-amber-100 text-amber-700 border-amber-200 ' +
+      'dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
+    chartColor: '#f59e0b',
+    accent: '#f59e0b',
+    icon: Minus,
+  },
+  Low: {
+    color:
+      'bg-green-100 text-green-700 border-green-200 ' +
+      'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
+    chartColor: '#22c55e',
+    accent: '#22c55e',
+    icon: ArrowDownCircle,
+  },
 };
+
+// KPI card matching the Executive Dashboard pattern: dark card surface with
+// a thin left accent stripe, a tinted icon container, and theme-token text.
+// Kept local because the Dashboard's KpiCard has a slightly different shape
+// (trend chips, skeleton variants) we don't need here.
+function KpiCard({ title, value, icon: Icon, accentColor }) {
+  return (
+    <div
+      className="bg-card rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow duration-200 p-5 flex flex-col gap-4"
+      style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
+    >
+      <div className="flex items-start justify-between">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: `${accentColor}26` }}
+        >
+          <Icon className="w-4 h-4" style={{ color: accentColor }} />
+        </div>
+      </div>
+      <div>
+        <p className="text-2xl font-bold tracking-tight text-foreground leading-none">{value}</p>
+        <p className="text-sm font-medium text-muted-foreground mt-1.5">{title}</p>
+      </div>
+    </div>
+  );
+}
+
+// Dashboard-style colored icon container for chart-card titles.
+function CardIcon({ children, className }) {
+  return (
+    <div
+      className={`w-7 h-7 rounded-lg flex items-center justify-center ${className || ''}`}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function GapsRisks() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -200,7 +267,7 @@ export default function GapsRisks() {
           <Badge variant="outline" className="font-mono text-xs">
             {row.control_id}
           </Badge>
-          <p className="text-sm text-slate-600 mt-1">{row.control_name}</p>
+          <p className="text-sm text-muted-foreground mt-1">{row.control_name}</p>
         </div>
       ),
     },
@@ -208,7 +275,7 @@ export default function GapsRisks() {
       header: 'Framework',
       accessor: 'framework',
       cell: (row) => (
-        <Badge className="bg-slate-100 text-slate-700">
+        <Badge className="bg-muted text-foreground border border-border/60 hover:bg-muted">
           <Shield className="w-3 h-3 mr-1" />
           {row.framework}
         </Badge>
@@ -228,14 +295,14 @@ export default function GapsRisks() {
       header: 'Owner',
       accessor: 'owner_name',
       cell: (row) => (
-        <span className="text-sm text-slate-600">{row.owner_name || 'Unassigned'}</span>
+        <span className="text-sm text-muted-foreground">{row.owner_name || 'Unassigned'}</span>
       ),
     },
     {
       header: 'Description',
       accessor: 'description',
       cell: (row) => (
-        <p className="text-xs text-slate-600 line-clamp-2 max-w-xs">{row.description || '—'}</p>
+        <p className="text-xs text-muted-foreground line-clamp-2 max-w-xs">{row.description || '—'}</p>
       ),
     },
     {
@@ -255,39 +322,46 @@ export default function GapsRisks() {
       title="Gaps & Risks"
       subtitle="Track and manage compliance gaps and risk remediation"
     >
-      {/* Stats Cards */}
+      {/* Stats Cards — match Executive Dashboard KpiCard pattern */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <StatsCard
+        <KpiCard
           title="Critical Gaps"
           value={criticalCount}
           icon={AlertTriangle}
-          variant={criticalCount > 0 ? 'red' : 'default'}
+          accentColor="#ef4444"
         />
-        <StatsCard
+        <KpiCard
           title="High Priority"
           value={highCount}
           icon={AlertTriangle}
-          variant={highCount > 0 ? 'amber' : 'default'}
+          accentColor="#f97316"
         />
-        <StatsCard
+        <KpiCard
           title="Open Gaps"
           value={openCount}
           icon={AlertTriangle}
+          accentColor="#f59e0b"
         />
-        <StatsCard
+        <KpiCard
           title="In Progress"
           value={gaps.filter(g => g.status === 'In Progress').length}
           icon={AlertTriangle}
+          accentColor="#3b82f6"
         />
       </div>
 
-      {/* Charts Row */}
+      {/* Charts Row — Dashboard-style chart cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Card className="shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Severity Distribution</CardTitle>
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon className="bg-amber-50 dark:bg-amber-500/15">
+                <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+              </CardIcon>
+              Severity Distribution
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-5">
             {severityDistribution.length > 0 ? (
               <div className="flex items-center">
                 <ResponsiveContainer width="50%" height={200}>
@@ -304,21 +378,28 @@ export default function GapsRisks() {
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: 'calc(var(--radius) - 2px)',
+                        color: 'hsl(var(--popover-foreground))',
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2">
                   {severityDistribution.map((item, index) => (
                     <div key={index} className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-sm text-slate-600 flex-1">{item.name}</span>
-                      <span className="text-sm font-medium">{item.value}</span>
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-sm text-muted-foreground flex-1">{item.name}</span>
+                      <span className="text-sm font-semibold text-foreground tabular-nums">{item.value}</span>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="h-48 flex items-center justify-center text-slate-400">
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
                 No gap data available
               </div>
             )}
@@ -326,16 +407,29 @@ export default function GapsRisks() {
         </Card>
 
         <Card className="shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Status Overview</CardTitle>
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon className="bg-blue-50 dark:bg-blue-500/15">
+                <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              </CardIcon>
+              Status Overview
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-5">
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={statusDistribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
+              <BarChart data={statusDistribution} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 'calc(var(--radius) - 2px)',
+                    color: 'hsl(var(--popover-foreground))',
+                  }}
+                />
                 <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -346,7 +440,7 @@ export default function GapsRisks() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search gaps..."
             value={searchQuery}
@@ -409,7 +503,7 @@ export default function GapsRisks() {
           {selectedGap && (
             <div className="space-y-4 py-4">
               {/* Gap Info */}
-              <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+              <div className="bg-muted/50 border border-border/60 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="font-mono">
                     {selectedGap.control_id}
@@ -419,8 +513,8 @@ export default function GapsRisks() {
                 <p className="text-sm font-medium">{selectedGap.control_name}</p>
                 {selectedGap.description && (
                   <div>
-                    <p className="text-xs font-semibold text-red-600 mb-0.5">Gap identified:</p>
-                    <p className="text-sm text-slate-600">{selectedGap.description}</p>
+                    <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-0.5">Gap identified:</p>
+                    <p className="text-sm text-muted-foreground">{selectedGap.description}</p>
                   </div>
                 )}
               </div>
@@ -448,7 +542,7 @@ export default function GapsRisks() {
               <div className="space-y-2">
                 <Label>Assigned Owner</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     placeholder="Enter owner name or email"
                     value={editForm.owner}
