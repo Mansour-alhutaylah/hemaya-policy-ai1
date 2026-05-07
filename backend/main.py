@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -41,8 +42,20 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup_seed():
-    """Seed checkpoint data on server start."""
+    """Seed checkpoint data and run safe idempotent schema migrations on start."""
     from backend.checkpoint_seed import seed_checkpoints
+    from sqlalchemy import text as _ddl
+
+    # Idempotent DDL — adds new columns without touching existing data.
+    # Safe to run on every startup; Postgres IF NOT EXISTS prevents errors.
+    try:
+        with database.engine.connect() as _conn:
+            _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS mapping_id  VARCHAR"))
+            _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS owner_name  VARCHAR"))
+            _conn.commit()
+    except Exception as e:
+        print(f"[startup] Migration warning: {e}")
+
     db = database.SessionLocal()
     try:
         seed_checkpoints(db)
@@ -714,18 +727,26 @@ async def upload_policy(
 def dashboard_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
+    policy_id: Optional[str] = None,
 ):
     from sqlalchemy import text as _t
 
-    # Latest compliance result per framework
-    rows = db.execute(_t("""
+    # Build an optional WHERE clause fragment that scopes results to one policy.
+    # When policy_id is None we return aggregated data across all policies.
+    policy_filter_cr  = "AND cr.policy_id = :pid" if policy_id else ""
+    policy_filter_gap = "AND policy_id = :pid"    if policy_id else ""
+    bind = {"pid": policy_id} if policy_id else {}
+
+    # Latest compliance result per framework (optionally scoped to one policy)
+    rows = db.execute(_t(f"""
         SELECT DISTINCT ON (f.name)
                f.name, cr.compliance_score,
                cr.controls_covered, cr.controls_partial, cr.controls_missing
         FROM compliance_results cr
         LEFT JOIN frameworks f ON cr.framework_id = f.id
+        WHERE 1=1 {policy_filter_cr}
         ORDER BY f.name, cr.analyzed_at DESC
-    """)).fetchall()
+    """), bind).fetchall()
 
     framework_scores = [
         {"framework": r[0] or "Unknown", "score": round(r[1] or 0, 1),
@@ -736,16 +757,16 @@ def dashboard_stats(
         round(sum(r[1] or 0 for r in rows) / len(rows), 1) if rows else 0
     )
 
-    # Open gaps
+    # Open gaps (optionally scoped to one policy)
     open_gaps = db.execute(_t(
-        "SELECT COUNT(*) FROM gaps WHERE status='Open'"
-    )).fetchone()[0]
+        f"SELECT COUNT(*) FROM gaps WHERE status='Open' {policy_filter_gap}"
+    ), bind).fetchone()[0]
 
-    # Severity distribution
+    # Severity distribution (optionally scoped to one policy)
     sev_rows = db.execute(_t(
-        "SELECT severity, COUNT(*) FROM gaps WHERE status='Open' "
-        "GROUP BY severity"
-    )).fetchall()
+        f"SELECT severity, COUNT(*) FROM gaps WHERE status='Open' "
+        f"{policy_filter_gap} GROUP BY severity"
+    ), bind).fetchall()
     severity_distribution = {r[0]: r[1] for r in sev_rows}
 
     # Controls mapped
@@ -754,7 +775,7 @@ def dashboard_stats(
     # Status overview
     status_overview = {
         "compliant": sum(r[2] or 0 for r in rows),
-        "partial": sum(r[3] or 0 for r in rows),
+        "partial":   sum(r[3] or 0 for r in rows),
         "non_compliant": sum(r[4] or 0 for r in rows),
     }
 
@@ -1037,7 +1058,7 @@ def get_gaps(
         SELECT g.id, g.policy_id, f.name AS framework,
                cl.control_code AS control_id, g.control_name,
                g.severity, g.status, g.description, g.remediation,
-               g.created_at
+               g.created_at, g.owner_name, g.mapping_id
         FROM gaps g
         LEFT JOIN frameworks f ON g.framework_id = f.id
         LEFT JOIN control_library cl ON g.control_id = cl.id
@@ -1050,7 +1071,8 @@ def get_gaps(
          "control_id": r[3] or "", "control_name": r[4],
          "severity": r[5], "status": r[6],
          "description": r[7], "remediation": r[8],
-         "created_at": r[9].isoformat() if r[9] else None}
+         "created_at": r[9].isoformat() if r[9] else None,
+         "owner_name": r[10], "mapping_id": r[11]}
         for r in rows
     ]
 
@@ -1088,6 +1110,152 @@ def get_mapping_reviews(
          "created_at": r[10].isoformat() if r[10] else None}
         for r in rows
     ]
+
+
+# ━━━ Mapping Review Action Endpoints ━━━
+
+def _clean_ai_rationale(text: str) -> str:
+    """Strip confidence-level markers like [High] / [Medium] from AI rationale text."""
+    import re
+    cleaned = re.sub(r"\[(Critical|High|Medium|Low)\]", "", text or "", flags=re.IGNORECASE)
+    return " ".join(cleaned.split())
+
+
+def _extract_severity(text: str) -> str:
+    """Pull the severity level from AI rationale brackets, default Medium."""
+    import re
+    m = re.search(r"\[(Critical|High|Medium|Low)\]", text or "", re.IGNORECASE)
+    return m.group(1).capitalize() if m else "Medium"
+
+
+@app.post("/api/mappings/{mapping_id}/accept")
+def accept_mapping(
+    mapping_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+
+    # Fetch the mapping with joined control and framework data
+    row = db.execute(_t("""
+        SELECT mr.id, mr.policy_id, mr.framework_id, mr.control_id,
+               mr.ai_rationale, mr.evidence_snippet,
+               cl.title AS control_title, cl.control_code,
+               cl.severity_if_missing
+        FROM mapping_reviews mr
+        LEFT JOIN control_library cl ON mr.control_id = cl.id
+        WHERE mr.id = :mid
+    """), {"mid": mapping_id}).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+
+    (mr_id, policy_id, framework_id, control_id,
+     ai_rationale, evidence_snippet,
+     control_title, control_code, severity_if_missing) = row
+
+    # Mark mapping accepted
+    db.execute(_t("""
+        UPDATE mapping_reviews
+        SET decision = 'Accepted', reviewed_at = NOW(), reviewer_id = :uid
+        WHERE id = :mid
+    """), {"uid": str(current_user.id), "mid": mapping_id})
+
+    # Check for an existing gap for this policy + control + framework combination
+    existing = db.execute(_t("""
+        SELECT id FROM gaps
+        WHERE policy_id = :pid AND control_id = :cid AND framework_id = :fid
+        LIMIT 1
+    """), {"pid": policy_id, "cid": control_id, "fid": framework_id}).fetchone()
+
+    gap_created = False
+    if not existing:
+        clean_rationale = _clean_ai_rationale(ai_rationale)
+        severity = _extract_severity(ai_rationale) or severity_if_missing or "Medium"
+        new_gap_id = str(__import__("uuid").uuid4())
+        db.execute(_t("""
+            INSERT INTO gaps
+              (id, policy_id, framework_id, control_id, control_name,
+               severity, status, description, remediation, mapping_id, created_at)
+            VALUES
+              (:id, :pid, :fid, :cid, :cname,
+               :sev, 'Open', :desc, :rem, :mid, NOW())
+        """), {
+            "id":    new_gap_id,
+            "pid":   policy_id,
+            "fid":   framework_id,
+            "cid":   control_id,
+            "cname": control_title or control_code or "Unknown Control",
+            "sev":   severity,
+            "desc":  clean_rationale or evidence_snippet or "",
+            "rem":   clean_rationale or "",
+            "mid":   mapping_id,
+        })
+        gap_created = True
+    else:
+        # Link existing gap to this mapping
+        db.execute(_t("UPDATE gaps SET mapping_id = :mid WHERE id = :gid"),
+                   {"mid": mapping_id, "gid": existing[0]})
+
+    db.commit()
+    return {"status": "accepted", "gap_created": gap_created}
+
+
+@app.post("/api/mappings/{mapping_id}/reject")
+def reject_mapping(
+    mapping_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+
+    review_notes = (payload.get("review_notes") or "").strip()
+    if not review_notes:
+        raise HTTPException(status_code=422, detail="Justification required to override AI")
+
+    row = db.execute(_t("SELECT id FROM mapping_reviews WHERE id = :mid"),
+                     {"mid": mapping_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+
+    db.execute(_t("""
+        UPDATE mapping_reviews
+        SET decision = 'Compliant (Manual Override)',
+            review_notes = :notes,
+            reviewed_at  = NOW(),
+            reviewer_id  = :uid
+        WHERE id = :mid
+    """), {"notes": review_notes, "uid": str(current_user.id), "mid": mapping_id})
+    db.commit()
+    return {"status": "rejected"}
+
+
+# ━━━ Gap Update Endpoint ━━━
+
+@app.put("/api/gaps/{gap_id}")
+def update_gap(
+    gap_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from sqlalchemy import text as _t
+
+    row = db.execute(_t("SELECT id FROM gaps WHERE id = :gid"), {"gid": gap_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Gap not found")
+
+    allowed = {"status", "owner_name", "remediation", "remediation_notes"}
+    updates = {k: v for k, v in payload.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=422, detail="No valid fields to update")
+
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["gid"] = gap_id
+    db.execute(_t(f"UPDATE gaps SET {set_clause} WHERE id = :gid"), updates)
+    db.commit()
+    return {"status": "updated", "gap_id": gap_id}
 
 
 # Generic Entity Routes

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
@@ -56,26 +57,10 @@ const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
 
 const severityConfig = {
-  Critical: {
-    color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30',
-    chartColor: '#ef4444',
-    icon: ArrowUpCircle,
-  },
-  High: {
-    color: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
-    chartColor: '#f97316',
-    icon: ArrowUpCircle,
-  },
-  Medium: {
-    color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
-    chartColor: '#f59e0b',
-    icon: Minus,
-  },
-  Low: {
-    color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30',
-    chartColor: '#22c55e',
-    icon: ArrowDownCircle,
-  },
+  Critical: { color: 'bg-red-100 text-red-700 border-red-200', chartColor: '#ef4444', icon: ArrowUpCircle },
+  High: { color: 'bg-orange-100 text-orange-700 border-orange-200', chartColor: '#f97316', icon: ArrowUpCircle },
+  Medium: { color: 'bg-amber-100 text-amber-700 border-amber-200', chartColor: '#f59e0b', icon: Minus },
+  Low: { color: 'bg-green-100 text-green-700 border-green-200', chartColor: '#22c55e', icon: ArrowDownCircle },
 };
 
 export default function GapsRisks() {
@@ -93,8 +78,14 @@ export default function GapsRisks() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const policyIdFilter = urlParams.get('policy_id');
+  // ── Phase 4: read severity from URL (?severity=High etc.) ────────────────
+  const [searchParams] = useSearchParams();
+  const policyIdFilter = searchParams.get('policy_id');
+
+  useEffect(() => {
+    const sv = searchParams.get('severity');
+    if (sv) setSeverityFilter(sv);
+  }, [searchParams]);
 
   const { data: gaps = [], isLoading } = useQuery({
     queryKey: ['gaps'],
@@ -112,22 +103,29 @@ export default function GapsRisks() {
   }, {});
 
   const updateGapMutation = useMutation({
-    mutationFn: ({ id, data }) => Gap.update(id, data),
-    onSuccess: async (_, variables) => {
+    mutationFn: async ({ id, data }) => {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/gaps/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Update failed' }));
+        throw new Error(err.detail || 'Update failed');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gaps'] });
-      await AuditLog.create({
-        actor: 'Current User',
-        action: 'gap_update',
-        target_type: 'gap',
-        target_id: variables.id,
-        details: { status: editForm.status },
-      });
-      toast({
-        title: 'Gap Updated',
-        description: 'Gap details have been updated successfully.',
-      });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      toast({ title: 'Gap Updated', description: 'Gap details have been updated successfully.' });
       setShowEditDialog(false);
     },
+    onError: (err) => toast({ title: 'Update failed', description: err.message, variant: 'destructive' }),
   });
 
   const filteredGaps = gaps.filter(gap => {
@@ -164,8 +162,8 @@ export default function GapsRisks() {
   const handleEdit = (gap) => {
     setSelectedGap(gap);
     setEditForm({
-      status: gap.status || 'Open',
-      owner: gap.owner || '',
+      status:     gap.status     || 'Open',
+      owner:      gap.owner_name || '',
       remediation: gap.remediation || '',
     });
     setShowEditDialog(true);
@@ -174,7 +172,11 @@ export default function GapsRisks() {
   const handleSubmitEdit = () => {
     updateGapMutation.mutate({
       id: selectedGap.id,
-      data: { ...editForm },
+      data: {
+        status:     editForm.status,
+        owner_name: editForm.owner,
+        remediation: editForm.remediation,
+      },
     });
   };
 
@@ -198,7 +200,7 @@ export default function GapsRisks() {
           <Badge variant="outline" className="font-mono text-xs">
             {row.control_id}
           </Badge>
-          <p className="text-sm text-foreground mt-1">{row.control_name}</p>
+          <p className="text-sm text-slate-600 mt-1">{row.control_name}</p>
         </div>
       ),
     },
@@ -206,7 +208,7 @@ export default function GapsRisks() {
       header: 'Framework',
       accessor: 'framework',
       cell: (row) => (
-        <Badge className="bg-muted text-foreground border border-border">
+        <Badge className="bg-slate-100 text-slate-700">
           <Shield className="w-3 h-3 mr-1" />
           {row.framework}
         </Badge>
@@ -224,16 +226,16 @@ export default function GapsRisks() {
     },
     {
       header: 'Owner',
-      accessor: 'owner',
+      accessor: 'owner_name',
       cell: (row) => (
-        <span className="text-sm text-muted-foreground">{row.owner || 'Unassigned'}</span>
+        <span className="text-sm text-slate-600">{row.owner_name || 'Unassigned'}</span>
       ),
     },
     {
       header: 'Description',
       accessor: 'description',
       cell: (row) => (
-        <p className="text-xs text-muted-foreground line-clamp-2 max-w-xs">{row.description || '—'}</p>
+        <p className="text-xs text-slate-600 line-clamp-2 max-w-xs">{row.description || '—'}</p>
       ),
     },
     {
@@ -309,14 +311,14 @@ export default function GapsRisks() {
                   {severityDistribution.map((item, index) => (
                     <div key={index} className="flex items-center gap-3">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-sm text-muted-foreground flex-1">{item.name}</span>
-                      <span className="text-sm font-medium text-foreground">{item.value}</span>
+                      <span className="text-sm text-slate-600 flex-1">{item.name}</span>
+                      <span className="text-sm font-medium">{item.value}</span>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="h-48 flex items-center justify-center text-muted-foreground">
+              <div className="h-48 flex items-center justify-center text-slate-400">
                 No gap data available
               </div>
             )}
@@ -330,11 +332,11 @@ export default function GapsRisks() {
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={statusDistribution}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -344,7 +346,7 @@ export default function GapsRisks() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Search gaps..."
             value={searchQuery}
@@ -399,7 +401,7 @@ export default function GapsRisks() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <Edit className="w-5 h-5 text-emerald-600" />
               Update Gap
             </DialogTitle>
           </DialogHeader>
@@ -407,18 +409,18 @@ export default function GapsRisks() {
           {selectedGap && (
             <div className="space-y-4 py-4">
               {/* Gap Info */}
-              <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-2">
+              <div className="bg-slate-50 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="font-mono">
                     {selectedGap.control_id}
                   </Badge>
                   <SeverityBadge severity={selectedGap.severity} />
                 </div>
-                <p className="text-sm font-medium text-foreground">{selectedGap.control_name}</p>
+                <p className="text-sm font-medium">{selectedGap.control_name}</p>
                 {selectedGap.description && (
                   <div>
-                    <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-0.5">Gap identified:</p>
-                    <p className="text-sm text-muted-foreground">{selectedGap.description}</p>
+                    <p className="text-xs font-semibold text-red-600 mb-0.5">Gap identified:</p>
+                    <p className="text-sm text-slate-600">{selectedGap.description}</p>
                   </div>
                 )}
               </div>
@@ -446,7 +448,7 @@ export default function GapsRisks() {
               <div className="space-y-2">
                 <Label>Assigned Owner</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
                     placeholder="Enter owner name or email"
                     value={editForm.owner}

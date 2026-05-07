@@ -136,6 +136,13 @@ class Gap(Base):
     owner_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
+    # Soft reference to the mapping_review that produced this gap (no FK
+    # constraint so gap rows survive when mapping_reviews are replaced on re-analysis).
+    mapping_id = Column(String, nullable=True)
+    # Human-readable owner assigned during gap triage (not a user FK, so the
+    # reviewer can type any name / email without needing a user account).
+    owner_name = Column(String, nullable=True)
+
     policy = relationship("Policy", back_populates="gaps")
 
 

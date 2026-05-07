@@ -5,13 +5,12 @@ import PageContainer from '@/components/layout/PageContainer';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -37,30 +36,66 @@ import {
   AlertTriangle,
   Eye,
   Brain,
-  FileText
+  Save,
+  RotateCcw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 const MappingReview = api.entities.MappingReview;
-const Policy = api.entities.Policy;
-const AuditLog = api.entities.AuditLog;
+const Policy        = api.entities.Policy;
 
-// Confidence thresholds: High >= 0.8, Medium >= 0.5, Low/Needs Review < 0.5
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+/** Remove AI confidence-level markers like [High], [Medium], [Low], [Critical]. */
+function cleanAiRationale(text) {
+  if (!text) return '';
+  return text.replace(/\[(Critical|High|Medium|Low)\]/gi, '').replace(/\s+/g, ' ').trim();
+}
+
+// ─── Auth helper ──────────────────────────────────────────────────────────────
+
+async function authPost(url, body) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Request failed' }));
+    throw new Error(err.detail || 'Request failed');
+  }
+  return res.json();
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function MappingReviewPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [confidenceFilter, setConfidenceFilter] = useState('all');
-  const [selectedMapping, setSelectedMapping] = useState(null);
-  const [showReviewDialog, setShowReviewDialog] = useState(false);
-  const [reviewDecision, setReviewDecision] = useState('');
-  const [reviewNotes, setReviewNotes] = useState('');
+  const [searchQuery,       setSearchQuery]       = useState('');
+  const [statusFilter,      setStatusFilter]       = useState('all');
+  const [confidenceFilter,  setConfidenceFilter]   = useState('all');
 
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  // Dialog state
+  const [selectedMapping,   setSelectedMapping]    = useState(null);
+  const [showReviewDialog,  setShowReviewDialog]   = useState(false);
+  const [reviewNotes,       setReviewNotes]        = useState('');
+  const [notesError,        setNotesError]         = useState(false);
 
-  const urlParams = new URLSearchParams(window.location.search);
+  // Modify (edit) mode
+  const [isEditing,         setIsEditing]          = useState(false);
+  const [editedEvidence,    setEditedEvidence]     = useState('');
+  const [editedRationale,   setEditedRationale]    = useState('');
+
+  const { toast }        = useToast();
+  const queryClient      = useQueryClient();
+
+  const urlParams      = new URLSearchParams(window.location.search);
   const policyIdFilter = urlParams.get('policy_id');
+
+  // ── Queries ─────────────────────────────────────────────────────────────────
 
   const { data: mappings = [], isLoading } = useQuery({
     queryKey: ['mappingReviews'],
@@ -72,88 +107,137 @@ export default function MappingReviewPage() {
     queryFn: () => Policy.list(),
   });
 
-  const policyMap = policies.reduce((acc, p) => {
-    acc[p.id] = p;
-    return acc;
-  }, {});
+  const policyMap = policies.reduce((acc, p) => { acc[p.id] = p; return acc; }, {});
 
-  const updateMappingMutation = useMutation({
-    mutationFn: ({ id, data }) => MappingReview.update(id, data),
-    onSuccess: async (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
-      await AuditLog.create({
-        actor: 'Current User',
-        action: 'mapping_review',
-        target_type: 'mapping',
-        target_id: selectedMapping?.id,
-        details: { decision: reviewDecision },
-      });
-      toast({
-        title: 'Review Saved',
-        description: 'Your review decision has been recorded.',
-      });
-      setShowReviewDialog(false);
+  // ── Mutations ────────────────────────────────────────────────────────────────
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
+    queryClient.invalidateQueries({ queryKey: ['gaps'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+  };
+
+  /** Accept — agrees with AI's Non-Compliant assessment, auto-creates gap */
+  const acceptMutation = useMutation({
+    mutationFn: (id) => authPost(`/api/mappings/${id}/accept`),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: 'Mapping accepted. Gap created.' });
+      closeDialog();
     },
+    onError: (err) => toast({ title: 'Accept failed', description: err.message, variant: 'destructive' }),
   });
 
-  const filteredMappings = mappings.filter(mapping => {
-    const matchesSearch = mapping.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mapping.evidence_snippet?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || mapping.decision === statusFilter;
-    const cs = mapping.confidence_score || 0;
-    const matchesConfidence = confidenceFilter === 'all' ||
-      (confidenceFilter === 'needs_review' && cs < 0.5) ||
-      (confidenceFilter === 'low' && cs >= 0.5 && cs < 0.8) ||
-      (confidenceFilter === 'high' && cs >= 0.8);
-    const matchesPolicyId = !policyIdFilter || mapping.policy_id === policyIdFilter;
-    return matchesSearch && matchesStatus && matchesConfidence && matchesPolicyId;
+  /** Reject — overrides AI, marks as Compliant (Manual Override), no gap */
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, notes }) =>
+      authPost(`/api/mappings/${id}/reject`, { review_notes: notes }),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: 'AI rejected. Marked as Compliant.' });
+      closeDialog();
+    },
+    onError: (err) => toast({ title: 'Reject failed', description: err.message, variant: 'destructive' }),
   });
 
-  const pendingCount = mappings.filter(m => m.decision === 'Pending').length;
-  const lowConfidenceCount = mappings.filter(m => (m.confidence_score || 0) < 0.5).length;
+  /** Save edits — saves modified evidence_snippet / ai_rationale via generic entity update */
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }) => MappingReview.update(id, data),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: 'Changes saved.' });
+      setIsEditing(false);
+    },
+    onError: (err) => toast({ title: 'Save failed', description: err.message, variant: 'destructive' }),
+  });
 
-  const handleReview = (mapping) => {
+  // ── Handlers ─────────────────────────────────────────────────────────────────
+
+  const openDialog = (mapping) => {
     setSelectedMapping(mapping);
-    setReviewDecision(mapping.decision || 'Pending');
     setReviewNotes(mapping.review_notes || '');
+    setNotesError(false);
+    setIsEditing(false);
+    setEditedEvidence(mapping.evidence_snippet || '');
+    setEditedRationale(mapping.ai_rationale || '');
     setShowReviewDialog(true);
   };
 
-  const handleSubmitReview = () => {
-    if (!reviewDecision || reviewDecision === 'Pending') {
+  const closeDialog = () => {
+    setShowReviewDialog(false);
+    setIsEditing(false);
+    setNotesError(false);
+  };
+
+  const handleAccept = () => {
+    acceptMutation.mutate(selectedMapping.id);
+  };
+
+  const handleReject = () => {
+    if (!reviewNotes.trim()) {
+      setNotesError(true);
       toast({
-        title: 'Select Decision',
-        description: 'Please select Accept, Reject, or Modify.',
+        title: 'Justification required to override AI',
+        description: 'Please provide review notes before rejecting.',
         variant: 'destructive',
       });
       return;
     }
+    setNotesError(false);
+    rejectMutation.mutate({ id: selectedMapping.id, notes: reviewNotes.trim() });
+  };
 
-    updateMappingMutation.mutate({
+  const handleModify = () => {
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditedEvidence(selectedMapping.evidence_snippet || '');
+    setEditedRationale(selectedMapping.ai_rationale || '');
+  };
+
+  const handleSaveEdits = () => {
+    editMutation.mutate({
       id: selectedMapping.id,
       data: {
-        decision: reviewDecision,
-        review_notes: reviewNotes,
-        reviewer: 'Current User',
-        reviewed_at: new Date().toISOString(),
+        evidence_snippet: editedEvidence,
+        ai_rationale: editedRationale,
+        decision: 'Modified',
       },
     });
   };
 
+  // ── Derived data ──────────────────────────────────────────────────────────────
+
+  const filteredMappings = mappings.filter(mapping => {
+    const matchesSearch =
+      mapping.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      mapping.evidence_snippet?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus     = statusFilter === 'all' || mapping.decision === statusFilter;
+    const cs                = mapping.confidence_score || 0;
+    const matchesConfidence = confidenceFilter === 'all' ||
+      (confidenceFilter === 'needs_review' && cs < 0.5) ||
+      (confidenceFilter === 'low'          && cs >= 0.5 && cs < 0.8) ||
+      (confidenceFilter === 'high'         && cs >= 0.8);
+    const matchesPolicyId   = !policyIdFilter || mapping.policy_id === policyIdFilter;
+    return matchesSearch && matchesStatus && matchesConfidence && matchesPolicyId;
+  });
+
+  const pendingCount       = mappings.filter(m => m.decision === 'Pending').length;
+  const lowConfidenceCount = mappings.filter(m => (m.confidence_score || 0) < 0.5).length;
+  const acceptedCount      = mappings.filter(m => m.decision === 'Accepted').length;
+
   const getConfidenceBadge = (score) => {
-    if (score >= 0.8) return {
-      color: 'text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-500/15',
-      label: 'High'
-    };
-    if (score >= 0.5) return {
-      color: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-500/15',
-      label: 'Medium'
-    };
-    return {
-      color: 'text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-500/15',
-      label: 'Low'
-    };
+    if (score >= 0.8) return { color: 'text-emerald-600 bg-emerald-50', label: 'High' };
+    if (score >= 0.5) return { color: 'text-amber-600 bg-amber-50',   label: 'Medium' };
+    return              { color: 'text-red-600 bg-red-50',             label: 'Low' };
   };
+
+  const isPending = selectedMapping?.decision === 'Pending';
+  const isBusy    = acceptMutation.isPending || rejectMutation.isPending || editMutation.isPending;
+
+  // ── Table columns ─────────────────────────────────────────────────────────────
 
   const columns = [
     {
@@ -161,11 +245,9 @@ export default function MappingReviewPage() {
       accessor: 'control_id',
       cell: (row) => (
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="font-mono text-xs">
-            {row.control_id}
-          </Badge>
+          <Badge variant="outline" className="font-mono text-xs">{row.control_id}</Badge>
           {(row.confidence_score || 0) < 0.5 && (
-            <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
           )}
         </div>
       ),
@@ -174,16 +256,14 @@ export default function MappingReviewPage() {
       header: 'Framework',
       accessor: 'framework',
       cell: (row) => (
-        <Badge className="bg-muted text-foreground border border-border">
-          {row.framework}
-        </Badge>
+        <Badge className="bg-slate-100 text-slate-700">{row.framework}</Badge>
       ),
     },
     {
       header: 'Evidence Snippet',
       accessor: 'evidence_snippet',
       cell: (row) => (
-        <p className="text-sm text-muted-foreground line-clamp-2 max-w-md">
+        <p className="text-sm text-slate-600 line-clamp-2 max-w-md">
           {row.evidence_snippet || 'No evidence available'}
         </p>
       ),
@@ -208,72 +288,59 @@ export default function MappingReviewPage() {
       cell: (row) => <StatusBadge status={row.decision || 'Pending'} />,
     },
     {
-      header: 'Reviewer',
-      accessor: 'reviewer',
-      cell: (row) => (
-        <span className="text-sm text-muted-foreground">{row.reviewer || '-'}</span>
-      ),
-    },
-    {
       header: '',
       accessor: 'actions',
       cell: (row) => (
-        <Button variant="ghost" size="sm" onClick={() => handleReview(row)}>
+        <Button variant="ghost" size="sm" onClick={() => openDialog(row)}>
           {row.decision === 'Pending' ? (
-            <>
-              <Edit className="w-4 h-4 mr-1" />
-              Review
-            </>
+            <><Edit className="w-4 h-4 mr-1" />Review</>
           ) : (
-            <>
-              <Eye className="w-4 h-4 mr-1" />
-              View
-            </>
+            <><Eye className="w-4 h-4 mr-1" />View</>
           )}
         </Button>
       ),
     },
   ];
 
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   return (
     <PageContainer
       title="Mapping Review"
       subtitle="Human-in-the-loop validation of AI-generated control mappings"
     >
-      {/* Stats Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card className="bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30">
+        <Card className="bg-amber-50 border-amber-200">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{pendingCount}</p>
-              <p className="text-sm text-amber-600 dark:text-amber-400">Pending Reviews</p>
+              <p className="text-2xl font-bold text-amber-700">{pendingCount}</p>
+              <p className="text-sm text-amber-600">Pending Reviews</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/30">
+        <Card className="bg-red-50 border-red-200">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-500/20 flex items-center justify-center">
-              <Brain className="w-6 h-6 text-red-600 dark:text-red-400" />
+            <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
+              <Brain className="w-6 h-6 text-red-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-red-700 dark:text-red-300">{lowConfidenceCount}</p>
-              <p className="text-sm text-red-600 dark:text-red-400">Needs Review</p>
+              <p className="text-2xl font-bold text-red-700">{lowConfidenceCount}</p>
+              <p className="text-sm text-red-600">Needs Review</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30">
+        <Card className="bg-emerald-50 border-emerald-200">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                {mappings.filter(m => m.decision === 'Accepted').length}
-              </p>
-              <p className="text-sm text-emerald-600 dark:text-emerald-400">Accepted</p>
+              <p className="text-2xl font-bold text-emerald-700">{acceptedCount}</p>
+              <p className="text-sm text-emerald-600">Accepted</p>
             </div>
           </CardContent>
         </Card>
@@ -282,7 +349,7 @@ export default function MappingReviewPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Search by control ID or evidence..."
             value={searchQuery}
@@ -331,55 +398,56 @@ export default function MappingReviewPage() {
         }
       />
 
-      {/* Review Dialog */}
-      <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="sm:max-w-2xl">
+      {/* ── Review Dialog ──────────────────────────────────────────────────────── */}
+      <Dialog open={showReviewDialog} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <GitCompare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              Review Mapping
+              <GitCompare className="w-5 h-5 text-emerald-600" />
+              {isPending ? 'Review Mapping' : 'Mapping Details'}
             </DialogTitle>
             <DialogDescription>
-              Validate or modify the AI-generated control mapping
+              {isPending
+                ? 'Accept, reject, or modify the AI-generated control mapping.'
+                : `Decision: ${selectedMapping?.decision}`}
             </DialogDescription>
           </DialogHeader>
 
           {selectedMapping && (
-            <div className="space-y-6 py-4">
-              {/* Confidence Warning */}
+            <div className="space-y-5 py-2">
+
+              {/* Low-confidence warning */}
               {(selectedMapping.confidence_score || 0) < 0.5 && (
-                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-amber-800 dark:text-amber-200">Needs Review - Low Confidence</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      This mapping has low confidence. The AI found ambiguous or conflicting evidence across multiple passes. Please review carefully.
+                    <p className="font-medium text-amber-800">Needs Review — Low Confidence</p>
+                    <p className="text-sm text-amber-700">
+                      The AI found ambiguous or conflicting evidence. Please review carefully.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Mapping Details */}
+              {/* Meta */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Control ID</p>
-                  <Badge variant="outline" className="font-mono mt-1">
+                  <p className="text-xs text-slate-500 mb-1">Control ID</p>
+                  <Badge variant="outline" className="font-mono">
                     {selectedMapping.control_id}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Framework</p>
-                  <Badge className="bg-muted text-foreground border border-border mt-1">
-                    {selectedMapping.framework}
-                  </Badge>
+                  <p className="text-xs text-slate-500 mb-1">Framework</p>
+                  <Badge className="bg-slate-100 text-slate-700">{selectedMapping.framework}</Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Confidence Score</p>
+                  <p className="text-xs text-slate-500 mb-1">Confidence</p>
                   {(() => {
                     const s = selectedMapping.confidence_score || 0;
                     const b = getConfidenceBadge(s);
                     return (
-                      <div className={`inline-flex items-center gap-1 px-2 py-1 rounded mt-1 ${b.color}`}>
+                      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${b.color}`}>
                         <span className="font-medium">{b.label}</span>
                         <span className="text-sm opacity-75">{Math.round(s * 100)}%</span>
                       </div>
@@ -387,8 +455,8 @@ export default function MappingReviewPage() {
                   })()}
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Policy</p>
-                  <p className="font-medium mt-1 text-foreground">
+                  <p className="text-xs text-slate-500 mb-1">Policy</p>
+                  <p className="text-sm font-medium">
                     {policyMap[selectedMapping.policy_id]?.file_name || selectedMapping.policy_id}
                   </p>
                 </div>
@@ -396,82 +464,140 @@ export default function MappingReviewPage() {
 
               {/* Evidence */}
               <div>
-                <p className="text-sm text-muted-foreground mb-2">Evidence Snippet</p>
-                <div className="bg-muted/50 border border-border rounded-lg p-4">
-                  <p className="text-sm text-foreground italic">
-                    "{selectedMapping.evidence_snippet || 'No evidence available'}"
-                  </p>
-                </div>
+                <p className="text-xs text-slate-500 mb-1.5">Evidence Snippet</p>
+                {isEditing ? (
+                  <Textarea
+                    value={editedEvidence}
+                    onChange={(e) => setEditedEvidence(e.target.value)}
+                    rows={4}
+                    className="text-sm"
+                  />
+                ) : (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <p className="text-sm text-slate-700 italic">
+                      "{selectedMapping.evidence_snippet || 'No evidence available'}"
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* AI Rationale */}
-              {selectedMapping.ai_rationale && (
+              {(selectedMapping.ai_rationale || isEditing) && (
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
-                    <Brain className="w-4 h-4" />
+                  <p className="text-xs text-slate-500 mb-1.5 flex items-center gap-1">
+                    <Brain className="w-3.5 h-3.5" />
                     AI Rationale
+                    {!isEditing && (
+                      <span className="text-[10px] text-slate-400 ml-1">
+                        ({cleanAiRationale(selectedMapping.ai_rationale) !== selectedMapping.ai_rationale
+                          ? 'cleaned'
+                          : 'raw'})
+                      </span>
+                    )}
                   </p>
-                  <div className="bg-blue-50 border border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30 rounded-lg p-4">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">{selectedMapping.ai_rationale}</p>
-                  </div>
+                  {isEditing ? (
+                    <Textarea
+                      value={editedRationale}
+                      onChange={(e) => setEditedRationale(e.target.value)}
+                      rows={4}
+                      className="text-sm"
+                    />
+                  ) : (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-700">
+                        {cleanAiRationale(selectedMapping.ai_rationale)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Decision */}
-              <div className="space-y-2">
-                <Label>Your Decision</Label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={reviewDecision === 'Accepted' ? 'default' : 'outline'}
-                    onClick={() => setReviewDecision('Accepted')}
-                    className={reviewDecision === 'Accepted' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-1" />
-                    Accept
-                  </Button>
-                  <Button
-                    variant={reviewDecision === 'Rejected' ? 'default' : 'outline'}
-                    onClick={() => setReviewDecision('Rejected')}
-                    className={reviewDecision === 'Rejected' ? 'bg-red-600 hover:bg-red-700' : ''}
-                  >
-                    <XCircle className="w-4 h-4 mr-1" />
-                    Reject
-                  </Button>
-                  <Button
-                    variant={reviewDecision === 'Modified' ? 'default' : 'outline'}
-                    onClick={() => setReviewDecision('Modified')}
-                    className={reviewDecision === 'Modified' ? 'bg-purple-600 hover:bg-purple-700' : ''}
-                  >
-                    <Edit className="w-4 h-4 mr-1" />
-                    Modify
-                  </Button>
+              {/* Review Notes — shown when not in edit mode */}
+              {!isEditing && (
+                <div>
+                  <Label className={notesError ? 'text-red-600' : ''}>
+                    Review Notes
+                    {isPending && (
+                      <span className="text-slate-400 font-normal ml-1">
+                        (required when rejecting)
+                      </span>
+                    )}
+                  </Label>
+                  <Textarea
+                    placeholder="Add justification for your decision…"
+                    value={reviewNotes}
+                    onChange={(e) => { setReviewNotes(e.target.value); if (e.target.value.trim()) setNotesError(false); }}
+                    rows={3}
+                    className={`mt-1.5 ${notesError ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
+                    disabled={!isPending}
+                  />
+                  {notesError && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Justification is required to override the AI assessment.
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <Label>Review Notes (Optional)</Label>
-                <Textarea
-                  placeholder="Add any notes about your decision..."
-                  value={reviewNotes}
-                  onChange={(e) => setReviewNotes(e.target.value)}
-                  rows={3}
-                />
-              </div>
+              )}
             </div>
           )}
 
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSubmitReview}
-              disabled={updateMappingMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              Save Review
-            </Button>
+          {/* ── Action buttons ──────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
+
+            {isEditing ? (
+              /* Edit mode footer */
+              <div className="flex gap-2 ml-auto">
+                <Button variant="outline" onClick={handleCancelEdit} disabled={isBusy}>
+                  <RotateCcw className="w-4 h-4 mr-1" />
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEdits}
+                  disabled={isBusy}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <Save className="w-4 h-4 mr-1" />
+                  {editMutation.isPending ? 'Saving…' : 'Save Changes'}
+                </Button>
+              </div>
+            ) : isPending ? (
+              /* Pending review footer */
+              <div className="flex items-center gap-2 w-full">
+                <Button variant="outline" onClick={closeDialog} className="mr-auto">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleModify}
+                  disabled={isBusy}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <Edit className="w-4 h-4 mr-1" />
+                  Modify
+                </Button>
+                <Button
+                  onClick={handleReject}
+                  disabled={isBusy}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  {rejectMutation.isPending ? 'Rejecting…' : 'Reject'}
+                </Button>
+                <Button
+                  onClick={handleAccept}
+                  disabled={isBusy}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                  {acceptMutation.isPending ? 'Accepting…' : 'Accept'}
+                </Button>
+              </div>
+            ) : (
+              /* Read-only view footer */
+              <Button variant="outline" onClick={closeDialog} className="ml-auto">
+                Close
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
