@@ -33,6 +33,7 @@ from backend.checkpoint_analyzer import (
     run_checkpoint_analysis, chat_with_context, chat_with_user_context,
     run_simulation, generate_insights, explain_mapping,
 )
+from backend.ecc2_analyzer import run_ecc2_analysis, verify_ecc2_loaded
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
 
@@ -42,7 +43,7 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup_seed():
-    """Seed checkpoint data and run safe idempotent schema migrations on start."""
+    """Seed checkpoint data, run safe idempotent schema migrations, and register ECC-2:2024 on server start."""
     from backend.checkpoint_seed import seed_checkpoints
     from sqlalchemy import text as _ddl
 
@@ -61,6 +62,15 @@ def startup_seed():
         seed_checkpoints(db)
     except Exception as e:
         print(f"Seed warning: {e}")
+
+    # Ensure ECC-2:2024 exists in the frameworks master table so it appears
+    # in the upload dropdown immediately — before any analysis has been run.
+    try:
+        from backend.ecc2_analyzer import _ensure_framework_row
+        _ensure_framework_row(db)
+        print("[startup] ECC-2:2024 framework row ensured")
+    except Exception as e:
+        print(f"[startup] ECC-2:2024 row warning: {e}")
     finally:
         db.close()
 
@@ -812,11 +822,19 @@ def get_frameworks(
     params = dict(request.query_params)
     include_empty = params.get("include_empty") == "true"
 
-    rich_with_empty = """
+    # Subquery used in every variant to flag frameworks backed by the
+    # structured ECC tables instead of uploaded PDF chunks.
+    _structured_subq = (
+        "EXISTS (SELECT 1 FROM ecc_framework ef "
+        "WHERE ef.framework_id = f.name LIMIT 1)"
+    )
+
+    rich_with_empty = f"""
         SELECT f.id, f.name, f.description, f.version,
                f.original_file_name, f.file_url, f.file_type, f.file_size,
                f.uploaded_at, u.email AS uploaded_by,
-               COALESCE(c.chunks, 0) AS chunks
+               COALESCE(c.chunks, 0) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN users u ON u.id = f.uploaded_by
         LEFT JOIN (
@@ -826,21 +844,24 @@ def get_frameworks(
         ) c ON c.framework_id = f.id
         ORDER BY f.name ASC
     """
-    rich_loaded_only = """
+    rich_loaded_only = f"""
         SELECT f.id, f.name, f.description, f.version,
                f.original_file_name, f.file_url, f.file_type, f.file_size,
                f.uploaded_at, u.email AS uploaded_by,
-               COUNT(fc.*) AS chunks
+               COUNT(fc.*) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN users u ON u.id = f.uploaded_by
-        JOIN framework_chunks fc ON fc.framework_id = f.id
+        LEFT JOIN framework_chunks fc ON fc.framework_id = f.id
         GROUP BY f.id, u.email
         HAVING COUNT(fc.*) > 0
+           OR {_structured_subq}
         ORDER BY f.name ASC
     """
-    basic_with_empty = """
+    basic_with_empty = f"""
         SELECT f.id, f.name, f.description,
-               COALESCE(c.chunks, 0) AS chunks
+               COALESCE(c.chunks, 0) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN (
             SELECT framework_id, COUNT(*) AS chunks
@@ -848,12 +869,14 @@ def get_frameworks(
         ) c ON c.framework_id = f.id
         ORDER BY f.name ASC
     """
-    basic_loaded_only = """
-        SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks
+    basic_loaded_only = f"""
+        SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
-        JOIN framework_chunks fc ON fc.framework_id = f.id
+        LEFT JOIN framework_chunks fc ON fc.framework_id = f.id
         GROUP BY f.id, f.name, f.description
         HAVING COUNT(fc.*) > 0
+           OR {_structured_subq}
         ORDER BY f.name ASC
     """
 
@@ -880,6 +903,7 @@ def get_frameworks(
                 "uploaded_at": r[8].isoformat() if r[8] else None,
                 "uploaded_by": r[9],
                 "chunks": r[10] or 0,
+                "is_structured": bool(r[11]),
             }
             for r in rows
         ]
@@ -890,6 +914,7 @@ def get_frameworks(
             "file_type": None, "file_size": None, "uploaded_at": None,
             "uploaded_by": None,
             "chunks": r[3] or 0,
+            "is_structured": bool(r[4]),
         }
         for r in rows
     ]
@@ -1482,12 +1507,27 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
         set_policy_progress(db, policy.id, percent, stage)
 
     try:
-        results = await run_checkpoint_analysis(
-            db, request.policy_id, request.frameworks,
-            progress_cb=_progress_cb, resume=resume,
-        )
-        if isinstance(results, dict) and results.get("paused"):
-            return {"success": True, "paused": True, "results": results.get("results", {})}
+        all_results = {}
+
+        # ── ECC-2:2024: route to structured analyzer ──────────────────────
+        frameworks_list = list(request.frameworks)
+        if "ECC-2:2024" in frameworks_list:
+            frameworks_list.remove("ECC-2:2024")
+            ecc2_result = await run_ecc2_analysis(
+                db, request.policy_id, progress_cb=_progress_cb
+            )
+            all_results.update(ecc2_result)
+
+        # ── Other frameworks: use legacy checkpoint analyzer ───────────────
+        if frameworks_list:
+            legacy_result = await run_checkpoint_analysis(
+                db, request.policy_id, frameworks_list,
+                progress_cb=_progress_cb, resume=resume,
+            )
+            if isinstance(legacy_result, dict) and legacy_result.get("paused"):
+                return {"success": True, "paused": True, "results": legacy_result.get("results", {})}
+            all_results.update(legacy_result)
+
         set_policy_progress(db, policy.id, 100, "Completed")
     except Exception as e:
         try:
@@ -1501,7 +1541,22 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
             db.rollback()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
 
-    return {"success": True, "results": results}
+    return {"success": True, "results": all_results}
+
+
+@app.get("/api/ecc2/status")
+def ecc2_status(db: Session = Depends(get_db)):
+    """
+    Verify that the ECC-2:2024 structured data is loaded and the analyzer
+    is wired to the correct tables.
+
+    Returns row counts for all three layers, orphan checks, a sample control
+    lookup, and a go/no-go status field.
+    """
+    try:
+        return verify_ecc2_loaded(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ECC-2 status check failed: {e}")
 
 
 @app.post("/api/functions/pause_policy")
@@ -1986,6 +2041,24 @@ def framework_status(
     target = (request.query_params.get("framework") or "").strip()
 
     if target:
+        # ECC-2:2024 uses structured tables — check ecc_framework, not framework_chunks.
+        if target == "ECC-2:2024":
+            from sqlalchemy import text as _t
+            try:
+                count = db.execute(_t(
+                    "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = 'ECC-2:2024'"
+                )).scalar() or 0
+            except Exception:
+                count = 0
+            loaded = count > 0
+            return {
+                "framework": target,
+                "frameworks": {target: {"chunks": count, "documents": 1 if loaded else 0}},
+                "ready": loaded,
+                "loaded": loaded,
+                "source": "structured_ecc_tables",
+            }
+
         fw_stats = stats.get(target, {"chunks": 0, "documents": 0})
         loaded = fw_stats.get("chunks", 0) > 0
         return {
@@ -2393,15 +2466,28 @@ def setup_system_settings():
                 ON CONFLICT (key) DO NOTHING
             """), {"k": key, "v": value})
 
-        # Add lockout columns to users (idempotent)
-        db.execute(_t("""
-            ALTER TABLE users
-            ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0
-        """))
-        db.execute(_t("""
-            ALTER TABLE users
-            ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ DEFAULT NULL
-        """))
+        # Add lockout columns to users only if they don't exist yet.
+        # Using information_schema avoids a DDL ALTER TABLE on every startup,
+        # which causes a statement-timeout on Supabase's connection pooler.
+        existing_cols = {
+            row[0]
+            for row in db.execute(_t("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'users'
+                  AND column_name IN ('failed_login_attempts', 'locked_until')
+            """)).fetchall()
+        }
+        if "failed_login_attempts" not in existing_cols:
+            db.execute(_t("""
+                ALTER TABLE users
+                ADD COLUMN failed_login_attempts INTEGER DEFAULT 0
+            """))
+        if "locked_until" not in existing_cols:
+            db.execute(_t("""
+                ALTER TABLE users
+                ADD COLUMN locked_until TIMESTAMPTZ DEFAULT NULL
+            """))
 
         db.commit()
         print("[startup] system_settings ready.")

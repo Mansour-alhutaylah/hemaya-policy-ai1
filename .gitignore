@@ -1,4 +1,4 @@
-#env
+# Environment
 .env
 .env.*
 
@@ -11,6 +11,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node
 node_modules
 dist
 dist-ssr
@@ -26,13 +27,27 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
 venv
 backend/venv
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
 
 # Runtime-uploaded policy documents and generated reports
 backend/uploads/*
 !backend/uploads/.gitkeep
 
-.env
-*.pyc
-*.pyc
+# Local embedding / vector caches
+*.faiss
+*.pkl
+embedding_cache/
+
+# Temporary / OS
+*.tmp
+*.bak
+Thumbs.db

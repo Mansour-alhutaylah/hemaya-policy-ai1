@@ -8,6 +8,13 @@ from sqlalchemy import text
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Persistent client for all framework-extraction GPT calls (120 s timeout
+# because window extraction prompts can return large JSON payloads).
+_openai_client = httpx.AsyncClient(
+    timeout=120.0,
+    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+)
+
 # Sliding-window extraction parameters. Windows must be ordered and overlapping
 # so controls split across boundaries are caught by at least one window.
 WINDOW_SIZE = 12000
@@ -90,7 +97,7 @@ async def load_framework_document(db, file_path, framework_name, source_document
     for chunk, emb in zip(chunks, all_embs):
         if emb is None:
             continue
-        emb_str = "[" + ",".join(str(x) for x in emb) + "]"
+        emb_str = json.dumps(emb)
         db.execute(text("""
             INSERT INTO framework_chunks
             (id, framework_id, chunk_text, embedding, chunk_index,
@@ -135,7 +142,8 @@ async def load_framework_document(db, file_path, framework_name, source_document
 
     print(f"  Generating checkpoints for {framework_name} (force={force})...")
     num_checkpoints = await generate_checkpoints_for_framework(
-        db, framework_name, framework_id, content, force=force
+        db, framework_name, framework_id, content, force=force,
+        control_window_map=extract_info.get("control_window_map", {}),
     )
     result["checkpoints_generated"] = num_checkpoints
 
@@ -204,29 +212,33 @@ Rules:
     raw_controls = []  # accumulated across all windows, in window order
     failed_windows = []  # one entry per window that exhausted retries
 
+    # Maps control_code → the window text it was first found in.
+    # Passed to generate_checkpoints_for_framework so GPT gets the
+    # right section context instead of always using full_text[:5000].
+    _window_for_code = {}
+
     for w_idx, (char_start, char_end, window_text) in enumerate(windows):
         win_controls = None
         last_reason = None
 
         for attempt in range(1, MAX_EXTRACT_ATTEMPTS + 1):
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    r = await client.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                                 "Content-Type": "application/json"},
-                        json={
-                            "model": "gpt-4o-mini",
-                            "messages": [
-                                {"role": "system", "content": system},
-                                {"role": "user", "content":
-                                    f"FRAMEWORK: {framework_name}\n\nTEXT:\n{window_text}"},
-                            ],
-                            "temperature": 0.0,
-                            "max_tokens": 8000,
-                            "response_format": {"type": "json_object"},
-                        },
-                    )
+                r = await _openai_client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                             "Content-Type": "application/json"},
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content":
+                                f"FRAMEWORK: {framework_name}\n\nTEXT:\n{window_text}"},
+                        ],
+                        "temperature": 0.0,
+                        "max_tokens": 8000,
+                        "response_format": {"type": "json_object"},
+                    },
+                )
                 if r.status_code != 200:
                     last_reason = f"HTTP {r.status_code}: {r.text[:200]}"
                     print(f"    [fw-extract] window {w_idx+1}/{len(windows)} "
@@ -277,6 +289,12 @@ Rules:
                   f"PERMANENT FAILURE after {MAX_EXTRACT_ATTEMPTS} attempts ({last_reason})")
             continue
 
+        # Tag each control with its source window so we can pass the
+        # right context during checkpoint generation (Fix 8).
+        for ctrl in win_controls:
+            code = (ctrl.get("code") or "").strip()
+            if code and code not in _window_for_code:
+                _window_for_code[code] = window_text
         raw_controls.extend(win_controls)
 
     # Dedupe: first occurrence per normalized key wins. Window order is preserved,
@@ -325,13 +343,24 @@ Rules:
         "extraction_complete": extraction_complete,
         "raw_controls": len(raw_controls),
         "deduped_controls": len(deduped),
+        # Maps control_code → source window text; consumed by
+        # generate_checkpoints_for_framework for section-aware context.
+        "control_window_map": _window_for_code,
     }
 
 
 # ── Step 2: Generate YES/NO checkpoints for each control via GPT ─────────────
 
-async def generate_checkpoints_for_framework(db, framework_name, framework_id, full_text, force=False):
-    """Use GPT to generate YES/NO checkpoints for each control."""
+async def generate_checkpoints_for_framework(
+    db, framework_name, framework_id, full_text, force=False, control_window_map=None
+):
+    """Use GPT to generate YES/NO checkpoints for each control.
+
+    control_window_map: dict mapping control_code → the source window text
+    that control was extracted from.  When provided, GPT receives the
+    actual section of the document the control lives in rather than always
+    getting the first 5000 characters of the full text.
+    """
 
     if force:
         deleted = db.execute(text(
@@ -364,6 +393,18 @@ async def generate_checkpoints_for_framework(db, framework_name, framework_id, f
         batch = controls[i:i + 10]
         batch_info = "\n".join(f"- {c[1]}: {c[2]}" for c in batch)
 
+        # Section-aware context: use the source window of the first control
+        # in this batch.  Controls are ordered by document position (window
+        # order is preserved by extract_controls_from_framework), so the
+        # first control's window is a good proxy for the whole batch.
+        # Falls back to the first 5000 chars of the full text when no map
+        # is available (e.g., force=False path that skipped extraction).
+        first_code = batch[0][1] if batch else ""
+        batch_context = (
+            (control_window_map or {}).get(first_code)
+            or full_text[:5000]
+        )
+
         system = """For each control listed, generate 3-5 specific YES/NO checkpoints
 that an auditor would verify. Each checkpoint must be a concrete, testable requirement.
 
@@ -392,31 +433,30 @@ Rules:
 - Include keywords that would appear in a compliant policy"""
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                r = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                             "Content-Type": "application/json"},
-                    json={
-                        "model": "gpt-4o-mini",
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {"role": "user", "content":
-                                f"FRAMEWORK: {framework_name}\n\n"
-                                f"CONTROLS:\n{batch_info}\n\n"
-                                f"FRAMEWORK TEXT (for context):\n{full_text[:5000]}"},
-                        ],
-                        "temperature": 0.0,
-                        "max_tokens": 4000,
-                        "response_format": {"type": "json_object"},
-                    },
-                )
-                if r.status_code != 200:
-                    print(f"    GPT error generating checkpoints "
-                          f"batch {i // 10 + 1}: {r.status_code}")
-                    continue
+            r = await _openai_client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                         "Content-Type": "application/json"},
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content":
+                            f"FRAMEWORK: {framework_name}\n\n"
+                            f"CONTROLS:\n{batch_info}\n\n"
+                            f"FRAMEWORK TEXT (for context):\n{batch_context}"},
+                    ],
+                    "temperature": 0.0,
+                    "max_tokens": 4000,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            if r.status_code != 200:
+                print(f"    GPT error generating checkpoints "
+                      f"batch {i // 10 + 1}: {r.status_code}")
+                continue
 
-                data = json.loads(r.json()["choices"][0]["message"]["content"])
+            data = json.loads(r.json()["choices"][0]["message"]["content"])
         except Exception as e:
             print(f"    Checkpoint generation error batch {i // 10 + 1}: {e}")
             continue
@@ -459,7 +499,7 @@ Rules:
 # ── Vector search for framework context ──────────────────────────────────────
 
 def get_framework_context(db, framework_name, query_embedding, top_k=5):
-    emb_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+    emb_str = json.dumps(query_embedding)
     try:
         results = db.execute(text("""
             SELECT fc.chunk_text, cl.control_code, fc.section_title,

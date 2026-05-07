@@ -736,7 +736,14 @@ export default function Policies() {
                   <SelectContent>
                     {frameworks.map((fw) => (
                       <SelectItem key={fw.id} value={fw.name}>
-                        {fw.name}
+                        <span className="flex items-center gap-2">
+                          {fw.name}
+                          {fw.is_structured && (
+                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                              Structured
+                            </span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -748,7 +755,9 @@ export default function Policies() {
                 )}
                 {!frameworksLoading && frameworks.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    The policy will be analyzed against this framework's controls.
+                    {frameworks.find(fw => fw.name === newPolicy.framework)?.is_structured
+                      ? 'Uses structured ECC-2 tables — official control text verified.'
+                      : 'The policy will be analyzed against this framework\'s controls.'}
                   </p>
                 )}
               </div>

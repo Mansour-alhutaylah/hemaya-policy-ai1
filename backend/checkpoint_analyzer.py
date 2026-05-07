@@ -23,6 +23,14 @@ from backend.vector_store import (
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Persistent client — one TLS session reused across all GPT calls.
+# Eliminates ~100-250 ms TLS handshake overhead per call (saves 10-30 s on
+# a full 31-control analysis that makes 100+ sequential GPT requests).
+_openai_client = httpx.AsyncClient(
+    timeout=60.0,
+    limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+)
+
 # Bump this version string when VERIFIER_PROMPT changes meaningfully.
 # Bumping it invalidates all cached verdicts from the old prompt.
 PROMPT_VERSION = "v2"
@@ -84,18 +92,17 @@ async def call_llm(system, user, force_json=True, temperature=0.0):
     if force_json:
         body["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        r = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
-        if r.status_code != 200:
-            raise Exception(f"GPT error {r.status_code}: {r.text[:300]}")
-        return r.json()["choices"][0]["message"]["content"]
+    r = await _openai_client.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+    )
+    if r.status_code != 200:
+        raise Exception(f"GPT error {r.status_code}: {r.text[:300]}")
+    return r.json()["choices"][0]["message"]["content"]
 
 
 # ── GPT Verification Prompt ──────────────────────────────────────────────────
@@ -353,11 +360,17 @@ async def _auto_embed(db, policy_id):
 
 # ── Find relevant sections for a checkpoint ─────────────────────────────────
 
-def _find_relevant_sections(chunks, requirement, keywords, offset=0):
+def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
     """Score each chunk using keyword matching + BM25 + classification bonus.
+
     chunks: list of {"text": str, "classification": str} or plain strings.
+    bm25:   pre-built BM25Okapi index over the same chunks.  Pass it in from
+            _analyze_control (built once per control) to avoid rebuilding the
+            index on every checkpoint call.  When None, the index is built
+            here for backward compatibility with any direct callers.
     offset: skip top N chunks (used for second-pass retrieval).
-    Returns (joined_text, quality_score)."""
+    Returns (joined_text, quality_score).
+    """
     from rank_bm25 import BM25Okapi
 
     # Normalize input: accept both dicts and plain strings
@@ -366,39 +379,39 @@ def _find_relevant_sections(chunks, requirement, keywords, offset=0):
 
     texts = [c["text"] for c in chunks]
 
-    # Signal 1: keyword scoring + classification bonus
-    semantic_scores = []
+    # Signal 1: keyword hit count + mandatory/advisory classification bonus
+    kw_scores = []
     for c in chunks:
         score = 0
         for kw in keywords:
             if kw.lower() in c["text"].lower():
                 score += 3
-        # Bonus for mandatory sentences (shall/must)
         if c.get("classification") == "mandatory":
             score += 4
         elif c.get("classification") == "advisory":
             score += 1
-        semantic_scores.append(score)
+        kw_scores.append(score)
 
-    # Signal 2: BM25 sparse retrieval
-    tokenized = [t.lower().split() for t in texts]
-    bm25 = BM25Okapi(tokenized)
+    # Signal 2: BM25 sparse retrieval — reuse pre-built index when available
+    if bm25 is None:
+        tokenized = [t.lower().split() for t in texts]
+        bm25 = BM25Okapi(tokenized)
+
     query = (requirement + " " + " ".join(keywords)).lower().split()
     bm25_scores = bm25.get_scores(query)
 
-    # Normalize both to 0-1 range
-    max_sem = max(semantic_scores) or 1
+    # Normalize both signals to 0-1 and combine 50/50
+    max_kw = max(kw_scores) or 1
     max_bm25 = max(bm25_scores) or 1
 
-    # Combine 50/50
     combined = []
     for i, txt in enumerate(texts):
-        norm_sem = semantic_scores[i] / max_sem
-        norm_bm25 = bm25_scores[i] / max_bm25
-        combined_score = 0.5 * norm_sem + 0.5 * norm_bm25
+        combined_score = (
+            0.5 * kw_scores[i] / max_kw +
+            0.5 * bm25_scores[i] / max_bm25
+        )
         combined.append((combined_score, txt))
 
-    # Sort best first
     combined.sort(key=lambda x: x[0], reverse=True)
 
     # Apply offset for second-pass retrieval
@@ -408,7 +421,7 @@ def _find_relevant_sections(chunks, requirement, keywords, offset=0):
     # Retrieval quality = best combined score (0.0 to 1.0)
     quality = selected[0][0] if selected else 0.0
 
-    # Fallback: if fewer than 3 relevant chunks, send everything
+    # Fallback: if fewer than 3 relevant chunks found, return all chunks
     if len(top) < 3:
         return "\n---\n".join(texts), quality
     return "\n---\n".join(top), quality
@@ -438,20 +451,58 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
                 kw = []
         per_cp_kw.append(kw)
 
-    # Run 1: top 8 chunks (offset=0)
+    # Fix 3: build BM25 index ONCE per control, not once per checkpoint.
+    # Previously rebuilt inside _find_relevant_sections on every call —
+    # that was O(checkpoints²) per control.  Reusing it is O(checkpoints).
+    from rank_bm25 import BM25Okapi
+    if policy_chunks:
+        _bm25_tokenized = [c["text"].lower().split() for c in policy_chunks]
+        _bm25_index = BM25Okapi(_bm25_tokenized)
+    else:
+        _bm25_index = None
+
+    # Fix 5: semantic retrieval using the control-level embedding (once per
+    # control, not per checkpoint).  Finds chunks that are *semantically*
+    # similar even when vocabulary differs from the checkpoint text.
+    semantic_chunks = []
+    if embedding:
+        try:
+            hits = search_similar_chunks(
+                db, embedding, policy_id=policy_id, top_k=12
+            )
+            semantic_chunks = [
+                {"text": h["text"], "classification": "descriptive"}
+                for h in hits
+            ]
+            top_sim = hits[0]["similarity"] if hits else 0.0
+            print(f"    [{control_code}] Semantic: {len(semantic_chunks)} chunks "
+                  f"(top_sim={top_sim:.2f})")
+        except Exception as sem_err:
+            print(f"    [{control_code}] Semantic retrieval skipped: {sem_err}")
+
+    # Run 1: BM25 top-8 chunks per checkpoint (offset=0)
     retrieval_qualities_1 = []
     per_cp_texts_1 = []
     for i, cp in enumerate(checkpoints):
         text_1, quality_1 = _find_relevant_sections(
-            policy_chunks, cp["requirement"], per_cp_kw[i], offset=0)
+            policy_chunks, cp["requirement"], per_cp_kw[i],
+            bm25=_bm25_index, offset=0)
         per_cp_texts_1.append(text_1)
         retrieval_qualities_1.append(quality_1)
 
-    # Run 2: next 8 chunks (offset=4, overlapping for diversity)
+    # Append semantic hits to Run 1 pool; _build_focused deduplicates them.
+    # Chunks that appear in both BM25 and semantic results are seen once only.
+    if semantic_chunks:
+        per_cp_texts_1.append(
+            "\n---\n".join(c["text"] for c in semantic_chunks)
+        )
+
+    # Run 2: BM25 next-8 chunks (offset=4) for diversity
     per_cp_texts_2 = []
     for i, cp in enumerate(checkpoints):
         text_2, _ = _find_relevant_sections(
-            policy_chunks, cp["requirement"], per_cp_kw[i], offset=4)
+            policy_chunks, cp["requirement"], per_cp_kw[i],
+            bm25=_bm25_index, offset=4)
         per_cp_texts_2.append(text_2)
 
     # Build a lookup from chunk text -> classification
@@ -853,8 +904,10 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
         print(f"    Batch embed {len(queries)} controls: "
               f"{round(time.time()-t1, 2)}s")
 
-        # ── Analyze in parallel (5 at a time) ────────────────────────────
-        sem = asyncio.Semaphore(5)
+        # ── Analyze in parallel (10 at a time) ───────────────────────────
+        # gpt-4o-mini has high RPM limits; 10 concurrent controls
+        # cuts wall-clock time roughly in half vs. the previous limit of 5.
+        sem = asyncio.Semaphore(10)
 
         async def _run(code, emb):
             async with sem:

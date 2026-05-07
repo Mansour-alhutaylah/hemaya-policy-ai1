@@ -22,7 +22,45 @@ def extract_text(file_path: Path, file_ext: str) -> str:
 def _extract_pdf(file_path: Path) -> str:
     import fitz  # PyMuPDF
     doc = fitz.open(str(file_path))
-    return "\n".join(page.get_text() for page in doc)
+    pages = []
+    for page in doc:
+        try:
+            # sort=True asks PyMuPDF to return blocks in reading order,
+            # which also corrects Arabic RTL bidi ordering and preserves
+            # table-cell boundaries that get lost in flat get_text() mode.
+            page_dict = page.get_text("dict", sort=True)
+            pages.append(_extract_page_blocks(page_dict))
+        except Exception:
+            # Per-page fallback: if structured extraction fails for any
+            # reason (unusual PDF, corrupt page), degrade to plain text
+            # for that page only — the rest of the document is unaffected.
+            pages.append(page.get_text())
+    return "\n".join(pages)
+
+
+def _extract_page_blocks(page_dict: dict) -> str:
+    """Reconstruct page text from PyMuPDF's block/line/span structure.
+
+    Type-0 blocks are text; type-1 are images (skipped).
+    Lines within each block are joined with newlines;
+    blocks are separated by blank lines to preserve paragraph boundaries.
+    """
+    blocks_text = []
+    for block in page_dict.get("blocks", []):
+        if block.get("type") != 0:  # skip image blocks
+            continue
+        line_texts = []
+        for line in block.get("lines", []):
+            span_text = " ".join(
+                span["text"]
+                for span in line.get("spans", [])
+                if span.get("text", "").strip()
+            )
+            if span_text.strip():
+                line_texts.append(span_text.strip())
+        if line_texts:
+            blocks_text.append("\n".join(line_texts))
+    return "\n\n".join(blocks_text)
 
 
 def _extract_docx(file_path: Path) -> str:

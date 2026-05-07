@@ -1,0 +1,30 @@
+INFORMATION SECURITY POLICY
+Organization: Acme Company
+Version: 1.0
+
+1. PURPOSE
+This policy outlines our commitment to information security. The organization takes security seriously and will protect its information assets.
+
+2. SCOPE
+This policy applies to all employees and contractors.
+
+3. SECURITY PRINCIPLES
+The organization follows best practices for cybersecurity. We are committed to keeping our systems secure and protecting data from unauthorized access.
+
+4. ACCESS CONTROL
+Employees must use passwords to access company systems. Access should be appropriate for each job role. Managers are responsible for ensuring their team follows this policy.
+
+5. DATA PROTECTION
+Company data must be treated with care. Sensitive information should not be shared with unauthorized parties. We comply with applicable data protection laws.
+
+6. INCIDENT REPORTING
+Security incidents should be reported to IT. The IT team will handle all security incidents and take appropriate action.
+
+7. TRAINING
+Employees will receive security awareness training. All staff are expected to follow this policy.
+
+8. REVIEW
+This policy will be reviewed periodically and updated as needed.
+
+9. COMPLIANCE
+All employees must comply with this policy. Violations may result in disciplinary action.

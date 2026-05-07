@@ -1,0 +1,131 @@
+CYBERSECURITY POLICY FRAMEWORK
+Organization: SecureCorp International
+Classification: Confidential — Internal Use Only
+Document Reference: CP-2024-001
+Version: 4.3
+Owner: Chief Information Security Officer
+Approved by: Board of Directors
+Effective Date: 01 January 2024
+Review Cycle: Annual (mandatory) + triggered by significant incident or regulatory change
+
+============================
+1. CYBERSECURITY GOVERNANCE
+============================
+
+1.1 Cybersecurity Strategy
+The organization maintains a documented cybersecurity strategy aligned with the National Cybersecurity Authority (NCA) Essential Cybersecurity Controls (ECC-2:2024). The strategy is approved by the Board of Directors and reviewed annually. It defines the cybersecurity vision, objectives, and three-year roadmap including maturity targets per domain.
+
+1.2 Cybersecurity Management
+A full-time Chief Information Security Officer (CISO) is appointed at the executive level. The CISO holds appropriate qualifications (CISSP, CISM) and reports directly to the Chief Executive Officer. All cybersecurity positions are staffed by full-time qualified personnel. An Information Security Steering Committee meets quarterly, chaired by the CEO, and includes the CISO, CTO, CRO, and Legal Counsel.
+
+1.3 Policies and Procedures
+A complete set of cybersecurity policies and procedures is maintained and reviewed annually. All policies are approved by the CISO and the Authorized Official. Policies are accessible to all employees through the internal document management system. Procedures include: Access Control Procedure, Incident Response Procedure, Vulnerability Management Procedure, Change Management Procedure, and Business Continuity Procedure.
+
+1.4 Roles and Responsibilities
+Cybersecurity roles and responsibilities are formally defined in the Cybersecurity RACI matrix. Every business unit has a designated Security Champion. Job descriptions include cybersecurity responsibilities. Annual performance reviews include security compliance metrics.
+
+1.5 Cybersecurity Risk Management
+A formal risk management framework is in place, based on ISO 27005 methodology. Risk assessments are conducted annually and following significant changes. The risk register is maintained in GRC tool (ServiceNow) and reviewed quarterly by the CISO. Residual risk above the risk appetite threshold requires written acceptance by the CEO. Risk treatment plans include timelines and responsible owners.
+
+1.6 Cybersecurity in IT Project Management
+All IT projects undergo a cybersecurity risk assessment during the design phase. Security requirements must be documented and approved before development begins. Security testing (SAST, DAST) is mandatory before production deployment. The CISO approves exceptions with compensating controls. A Cybersecurity Impact Assessment is required for projects affecting critical systems.
+
+1.7 Compliance
+The organization monitors and complies with applicable cybersecurity laws, regulations, and standards, including NCA ECC-2:2024, PDPL (Personal Data Protection Law), and SAMA Cybersecurity Framework where applicable. Compliance status is reviewed quarterly.
+
+1.8 Cybersecurity Review and Audit
+Internal cybersecurity audits are conducted annually by the internal audit function. Independent external penetration testing is conducted annually by an NCA-approved service provider. Audit findings are tracked to closure with documented remediation plans. Audit reports are presented to the Board.
+
+1.9 Human Resources Security
+Background checks are conducted for all employees and contractors with access to sensitive systems. Security responsibilities are included in employment contracts. Security termination procedures require immediate revocation of all access. Contractors sign NDAs and security agreements before starting work.
+
+1.10 Cybersecurity Awareness and Training
+All employees complete mandatory cybersecurity awareness training within their first week and annually thereafter. Role-based specialized training is provided to IT, development, and security staff. Phishing simulation exercises are conducted monthly, with targeted coaching for employees who fail. Training completion is tracked and reported to HR and the CISO. Security champions receive 40 hours of specialized training annually.
+
+================================
+2. CYBERSECURITY DEFENSE
+================================
+
+2.1 Asset Management
+A complete and accurate inventory of all hardware, software, and data assets is maintained in the CMDB (ServiceNow). Assets are classified by criticality and sensitivity. Asset owners are formally assigned and responsible for security of their assets. The inventory is reviewed and updated quarterly. Unauthorized devices are automatically detected and blocked by the NAC (Cisco ISE) solution.
+
+2.2 Identity and Access Management
+
+2.2.1 Access Control Policy
+Access to all systems is granted on a need-to-know, least-privilege basis. Access requests require approval from the system owner and the employee's manager. Access rights are formally documented and reviewed semi-annually. Role-Based Access Control (RBAC) is implemented across all enterprise systems.
+
+2.2.2 User Account Management
+User accounts are provisioned through an automated IAM system (SailPoint IdentityNow). Accounts are created, modified, and deactivated automatically based on HR system triggers. Inactive accounts are automatically disabled after 30 days and deleted after 90 days. Shared accounts are prohibited except for documented service accounts with approved business justification.
+
+2.2.3 Authentication
+Single-factor authentication (username and password only) is prohibited for all systems. Multi-factor authentication (MFA) is mandatory for all user access — internal and remote. MFA is implemented using hardware security keys (YubiKey FIDO2) for privileged accounts and TOTP (Microsoft Authenticator) for standard users. Passwords must be at least 14 characters, complexity-enforced, and must not be reused within the last 12 generations. Brute-force protection locks accounts after 5 failed attempts.
+
+2.2.4 Privileged Access Management
+All privileged access is managed through a Privileged Access Management (PAM) solution (CyberArk). Privileged accounts are separate from regular user accounts and not used for email or web browsing. Just-In-Time (JIT) access provisioning is implemented — privileged access is granted for the duration of a task only. All privileged sessions are recorded (video and keystroke) and retained for 12 months. Privileged access is reviewed monthly. Emergency access (break-glass) accounts exist with dual-authorization control and audit logging.
+
+2.3 Information System Protection
+All endpoints (laptops, desktops, servers) are protected by Endpoint Detection and Response (EDR) software (CrowdStrike Falcon). EDR coverage is verified monthly — any unprotected endpoint triggers an automated alert. Application whitelisting is enforced on all servers. Removable media is blocked on all endpoints by default; exceptions require CISO approval. Software installation is restricted to approved applications only.
+
+2.4 Email Security
+Email is protected by a multi-layer solution including: Microsoft Defender for Office 365, anti-spam filtering, anti-phishing protection, and sandboxing of attachments. SPF, DKIM, and DMARC records are configured and verified quarterly. External email is tagged with [EXTERNAL] warning label. Automatic forwarding to external addresses is blocked. All email is retained for a minimum of 7 years.
+
+2.5 Network Security Management
+
+2.5.1 Network Segmentation
+The network is segmented into security zones: Internet DMZ, Corporate, Production, Development, and Management. Traffic between zones is controlled by next-generation firewalls (Palo Alto Networks). Zone segmentation is enforced by 802.1X network access control. Inter-zone access requires explicit firewall rules approved by the security team.
+
+2.5.2 Firewall Management
+Firewall rules are reviewed quarterly. All rules must have a documented business justification and an expiry date. Unused rules are removed. Rule changes require change management approval.
+
+2.5.3 DDoS Protection
+DDoS protection is implemented at the perimeter using Cloudflare DDoS protection service. Internet-facing services are protected with rate limiting and traffic scrubbing.
+
+2.5.4 DNS Security
+DNS-over-HTTPS is used for all outbound DNS. DNS filtering (Cisco Umbrella) blocks access to known malicious domains. DNS query logs are retained for 90 days.
+
+2.6 Mobile Device Security
+Mobile Device Management (MDM) solution (Microsoft Intune) manages all mobile devices. Only enrolled and compliant devices can access corporate email and applications. Containers separate corporate and personal data on personal devices (BYOD). Remote wipe capability is enabled for all enrolled devices. Lost or stolen devices must be reported within 1 hour.
+
+2.7 Data and Information Protection
+A Data Loss Prevention (DLP) solution (Microsoft Purview) monitors and controls sensitive data movement. Data classification labels are applied to all documents: Public, Internal, Confidential, Restricted. Restricted data cannot be emailed externally or uploaded to personal cloud storage. Data retention schedules are defined and enforced automatically.
+
+2.8 Cryptography
+AES-256 encryption is the minimum standard for data at rest on all servers, laptops, and portable media. TLS 1.2 (minimum) / TLS 1.3 (preferred) is required for all data in transit. SSL/TLS certificates are managed centrally through DigiCert. Certificates are renewed 30 days before expiry using automated renewal. Cryptographic key management follows NIST SP 800-57. Encryption keys are stored in Hardware Security Modules (HSMs) — Azure Key Vault with HSM tier.
+
+2.9 Backup and Recovery
+All critical systems are backed up daily using Veeam Backup and Replication. Backups are replicated to a geographically separate secondary data center in real time (RPO < 1 hour). Backup restoration is tested monthly for critical systems. The results of restoration tests are documented. Backup media is encrypted (AES-256). Backup access is restricted to the backup administrator role.
+
+2.10 Vulnerability Management
+Authenticated vulnerability scans are conducted weekly on all systems using Qualys VMDR. Internet-facing systems are scanned daily. Vulnerability findings are prioritized using CVSS scores: Critical (9.0-10.0) must be remediated within 7 days; High (7.0-8.9) within 30 days; Medium (4.0-6.9) within 90 days. Exceptions require CISO written approval with compensating controls. The vulnerability management dashboard is reviewed weekly by the security team.
+
+2.11 Penetration Testing
+External penetration tests are conducted annually by an NCA-approved penetration testing firm. Internal penetration tests are conducted semi-annually. Web application penetration testing is conducted for any new application before go-live and annually thereafter. Red team exercises are conducted annually. All penetration testing findings are tracked to remediation with documented evidence.
+
+2.12 Security Event Logging and Monitoring
+A Security Information and Event Management (SIEM) solution (Microsoft Sentinel) aggregates and correlates logs from all critical systems. Log sources include: firewalls, servers, Active Directory, VPN, email, endpoints, cloud services. Log retention is 12 months online, 7 years archived. Security events are monitored 24/7 by the Security Operations Center (SOC). Alert response times: Critical < 15 minutes, High < 1 hour, Medium < 4 hours. SIEM use cases cover: brute force, lateral movement, data exfiltration, privilege escalation.
+
+2.13 Cybersecurity Incident Management
+A formal Cybersecurity Incident Response Plan (IRP) is maintained and approved by the CISO. The incident response team is on-call 24/7. Incidents are classified: Critical, High, Medium, Low. Critical incidents are escalated to senior management within 30 minutes and to NCA within 24 hours as required. Incident response procedures cover: identification, containment, eradication, recovery, and post-incident review. Post-incident reviews are mandatory for Critical and High incidents, completed within 5 business days. All incidents are tracked in the SIEM ticketing system.
+
+2.14 Physical Security
+Data centers are Tier 3 certified. Physical access is controlled by multi-factor authentication (badge + biometric). All access is logged and reviewed monthly. CCTV covers all access points with 90-day retention. Environmental controls include redundant power (UPS + generator), fire suppression (FM-200), and temperature monitoring. Visitors must be registered in advance and escorted at all times.
+
+2.15 Web Application Security
+All web applications must comply with OWASP Top 10. A Web Application Firewall (WAF) (Cloudflare WAF) protects all production web applications. Security headers are enforced: CSP, HSTS, X-Frame-Options. Secure development practices are mandated, including code review and SAST/DAST scanning in CI/CD pipeline. API security controls include authentication (OAuth 2.0), rate limiting, and input validation.
+
+================================
+3. CYBERSECURITY RESILIENCE
+================================
+
+3.1 Business Continuity
+Cybersecurity requirements are integrated into the Business Continuity Management (BCM) framework. A Business Continuity Plan (BCP) exists for all critical systems and services. Recovery Time Objectives (RTO) and Recovery Point Objectives (RPO) are defined: critical systems RTO < 4 hours, RPO < 1 hour. BCP exercises are conducted annually, including a full failover simulation. Disaster Recovery plans are tested quarterly. Cybersecurity systems (SIEM, EDR, firewalls, IAM) are included in the BCM asset register with defined RTOs. Cyber-incident scenarios (ransomware, DDoS, critical system compromise) are covered in BCP activation criteria.
+
+================================
+4. THIRD-PARTY AND CLOUD SECURITY
+================================
+
+4.1 Third-Party Cybersecurity
+All third parties with access to company systems or data must sign a Third-Party Security Agreement before access is granted. The agreement includes: data protection requirements, incident notification within 24 hours, right-to-audit clauses, and data return/deletion requirements on contract termination. Third-party risk assessments are conducted annually using a standardized questionnaire (SIG Lite). Critical suppliers undergo independent security audits every two years. Third-party access is reviewed quarterly and revoked immediately upon contract termination.
+
+4.2 Cloud Computing Security
+Cloud service providers are assessed for compliance with ISO 27001 and SOC 2 Type II before engagement. Cloud environments are configured according to the CIS Benchmarks. Cloud security posture management (CSPM) is implemented using Microsoft Defender for Cloud. Data stored in cloud environments is classified and encrypted according to classification level. Cloud access is controlled through Single Sign-On (SSO) integrated with the corporate IAM system. Multi-region backup and disaster recovery is configured for all production cloud workloads. Cloud service agreements include data sovereignty requirements, ensuring data remains within Saudi Arabia where required by regulation.
