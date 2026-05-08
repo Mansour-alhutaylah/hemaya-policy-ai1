@@ -1631,7 +1631,21 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
                 return {"success": True, "paused": True, "results": legacy_result.get("results", {})}
             all_results.update(legacy_result)
 
-        set_policy_progress(db, policy.id, 100, "Completed")
+        # Mark the policy as fully analyzed — must happen BEFORE returning so
+        # the frontend polling loop sees status='analyzed' on the next refetch.
+        try:
+            db.execute(_t("""
+                UPDATE policies
+                SET status='analyzed',
+                    progress=100,
+                    progress_stage='Completed',
+                    last_analyzed_at=:ts
+                WHERE id=:pid
+            """), {"ts": datetime.now(timezone.utc), "pid": policy.id})
+            db.commit()
+        except Exception as _ue:
+            db.rollback()
+            print(f"[analyze_policy] WARNING: final status update failed: {_ue}")
     except Exception as e:
         try:
             db.execute(
@@ -1839,7 +1853,19 @@ async def _resume_analysis_in_background(policy_id: str, frameworks: list):
             db, policy_id, frameworks, progress_cb=_cb, resume=True
         )
         if not (isinstance(result, dict) and result.get("paused")):
-            set_policy_progress(db, policy_id, 100, "Completed")
+            try:
+                db.execute(_t("""
+                    UPDATE policies
+                    SET status='analyzed',
+                        progress=100,
+                        progress_stage='Completed',
+                        last_analyzed_at=:ts
+                    WHERE id=:pid
+                """), {"ts": datetime.now(timezone.utc), "pid": policy_id})
+                db.commit()
+            except Exception as _ue:
+                db.rollback()
+                print(f"[resume_analysis] WARNING: final status update failed: {_ue}")
     except Exception as e:
         try:
             db.execute(_t(

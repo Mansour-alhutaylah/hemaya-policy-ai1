@@ -327,14 +327,18 @@ export default function Policies() {
       });
 
       if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['policies'] });
+        // Refetch immediately so the badge flips from Processing → Analyzed
+        // without waiting for the next polling tick (which may have already
+        // stopped because the API call itself returned).
+        await queryClient.refetchQueries({ queryKey: ['policies'] });
         queryClient.invalidateQueries({ queryKey: ['complianceResults'] });
         queryClient.invalidateQueries({ queryKey: ['gaps'] });
         queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
 
         toast({
           title: 'Analysis Complete',
-          description: `Created ${result.mappings_created} mappings and identified ${result.gaps_created} gaps.`,
+          description: `Analysis complete for ${policy.file_name}.`,
         });
       }
     } catch (error) {
