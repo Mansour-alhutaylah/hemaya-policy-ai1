@@ -1975,3 +1975,136 @@ async def explain_mapping(db, mapping_id):
         return json.loads(r)
     except Exception as e:
         return {"explanation": f"Error: {str(e)}"}
+
+
+# ── Re-analysis for remediation drafts ───────────────────────────────────────
+
+async def score_remediation_draft(
+    *,
+    db,
+    original_policy_text: str,
+    draft_addition_text: str,
+    checkpoints: list,
+    old_score_override=None,
+    previously_failing_requirements=None,
+) -> dict:
+    """
+    Measure the compliance improvement a draft addition provides for a
+    specific control by re-running checkpoint verification on the MERGED text.
+
+    Scoring uses the same deterministic formula as the main analysis:
+        score = sum(weight for met checkpoints) / total_weight * 100
+
+    Args:
+        db:                              SQLAlchemy session (used for cache writes).
+        original_policy_text:            Full text of the existing policy.
+        draft_addition_text:             AI-generated additions only (not the full policy).
+        checkpoints:                     List of checkpoint dicts in the standard format:
+                                           {checkpoint_id, control_code, checkpoint_index,
+                                            requirement, keywords, weight, framework}.
+        old_score_override:              Pre-computed old score from compliance_results
+                                         (skips re-verifying against original text).
+        previously_failing_requirements: Set of requirement strings known to have been
+                                         failing (used to populate was_met in the diff).
+
+    Returns:
+        {
+            old_score:             float (0-100),
+            new_score:             float (0-100),
+            improvement_pct:       float (delta, can be negative),
+            checkpoints_fixed:     int,
+            checkpoints_total:     int,
+            checkpoint_details:    list[{requirement, was_met, is_now_met,
+                                         confidence, evidence}],
+        }
+    """
+    if not checkpoints:
+        base = round(float(old_score_override), 1) if old_score_override is not None else 0.0
+        return {
+            "old_score": base,
+            "new_score": base,
+            "improvement_pct": 0.0,
+            "checkpoints_fixed": 0,
+            "checkpoints_total": 0,
+            "checkpoint_details": [],
+        }
+
+    failing_set = previously_failing_requirements or set()
+    total_weight = sum(float(cp.get("weight", 1.0)) for cp in checkpoints)
+
+    # ── Old score ─────────────────────────────────────────────────────────────
+    if old_score_override is not None:
+        old_score = float(old_score_override)
+    else:
+        # Expensive path: re-verify against original text only.
+        # Pass db=None to skip cache (we don't want to store verdicts for the
+        # original text here — the main analysis cache owns those).
+        old_verdicts = await verify_checkpoints_gpt(
+            checkpoints, original_policy_text[:12000], db=None
+        )
+        old_map = {v.get("index", 0): v for v in old_verdicts}
+        met_w = sum(
+            float(cp.get("weight", 1.0))
+            for cp in checkpoints
+            if old_map.get(cp["checkpoint_index"], {}).get("met", False)
+        )
+        old_score = (met_w / total_weight * 100) if total_weight else 0.0
+
+    # ── New score: verify against MERGED text ─────────────────────────────────
+    # Draft goes first so the verifier immediately sees the new additions.
+    merged_text = (
+        "=== PROPOSED POLICY ADDITIONS ===\n\n"
+        + draft_addition_text
+        + "\n\n=== EXISTING POLICY (excerpted) ===\n\n"
+        + original_policy_text[:9000]
+    )
+
+    # db=None: merged-text verdicts must not pollute the original-text cache.
+    new_verdicts = await verify_checkpoints_gpt(checkpoints, merged_text, db=None)
+    new_map = {v.get("index", 0): v for v in new_verdicts}
+
+    met_w_new = sum(
+        float(cp.get("weight", 1.0))
+        for cp in checkpoints
+        if new_map.get(cp["checkpoint_index"], {}).get("met", False)
+    )
+    new_score = (met_w_new / total_weight * 100) if total_weight else 0.0
+
+    # ── Per-checkpoint diff ───────────────────────────────────────────────────
+    checkpoint_details = []
+    checkpoints_fixed = 0
+
+    for cp in checkpoints:
+        idx = cp["checkpoint_index"]
+        req = cp["requirement"]
+        new_v = new_map.get(idx, {"met": False, "confidence": 0.1, "evidence": ""})
+        is_now_met = bool(new_v.get("met", False))
+
+        # was_met: prefer failing_set (authoritative), else unknown (None).
+        if failing_set:
+            was_met = req not in failing_set
+        else:
+            was_met = None
+
+        if is_now_met and was_met is False:
+            checkpoints_fixed += 1
+        elif is_now_met and was_met is None:
+            # Conservative: count as fixed if draft covered it (no prior verdict).
+            checkpoints_fixed += 1
+
+        checkpoint_details.append({
+            "requirement": req,
+            "was_met": was_met,
+            "is_now_met": is_now_met,
+            "confidence": round(float(new_v.get("confidence", 0.5)), 2),
+            "evidence": (new_v.get("evidence") or "").strip(),
+        })
+
+    return {
+        "old_score": round(old_score, 1),
+        "new_score": round(new_score, 1),
+        "improvement_pct": round(new_score - old_score, 1),
+        "checkpoints_fixed": checkpoints_fixed,
+        "checkpoints_total": len(checkpoints),
+        "checkpoint_details": checkpoint_details,
+    }

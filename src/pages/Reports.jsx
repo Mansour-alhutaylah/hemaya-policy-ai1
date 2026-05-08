@@ -8,6 +8,8 @@ import EmptyState from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -33,6 +35,9 @@ import {
   Loader2,
   Calendar,
   Trash2,
+  Package,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -42,6 +47,45 @@ import {
   triggerBrowserDownload,
   downloadFromUrl,
 } from '@/lib/policyReport';
+
+// ── Compliance Package download helper ───────────────────────────────────────
+// Calls POST /api/reports/export and triggers a browser file download.
+// Returns true on success, throws on error.
+async function downloadCompliancePackage(policyId, includeDraftText = true) {
+  const token = localStorage.getItem('token');
+  const res = await fetch('/api/reports/export', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      policy_id: policyId,
+      include_draft_text: includeDraftText,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Export failed' }));
+    throw new Error(err.detail || 'Export failed');
+  }
+
+  const blob = await res.blob();
+  // Extract filename from Content-Disposition if present, otherwise use a fallback.
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match       = disposition.match(/filename="([^"]+)"/);
+  const filename    = match ? match[1] : 'himaya_compliance_package.docx';
+
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return filename;
+}
 
 const Report = api.entities.Report;
 const Policy = api.entities.Policy;
@@ -54,6 +98,12 @@ export default function Reports() {
     policy_id: '',
     format: 'PDF',
   });
+
+  // Compliance Package (DOCX) state
+  const [showPackageDialog,   setShowPackageDialog]   = useState(false);
+  const [packagePolicyId,     setPackagePolicyId]     = useState('');
+  const [packageIncludeText,  setPackageIncludeText]  = useState(true);
+  const [generatingPackage,   setGeneratingPackage]   = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -157,6 +207,28 @@ export default function Reports() {
       });
     }
     setGenerating(false);
+  };
+
+  const handleGeneratePackage = async () => {
+    if (!packagePolicyId) {
+      toast({ title: 'Select a policy', variant: 'destructive' });
+      return;
+    }
+    setGeneratingPackage(true);
+    try {
+      const filename = await downloadCompliancePackage(packagePolicyId, packageIncludeText);
+      toast({ title: 'Compliance Package downloaded', description: filename });
+      setShowPackageDialog(false);
+      setPackagePolicyId('');
+    } catch (err) {
+      toast({
+        title: 'Export failed',
+        description: err.message || 'Could not generate the compliance package.',
+        variant: 'destructive',
+      });
+    } finally {
+      setGeneratingPackage(false);
+    }
   };
 
   const handleDownload = (report) => {
@@ -265,13 +337,26 @@ export default function Reports() {
       title="Reports"
       subtitle="Generate and download compliance reports"
       actions={
-        <Button
-          onClick={() => setShowGenerateDialog(true)}
-          className="bg-emerald-600 hover:bg-emerald-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Generate Report
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowPackageDialog(true)}
+            className="border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 gap-1.5"
+          >
+            <Package className="w-4 h-4" />
+            Compliance Package
+            <Badge className="ml-1 text-[10px] bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30">
+              DOCX
+            </Badge>
+          </Button>
+          <Button
+            onClick={() => setShowGenerateDialog(true)}
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Generate Report
+          </Button>
+        </div>
       }
     >
       {/* Filters */}
@@ -303,7 +388,107 @@ export default function Reports() {
         }
       />
 
-      {/* Generate Dialog */}
+      {/* ── Compliance Package Dialog ─────────────────────────────────────────── */}
+      <Dialog
+        open={showPackageDialog}
+        onOpenChange={(open) => !generatingPackage && setShowPackageDialog(open)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              Generate Compliance Package
+            </DialogTitle>
+            <DialogDescription>
+              Export a full enterprise-grade DOCX package containing compliance scores,
+              open gaps, AI remediation drafts, and version history.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* What's included */}
+          <Card className="border-purple-500/20 bg-purple-500/5">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                What&apos;s included in this package:
+              </p>
+              <ul className="space-y-1.5">
+                {[
+                  'Executive summary with compliance scores per framework',
+                  'Open gaps table with severity color-coding',
+                  'AI remediation drafts with control-satisfaction mapping',
+                  'Policy version history',
+                  'Legal disclaimer',
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-purple-800 dark:text-purple-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Select Policy</Label>
+              <Select value={packagePolicyId} onValueChange={setPackagePolicyId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a policy…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {policies.length === 0 ? (
+                    <SelectItem value="__none" disabled>No policies available</SelectItem>
+                  ) : (
+                    policies.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.file_name}</SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="include-draft-text"
+                checked={packageIncludeText}
+                onChange={e => setPackageIncludeText(e.target.checked)}
+                className="rounded border-border"
+              />
+              <Label htmlFor="include-draft-text" className="cursor-pointer font-normal text-sm">
+                Include full AI draft text in the document
+                <span className="block text-xs text-muted-foreground">
+                  Uncheck for a shorter summary-only package
+                </span>
+              </Label>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-1 border-t border-border/60">
+            <Button
+              variant="outline"
+              onClick={() => setShowPackageDialog(false)}
+              disabled={generatingPackage}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleGeneratePackage}
+              disabled={generatingPackage || !packagePolicyId}
+              className="bg-purple-600 hover:bg-purple-700 gap-2"
+            >
+              {generatingPackage ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Building package…</>
+              ) : (
+                <><Package className="w-4 h-4" />Download DOCX</>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Standard Report Dialog ────────────────────────────────────────────── */}
       <Dialog
         open={showGenerateDialog}
         onOpenChange={(open) => !generating && setShowGenerateDialog(open)}

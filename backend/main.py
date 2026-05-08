@@ -35,9 +35,13 @@ from backend.checkpoint_analyzer import (
 )
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
+from backend.routers.remediation import router as remediation_router
+from backend.routers.reports_export import router as export_router
 
 
 app = FastAPI()
+app.include_router(remediation_router)
+app.include_router(export_router)
 
 
 @app.on_event("startup")
@@ -52,6 +56,43 @@ def startup_seed():
         with database.engine.connect() as _conn:
             _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS mapping_id  VARCHAR"))
             _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS owner_name  VARCHAR"))
+            _conn.execute(_ddl("""
+                CREATE TABLE IF NOT EXISTS remediation_drafts (
+                    id                   VARCHAR PRIMARY KEY,
+                    policy_id            VARCHAR NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+                    mapping_review_id    VARCHAR REFERENCES mapping_reviews(id) ON DELETE SET NULL,
+                    control_id           VARCHAR REFERENCES control_library(id) ON DELETE SET NULL,
+                    framework_id         VARCHAR REFERENCES frameworks(id) ON DELETE SET NULL,
+                    missing_requirements JSONB   NOT NULL DEFAULT '[]',
+                    ai_rationale         TEXT,
+                    suggested_policy_text TEXT   NOT NULL,
+                    section_headers      JSONB,
+                    remediation_status   VARCHAR NOT NULL DEFAULT 'draft',
+                    review_notes         TEXT,
+                    created_by           UUID    REFERENCES users(id) ON DELETE SET NULL,
+                    reviewed_by          UUID    REFERENCES users(id) ON DELETE SET NULL,
+                    reviewed_at          TIMESTAMPTZ,
+                    created_at           TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at           TIMESTAMPTZ DEFAULT NOW()
+                )
+            """))
+            _conn.execute(_ddl("CREATE INDEX IF NOT EXISTS ix_remediation_drafts_policy_id ON remediation_drafts(policy_id)"))
+            _conn.execute(_ddl("""
+                CREATE TABLE IF NOT EXISTS policy_versions (
+                    id                    VARCHAR PRIMARY KEY,
+                    policy_id             VARCHAR NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+                    version_number        INTEGER NOT NULL,
+                    version_type          VARCHAR NOT NULL,
+                    content               TEXT    NOT NULL,
+                    compliance_score      FLOAT,
+                    remediation_draft_id  VARCHAR REFERENCES remediation_drafts(id) ON DELETE SET NULL,
+                    change_summary        TEXT,
+                    created_by            UUID    REFERENCES users(id) ON DELETE SET NULL,
+                    created_at            TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE (policy_id, version_number)
+                )
+            """))
+            _conn.execute(_ddl("CREATE INDEX IF NOT EXISTS ix_policy_versions_policy_id ON policy_versions(policy_id)"))
             _conn.commit()
     except Exception as e:
         print(f"[startup] Migration warning: {e}")

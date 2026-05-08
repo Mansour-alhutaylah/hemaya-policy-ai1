@@ -56,6 +56,7 @@ import Frameworks from './pages/Frameworks';
 import GapsRisks from './pages/GapsRisks';
 import Home from './pages/Home';
 import MappingReview from './pages/MappingReview';
+import PolicyVersions from './pages/PolicyVersions';
 import Policies from './pages/Policies';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
@@ -73,6 +74,7 @@ export const PAGES = {
     "Frameworks": Frameworks,
     "GapsRisks": GapsRisks,
     "MappingReview": MappingReview,
+    "PolicyVersions": PolicyVersions,
     "Policies": Policies,
     "Reports": Reports,
     "Settings": Settings,

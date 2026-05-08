@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ShieldCheck,
   KeyRound,
+  GitFork,
 } from 'lucide-react';
 
 const ADMIN_EMAIL = 'himayaadmin@gmail.com';
@@ -33,6 +34,7 @@ const navigationItems = [
   { name: 'Analyses', icon: BarChart3, page: 'Analyses' },
   { name: 'Frameworks', icon: Shield, page: 'Frameworks' },
   { name: 'Mapping Review', icon: GitCompare, page: 'MappingReview' },
+  { name: 'Policy Versions', icon: GitFork, page: 'PolicyVersions', badge: 'NEW' },
   { name: 'Gaps & Risks', icon: AlertTriangle, page: 'GapsRisks' },
   { name: 'Reports', icon: FileBarChart, page: 'Reports' },
   { name: 'AI Insights', icon: Lightbulb, page: 'AIInsights', badge: 'NEW' },

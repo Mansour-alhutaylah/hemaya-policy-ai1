@@ -5,7 +5,7 @@ import uuid
 def _now():
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
@@ -29,6 +29,26 @@ class User(Base):
     is_verified = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
     settings = Column(JSON, nullable=True)
+
+    # Remediation relationships (lazy-evaluated string refs avoid forward-ref issues)
+    created_drafts  = relationship(
+        "RemediationDraft",
+        foreign_keys="[RemediationDraft.created_by]",
+        back_populates="creator",
+        lazy="dynamic",
+    )
+    reviewed_drafts = relationship(
+        "RemediationDraft",
+        foreign_keys="[RemediationDraft.reviewed_by]",
+        back_populates="reviewer_user",
+        lazy="dynamic",
+    )
+    created_versions = relationship(
+        "PolicyVersion",
+        foreign_keys="[PolicyVersion.created_by]",
+        back_populates="creator",
+        lazy="dynamic",
+    )
 
 
 class OTPToken(Base):
@@ -89,6 +109,8 @@ class Policy(Base):
     results = relationship("ComplianceResult", back_populates="policy", cascade="all, delete-orphan")
     gaps = relationship("Gap", back_populates="policy", cascade="all, delete-orphan")
     mappings = relationship("MappingReview", back_populates="policy", cascade="all, delete-orphan")
+    remediation_drafts = relationship("RemediationDraft", back_populates="policy", cascade="all, delete-orphan")
+    policy_versions = relationship("PolicyVersion", back_populates="policy", cascade="all, delete-orphan")
 
 
 class ControlLibrary(Base):
@@ -101,6 +123,12 @@ class ControlLibrary(Base):
     keywords = Column(JSON)
     severity_if_missing = Column(String, default="Medium")
     created_at = Column(DateTime(timezone=True), default=_now)
+
+    remediation_drafts = relationship(
+        "RemediationDraft",
+        back_populates="control",
+        lazy="dynamic",
+    )
 
 
 class ComplianceResult(Base):
@@ -164,6 +192,11 @@ class MappingReview(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
 
     policy = relationship("Policy", back_populates="mappings")
+    remediation_drafts = relationship(
+        "RemediationDraft",
+        back_populates="mapping_review",
+        lazy="dynamic",
+    )
 
 
 class Report(Base):
@@ -223,3 +256,149 @@ class Framework(Base):
     uploaded_at = Column(DateTime(timezone=True), nullable=True)
     uploaded_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
+
+    remediation_drafts = relationship(
+        "RemediationDraft",
+        back_populates="framework",
+        lazy="dynamic",
+    )
+
+
+# Valid values: "draft" | "under_review" | "approved" | "rejected" | "superseded"
+REMEDIATION_STATUSES = {"draft", "under_review", "approved", "rejected", "superseded"}
+
+# Valid values: "original" | "ai_draft" | "final"
+VERSION_TYPES = {"original", "ai_draft", "final"}
+
+
+class RemediationDraft(Base):
+    """
+    AI-generated policy ADDITIONS that address a specific compliance gap.
+
+    ARCHITECTURAL CONSTRAINT: suggested_policy_text contains ONLY the new
+    sections to append — never a full policy rewrite. The original policy
+    is never modified; this row is always a separate additive draft.
+    """
+    __tablename__ = "remediation_drafts"
+
+    # Compound indexes support the three most common query patterns:
+    #   1. All drafts for a policy              → (policy_id)
+    #   2. Drafts by lifecycle status           → (remediation_status)
+    #   3. Active drafts for a policy           → (policy_id, remediation_status)
+    #   4. Which control triggered this draft   → (control_id)
+    #   5. Which framework this draft targets   → (framework_id)
+    __table_args__ = (
+        Index("ix_rd_policy_status",  "policy_id", "remediation_status"),
+        Index("ix_rd_control_id",     "control_id"),
+        Index("ix_rd_framework_id",   "framework_id"),
+        Index("ix_rd_created_at",     "created_at"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    policy_id = Column(
+        String, ForeignKey("policies.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # Nullable: drafts can be requested ad-hoc without a prior mapping review.
+    mapping_review_id = Column(
+        String, ForeignKey("mapping_reviews.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    control_id = Column(
+        String, ForeignKey("control_library.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    framework_id = Column(
+        String, ForeignKey("frameworks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Immutable snapshot of what was missing at time of generation.
+    missing_requirements = Column(JSON, nullable=False)       # list[str]
+    ai_rationale         = Column(Text, nullable=True)
+    # The additive-only text generated by the AI.
+    suggested_policy_text = Column(Text, nullable=False)
+    # Top-level section titles extracted from suggested_policy_text.
+    section_headers = Column(JSON, nullable=True)             # list[str]
+    # Lifecycle: draft → under_review → approved | rejected | superseded
+    remediation_status = Column(String, default="draft", nullable=False, index=True)
+    review_notes       = Column(Text, nullable=True)
+    # Two separate FKs to users: who created vs who reviewed.
+    created_by  = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at  = Column(DateTime(timezone=True), default=_now)
+    updated_at  = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    # ── ORM relationships ─────────────────────────────────────────────────────
+    policy         = relationship("Policy",         back_populates="remediation_drafts")
+    mapping_review = relationship("MappingReview",  back_populates="remediation_drafts")
+    control        = relationship("ControlLibrary", back_populates="remediation_drafts")
+    framework      = relationship("Framework",      back_populates="remediation_drafts")
+    policy_versions = relationship("PolicyVersion", back_populates="remediation_draft")
+
+    # Disambiguate the two FK paths to the users table.
+    creator      = relationship(
+        "User",
+        foreign_keys=[created_by],
+        back_populates="created_drafts",
+    )
+    reviewer_user = relationship(
+        "User",
+        foreign_keys=[reviewed_by],
+        back_populates="reviewed_drafts",
+    )
+
+
+class PolicyVersion(Base):
+    """
+    Immutable append-only audit record of a policy's content at a point in time.
+
+    Lifecycle:
+      version_type = "original"  — written once at upload; NEVER modified.
+      version_type = "ai_draft"  — auto-created by the remediation engine;
+                                    contains ONLY the additive sections.
+      version_type = "final"     — created by a human approving a draft;
+                                    represents the merged, publishable document.
+
+    The UNIQUE constraint on (policy_id, version_number) at the DB level
+    guarantees monotonic versioning even under concurrent requests.
+    """
+    __tablename__ = "policy_versions"
+
+    # Query patterns supported:
+    #   1. All versions for a policy          → (policy_id)
+    #   2. Latest version of a given type     → (policy_id, version_type)
+    #   3. Audit timeline                     → (policy_id, version_number)
+    __table_args__ = (
+        Index("ix_pv_policy_type",    "policy_id", "version_type"),
+        Index("ix_pv_policy_version", "policy_id", "version_number"),
+        Index("ix_pv_version_type",   "version_type"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    policy_id = Column(
+        String, ForeignKey("policies.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # Monotonically increasing within a policy; version 1 = original upload.
+    version_number       = Column(Integer, nullable=False)
+    version_type         = Column(String, nullable=False)   # original | ai_draft | final
+    content              = Column(Text, nullable=False)
+    compliance_score     = Column(Float, nullable=True)
+    # Traceable link back to the draft that produced this version (null for originals).
+    remediation_draft_id = Column(
+        String, ForeignKey("remediation_drafts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    change_summary = Column(Text, nullable=True)
+    created_by     = Column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=_now)
+
+    # ── ORM relationships ─────────────────────────────────────────────────────
+    policy            = relationship("Policy",           back_populates="policy_versions")
+    remediation_draft = relationship("RemediationDraft", back_populates="policy_versions")
+    creator           = relationship(
+        "User",
+        foreign_keys=[created_by],
+        back_populates="created_versions",
+    )
