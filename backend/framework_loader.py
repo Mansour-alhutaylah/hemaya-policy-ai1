@@ -141,11 +141,33 @@ async def load_framework_document(db, file_path, framework_name, source_document
         )
 
     print(f"  Generating checkpoints for {framework_name} (force={force})...")
-    num_checkpoints = await generate_checkpoints_for_framework(
+    cp_info = await generate_checkpoints_for_framework(
         db, framework_name, framework_id, content, force=force,
         control_window_map=extract_info.get("control_window_map", {}),
     )
-    result["checkpoints_generated"] = num_checkpoints
+    result["checkpoints_generated"] = cp_info["total_checkpoints"]
+    result["failed_checkpoint_batches"] = cp_info["failed_batches"]
+    result["failed_checkpoint_batches_count"] = len(cp_info["failed_batches"])
+
+    # If any checkpoint batch failed, the framework has controls without
+    # checkpoints — those controls will silently report no findings during
+    # analysis ("fake coverage"). Treat this the same as a failed extraction
+    # window: flip extraction_complete=False so file_hash is NOT persisted
+    # (main.py:/upload/frameworks gates the cache on this flag) and surface
+    # the failure to the UI. Recovery requires re-uploading with force=true.
+    if cp_info["failed_batches"]:
+        result["extraction_complete"] = False
+        result["status"] = "incomplete"
+        result["warning"] = (result.get("warning")
+                             or "Framework extraction is incomplete. "
+                                "Some controls may be missing.")
+        result["extraction_warnings"].append(
+            f"Checkpoint generation incomplete: "
+            f"{len(cp_info['failed_batches'])} batch(es) failed "
+            f"({sum(len(b['control_codes']) for b in cp_info['failed_batches'])} "
+            f"control(s) without checkpoints). "
+            f"Cache will not be updated; re-upload with force=true to retry."
+        )
 
     return result
 
@@ -374,7 +396,7 @@ async def generate_checkpoints_for_framework(
         ), {"fwid": framework_id}).fetchone()[0]
         if existing > 0:
             print(f"    {existing} checkpoints already exist for {framework_name}, skipping")
-            return existing
+            return {"total_checkpoints": existing, "failed_batches": []}
 
     # Get all controls for this framework
     controls = db.execute(text(
@@ -384,9 +406,14 @@ async def generate_checkpoints_for_framework(
 
     if not controls:
         print(f"    No controls found for {framework_name}")
-        return 0
+        return {"total_checkpoints": 0, "failed_batches": []}
 
     total_checkpoints = 0
+    # One entry per batch that failed at HTTP / JSON / schema / transport level.
+    # Surfacing these prevents the silent-data-loss class of bug where a
+    # malformed batch silently dropped 10 controls' worth of checkpoints and
+    # the framework was still marked extraction-complete.
+    failed_batches = []
 
     # Process controls in batches of 10 for efficiency
     for i in range(0, len(controls), 10):
@@ -432,6 +459,11 @@ Rules:
 - Be specific: "MFA required for remote access" not "authentication exists"
 - Include keywords that would appear in a compliant policy"""
 
+        batch_index = i // 10 + 1
+        batch_codes = [c[1] for c in batch]
+        data = None
+        # Transport guard: HTTP / network errors. Any failure here is recorded
+        # so the caller can mark extraction_complete=False and skip the cache.
         try:
             r = await _openai_client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -451,14 +483,51 @@ Rules:
                     "response_format": {"type": "json_object"},
                 },
             )
-            if r.status_code != 200:
-                print(f"    GPT error generating checkpoints "
-                      f"batch {i // 10 + 1}: {r.status_code}")
-                continue
-
-            data = json.loads(r.json()["choices"][0]["message"]["content"])
         except Exception as e:
-            print(f"    Checkpoint generation error batch {i // 10 + 1}: {e}")
+            reason = f"transport: {type(e).__name__}: {e}"
+            failed_batches.append({"batch_index": batch_index,
+                                   "control_codes": batch_codes,
+                                   "reason": reason})
+            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
+            continue
+
+        if r.status_code != 200:
+            reason = f"HTTP {r.status_code}: {r.text[:200]}"
+            failed_batches.append({"batch_index": batch_index,
+                                   "control_codes": batch_codes,
+                                   "reason": reason})
+            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
+            continue
+
+        # JSON guard: explicit JSONDecodeError handling. Without this, the
+        # outer try/except previously swallowed parse errors and silently
+        # dropped 10 controls' worth of checkpoints per malformed batch.
+        try:
+            data = json.loads(r.json()["choices"][0]["message"]["content"])
+        except json.JSONDecodeError as e:
+            reason = f"JSONDecodeError: {e}"
+            failed_batches.append({"batch_index": batch_index,
+                                   "control_codes": batch_codes,
+                                   "reason": reason})
+            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
+            continue
+        except Exception as e:
+            reason = f"response_parse: {type(e).__name__}: {e}"
+            failed_batches.append({"batch_index": batch_index,
+                                   "control_codes": batch_codes,
+                                   "reason": reason})
+            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
+            continue
+
+        # Schema guard: a 200 response with valid JSON but the wrong shape
+        # (e.g. {"items": [...]} instead of {"checkpoints": [...]}) used to
+        # silently coerce to an empty list and skip the batch.
+        if not isinstance(data.get("checkpoints"), list):
+            reason = "schema: 'checkpoints' missing or not a list"
+            failed_batches.append({"batch_index": batch_index,
+                                   "control_codes": batch_codes,
+                                   "reason": reason})
+            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
             continue
 
         for ctrl_cp in data.get("checkpoints", []):
@@ -487,13 +556,15 @@ Rules:
               f"{(len(controls) + 9) // 10}: {total_checkpoints} total")
 
     print(f"    Generated {total_checkpoints} checkpoints "
-          f"for {len(controls)} controls")
+          f"for {len(controls)} controls "
+          f"(failed_batches={len(failed_batches)})")
 
     # Sync control_library with any new checkpoint control_codes
     from backend.checkpoint_seed import ensure_control_library_sync
     ensure_control_library_sync(db)
 
-    return total_checkpoints
+    return {"total_checkpoints": total_checkpoints,
+            "failed_batches": failed_batches}
 
 
 # ── Vector search for framework context ──────────────────────────────────────
