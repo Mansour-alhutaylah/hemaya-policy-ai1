@@ -14,6 +14,7 @@ Results written to:
   mapping_reviews          — evidence snippets per control
 """
 
+import hashlib
 import json
 import re
 import time
@@ -27,6 +28,15 @@ from backend.vector_store import get_embeddings, search_similar_chunks
 
 FRAMEWORK_ID = "ECC-2:2024"
 FRAMEWORK_DISPLAY = "Essential Cybersecurity Controls v2 (ECC-2:2024)"
+
+# Phase 7 verification cache — cache_key invariants.
+# Bump ECC2_PROMPT_VERSION whenever the verifier prompt, the grounding logic,
+# or the post-processing of GPT results changes meaningfully. The bump
+# invalidates all old cache rows because the new key won't match.
+# ECC2_MODEL must match the model name used inside call_llm (or any future
+# override), so changing models also invalidates the cache automatically.
+ECC2_PROMPT_VERSION = "v1"
+ECC2_MODEL = "gpt-4o-mini"
 
 # ── Stricter verifier prompt for official regulatory controls ─────────────────
 # Two-tier design:
@@ -245,6 +255,8 @@ async def _assess_control(
     policy_text: str,
     bm25_index=None,
     diag: bool = False,
+    db=None,
+    policy_hash: str | None = None,
 ) -> dict:
     """
     Assess one ECC-2 control against policy text.
@@ -259,6 +271,13 @@ async def _assess_control(
     bm25_index: pre-built BM25Okapi over policy_chunks — pass from caller to
                 avoid rebuilding the index 200× (one rebuild per control call).
     diag:       when True, print focused_text snippet and raw GPT response.
+    db, policy_hash: when both provided, read/write the
+                ecc2_verification_cache. Cache is keyed on
+                (control_code, policy_hash, ECC2_PROMPT_VERSION, ECC2_MODEL).
+                On cache hit: skip GPT call AND grounding (results are stored
+                post-grounded). On miss: call GPT + ground as today, then
+                write the post-grounded results back. Cache failures are
+                swallowed and never block the analysis.
     """
     from backend.checkpoint_analyzer import _find_relevant_sections
     from rank_bm25 import BM25Okapi
@@ -305,53 +324,119 @@ async def _assess_control(
             "source": "L3_audit_hint",
         })
 
-    # Build GPT prompt
-    cp_lines = "\n".join(
-        f"CHECKPOINT {cp['checkpoint_index']} [source={cp['source']}]: {cp['requirement']}"
-        for cp in checkpoints
-    )
-    user_msg = (
-        f"Control: {control_code} ({control['control_type']})\n"
-        f"Domain: {control['domain_code']} — {control['subdomain_code']}\n\n"
-        f"{cp_lines}\n\n"
-        f"POLICY TEXT EVIDENCE:\n{focused_text[:12000]}"
-    )
+    # ── Phase 7 cache lookup ─────────────────────────────────────────────────
+    # Key invariants: control_code | policy_hash | prompt_version | model.
+    # Any of those changing produces a cache miss; old rows become dormant.
+    # Cached rows store POST-grounded results, so on hit we skip BOTH the GPT
+    # call and the grounding pass. Downstream scoring runs identically.
+    cache_key = None
+    results = None  # populated from cache or from GPT
+    if db is not None and policy_hash:
+        key_input = (
+            f"ECC2|{control_code}|{policy_hash}|"
+            f"{ECC2_PROMPT_VERSION}|{ECC2_MODEL}"
+        )
+        cache_key = hashlib.sha256(key_input.encode("utf-8")).hexdigest()
+        try:
+            row = db.execute(sql_text(
+                "SELECT result FROM ecc2_verification_cache WHERE cache_key = :ck"
+            ), {"ck": cache_key}).fetchone()
+            if row is not None:
+                cached = row[0]
+                if isinstance(cached, str):  # JSONB driver round-trip safety
+                    cached = json.loads(cached)
+                results = cached
+                if diag:
+                    print(f"    [ECC2][DIAG][{control_code}] CACHE HIT")
+        except Exception as cache_read_err:
+            # Cache failure must never block analysis.
+            print(f"    [ECC2][{control_code}] cache read failed: {cache_read_err}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
-    # Call GPT
-    try:
-        raw = await call_llm(ECC2_VERIFIER_PROMPT, user_msg)
-        if diag:
-            print(f"    [ECC2][DIAG][{control_code}] raw GPT response: {raw[:600]}")
-        gpt_data = json.loads(raw)
-        results = gpt_data.get("checkpoints", [])
-    except Exception as e:
-        print(f"    [ECC2][{control_code}] GPT error: {e}")
-        results = [
-            {
-                "index": cp["checkpoint_index"],
-                "met": False,
-                "confidence": 0.1,
-                "evidence": f"GPT error: {str(e)[:80]}",
-            }
+    if results is None:
+        # ── Build GPT prompt and call (cache miss path) ──────────────────────
+        cp_lines = "\n".join(
+            f"CHECKPOINT {cp['checkpoint_index']} [source={cp['source']}]: {cp['requirement']}"
             for cp in checkpoints
-        ]
+        )
+        user_msg = (
+            f"Control: {control_code} ({control['control_type']})\n"
+            f"Domain: {control['domain_code']} — {control['subdomain_code']}\n\n"
+            f"{cp_lines}\n\n"
+            f"POLICY TEXT EVIDENCE:\n{focused_text[:12000]}"
+        )
 
-    # Apply grounding check — reject evidence that can't be found in policy text
-    for v in results:
-        if v.get("met"):
-            ev = v.get("evidence", "")
-            if ev and ev.strip().lower() != "no evidence found":
-                grounded, actual, sim = _find_grounded_evidence(ev, policy_text)
-                if not grounded:
-                    v["met"] = False
-                    v["confidence"] = max(0.05, float(v.get("confidence", 0.5)) - 0.4)
-                    v["evidence"] = "Evidence could not be grounded in policy text"
-                    print(
-                        f"    [ECC2][{control_code}] CP{v.get('index')} "
-                        f"GROUNDING REJECTED (sim={sim:.2f})"
-                    )
-                else:
-                    v["evidence"] = actual
+        try:
+            raw = await call_llm(ECC2_VERIFIER_PROMPT, user_msg)
+            if diag:
+                print(f"    [ECC2][DIAG][{control_code}] raw GPT response: {raw[:600]}")
+            gpt_data = json.loads(raw)
+            results = gpt_data.get("checkpoints", [])
+        except Exception as e:
+            print(f"    [ECC2][{control_code}] GPT error: {e}")
+            results = [
+                {
+                    "index": cp["checkpoint_index"],
+                    "met": False,
+                    "confidence": 0.1,
+                    "evidence": f"GPT error: {str(e)[:80]}",
+                }
+                for cp in checkpoints
+            ]
+
+        # Apply grounding check — reject evidence that can't be found in policy text
+        for v in results:
+            if v.get("met"):
+                ev = v.get("evidence", "")
+                if ev and ev.strip().lower() != "no evidence found":
+                    grounded, actual, sim = _find_grounded_evidence(ev, policy_text)
+                    if not grounded:
+                        v["met"] = False
+                        v["confidence"] = max(0.05, float(v.get("confidence", 0.5)) - 0.4)
+                        v["evidence"] = "Evidence could not be grounded in policy text"
+                        print(
+                            f"    [ECC2][{control_code}] CP{v.get('index')} "
+                            f"GROUNDING REJECTED (sim={sim:.2f})"
+                        )
+                    else:
+                        v["evidence"] = actual
+
+        # ── Cache write (post-grounded results) ──────────────────────────────
+        # Best-effort: cache failures must not abort analysis. Don't cache the
+        # synthetic GPT-error fallback; it would poison subsequent runs.
+        is_gpt_error_fallback = (
+            len(results) == len(checkpoints)
+            and all(
+                isinstance(v.get("evidence"), str) and v["evidence"].startswith("GPT error: ")
+                for v in results
+            )
+        )
+        if db is not None and cache_key is not None and not is_gpt_error_fallback:
+            try:
+                db.execute(sql_text("""
+                    INSERT INTO ecc2_verification_cache
+                      (cache_key, control_code, policy_hash, prompt_version, model, result)
+                    VALUES
+                      (:ck, :cc, :ph, :pv, :mdl, CAST(:res AS JSONB))
+                    ON CONFLICT (cache_key) DO NOTHING
+                """), {
+                    "ck":  cache_key,
+                    "cc":  control_code,
+                    "ph":  policy_hash,
+                    "pv":  ECC2_PROMPT_VERSION,
+                    "mdl": ECC2_MODEL,
+                    "res": json.dumps(results),
+                })
+                db.commit()
+            except Exception as cache_write_err:
+                print(f"    [ECC2][{control_code}] cache write failed: {cache_write_err}")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
     # ── Build result map ─────────────────────────────────────────────────────
     res_map = {v.get("index"): v for v in results}
@@ -630,8 +715,12 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
                          for r in chunk_rows if r[0]]
 
     policy_text = "\n\n".join(c["text"] for c in policy_chunks)
+    # Phase 7 cache key invariant: hash the joined policy text once per run.
+    # Truncated to 16 hex chars to match the legacy verification_cache pattern
+    # (checkpoint_analyzer.py) so both caches behave consistently.
+    policy_hash = hashlib.sha256(policy_text.encode("utf-8")).hexdigest()[:16]
     print(f"  [ECC2] Loaded {len(policy_chunks)} chunks "
-          f"({len(policy_text)} chars total policy text)")
+          f"({len(policy_text)} chars total policy text, hash={policy_hash})")
 
     # ── Build BM25 index ONCE over the policy corpus ──────────────────────
     # Previously rebuilt inside _assess_control for every control (200×).
@@ -658,6 +747,8 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
                 ctrl, policy_chunks, policy_text,
                 bm25_index=global_bm25,
                 diag=(ctrl_idx < 3),  # detailed logs for first 3 controls only
+                db=db,
+                policy_hash=policy_hash,
             )
 
     total_ctrl = len(active_controls)
