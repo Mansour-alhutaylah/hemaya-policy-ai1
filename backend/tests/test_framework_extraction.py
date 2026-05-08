@@ -647,3 +647,150 @@ def test_checkpoint_batch_429_is_retried(monkeypatch):
     assert call_count["n"] == 3
     assert len(result["failed_batches"]) == 1
     assert result["failed_batches"][0]["retry_count"] == 2
+
+
+def _make_db_for_repair(missing_codes, chunk_text="dummy framework text"):
+    """Mock db for generate_missing_checkpoints_for_framework.
+    Simulates: SELECT missing controls + SELECT framework_chunks.
+    """
+    db = MagicMock()
+    missing_result = MagicMock()
+    missing_result.fetchall.return_value = [
+        (f"id-{c}", c, f"Title {c}", "[]") for c in missing_codes
+    ]
+    chunks_result = MagicMock()
+    chunks_result.fetchall.return_value = [(chunk_text,), ("more context",)]
+    insert_result = MagicMock()
+    insert_result.rowcount = 1
+
+    def execute_side_effect(sql, params=None):
+        sql_str = str(sql).upper()
+        if "FRAMEWORK_CHUNKS" in sql_str and "CHUNK_TEXT" in sql_str:
+            return chunks_result
+        if ("CONTROL_LIBRARY" in sql_str and "FRAMEWORK_ID" in sql_str
+                and "NOT EXISTS" in sql_str):
+            return missing_result
+        if "INSERT INTO CONTROL_CHECKPOINTS" in sql_str:
+            return insert_result
+        # default: empty result for anything else
+        r = MagicMock()
+        r.fetchall.return_value = []
+        r.fetchone.return_value = (0,)
+        return r
+
+    db.execute.side_effect = execute_side_effect
+    return db
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 15: Phase 4 repair — generate_missing_checkpoints_for_framework
+# adds checkpoints ONLY for missing controls. No DELETE. Single commit.
+# ─────────────────────────────────────────────────────────────────────────
+def test_repair_adds_checkpoints_only_for_missing_controls(monkeypatch):
+    db = _make_db_for_repair(["1-2-2", "1-7-1"])
+
+    inner = json.dumps({
+        "checkpoints": [
+            {"control_code": "1-2-2", "items": [
+                {"index": 1, "requirement": "R1", "keywords": []},
+                {"index": 2, "requirement": "R2", "keywords": []},
+            ]},
+            {"control_code": "1-7-1", "items": [
+                {"index": 1, "requirement": "R3", "keywords": []},
+            ]},
+        ]
+    })
+    raw_body = json.dumps({"choices": [{"message": {"content": inner}}]})
+    response = _make_response(200, raw_body=raw_body)
+
+    async def fake_post(*args, **kwargs):
+        return response
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_missing_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+    ))
+
+    assert result["total_checkpoints_added"] == 3
+    assert result["controls_repaired"] == 2
+    assert result["controls_missing_before"] == 2
+    assert result["failed_batches"] == []
+
+    # No DELETE statement should have been issued — repair must not destroy data.
+    delete_calls = sum(
+        1 for call in db.execute.call_args_list
+        if "DELETE" in str(call.args[0]).upper()
+    )
+    assert delete_calls == 0
+
+    # Exactly 3 INSERTs and exactly 1 commit.
+    insert_calls = sum(
+        1 for call in db.execute.call_args_list
+        if "INSERT INTO control_checkpoints"
+        in str(call.args[0]).replace("\n", " ").replace("  ", " ")
+    )
+    assert insert_calls == 3
+    assert db.commit.call_count == 1
+    assert db.rollback.call_count == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 16: repair with no missing controls is a no-op.
+# ─────────────────────────────────────────────────────────────────────────
+def test_repair_noop_when_no_missing_controls(monkeypatch):
+    db = _make_db_for_repair([])  # empty list = no missing controls
+
+    # OpenAI must not be called.
+    call_count = {"n": 0}
+
+    async def fake_post(*args, **kwargs):
+        call_count["n"] += 1
+        return _make_response(200)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_missing_checkpoints_for_framework(
+        db=db, framework_name="CLEAN", framework_id="fid-clean",
+    ))
+
+    assert result == {
+        "total_checkpoints_added": 0,
+        "controls_repaired": 0,
+        "controls_missing_before": 0,
+        "failed_batches": [],
+    }
+    assert call_count["n"] == 0
+    assert db.commit.call_count == 0
+    assert db.rollback.call_count == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 17: repair atomicity — failure rolls back, no INSERTs persist.
+# ─────────────────────────────────────────────────────────────────────────
+def test_repair_atomic_on_failure(monkeypatch):
+    db = _make_db_for_repair(["X-1", "X-2"])
+
+    # Always fail with HTTP 500.
+    async def fake_post(*args, **kwargs):
+        return _make_response(500, raw_body="upstream error")
+
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_missing_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+    ))
+
+    assert result["total_checkpoints_added"] == 0
+    assert result["controls_repaired"] == 0
+    assert result["controls_missing_before"] == 2
+    assert len(result["failed_batches"]) == 1
+
+    # Atomic: rollback called, no INSERTs, no commit.
+    assert db.rollback.call_count == 1
+    assert db.commit.call_count == 0
+    insert_calls = sum(
+        1 for call in db.execute.call_args_list
+        if "INSERT INTO control_checkpoints"
+        in str(call.args[0]).replace("\n", " ").replace("  ", " ")
+    )
+    assert insert_calls == 0
