@@ -1482,6 +1482,31 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorised")
 
+    # Phase 4b readiness gate. Refuse to analyze against any framework that
+    # has controls without checkpoints — those produce silent "fake
+    # compliance" findings. Returns HTTP 409 with the per-framework status
+    # so the UI can render an actionable "framework needs to be re-uploaded
+    # / repaired" warning.
+    from backend.framework_loader import framework_readiness
+    unready = []
+    for fname in (request.frameworks or []):
+        rd = framework_readiness(db, fname)
+        if not rd["is_ready"]:
+            unready.append({
+                "framework": fname,
+                "reason": rd["reason"],
+                "total_controls": rd["total_controls"],
+                "zero_checkpoint_controls": rd["zero_cp_controls"],
+            })
+    if unready:
+        raise HTTPException(status_code=409, detail={
+            "error": "frameworks_not_ready",
+            "message": ("One or more frameworks are incomplete (some controls "
+                        "have no checkpoints). Re-upload the affected framework "
+                        "with force=true to retry."),
+            "unready_frameworks": unready,
+        })
+
     resume = bool(getattr(request, "resume", False))
 
     # Reset pause flag — a new run (or a resume) is starting.
@@ -1963,14 +1988,33 @@ async def upload_framework_doc(
     result["force_reprocess"] = force
     result["file_hash"] = file_hash
 
-    # Only persist file_hash on the framework row if extraction was complete.
-    # Incomplete extractions must not be cached: a future re-upload with the
-    # same hash should re-run the pipeline rather than return a partial result.
-    persist_hash = bool(result.get("extraction_complete", True))
-    if not persist_hash:
+    # Phase 4b readiness gate. Only persist file_hash AND only mark the
+    # framework "ready" when BOTH conditions hold:
+    #   1. Extraction (windows + checkpoint generation) reported complete
+    #      (failed_windows + failed_checkpoint_batches both empty)
+    #   2. Every control_library row has at least one matching
+    #      control_checkpoints row (framework_readiness.is_ready)
+    # Without (2), analysis would silently report "no findings" for any
+    # zero-checkpoint control — the "fake compliance" failure the audit
+    # identified.
+    from backend.framework_loader import framework_readiness
+    extraction_complete = bool(result.get("extraction_complete", True))
+    rd = framework_readiness(db, framework)
+    persist_hash = extraction_complete and rd["is_ready"]
+    if extraction_complete and not rd["is_ready"]:
+        print(f"[fw-upload] extraction reported complete BUT readiness gate "
+              f"failed: {rd['reason']}; file_hash will NOT be persisted")
+    elif not extraction_complete:
         print(f"[fw-upload] extraction incomplete "
-              f"({result.get('failed_windows_count', 0)} window(s) failed); "
+              f"({result.get('failed_windows_count', 0)} window(s), "
+              f"{result.get('failed_checkpoint_batches_count', 0)} batch(es) failed); "
               f"file_hash will NOT be persisted to frameworks row")
+    new_status = (
+        "ready" if persist_hash
+        else ("incomplete" if extraction_complete else "failed")
+    )
+    result["readiness"] = rd
+    result["extraction_status"] = new_status
 
     # Update framework row with the file metadata so the UI can show the
     # real uploaded document and the Replace flow works cleanly.
@@ -1985,7 +2029,8 @@ async def upload_framework_doc(
                    uploaded_at = :at,
                    uploaded_by = :uby,
                    version     = COALESCE(NULLIF(:ver, ''), version),
-                   description = COALESCE(NULLIF(:desc, ''), description)
+                   description = COALESCE(NULLIF(:desc, ''), description),
+                   extraction_status = :ext_status
              WHERE name = :name
         """), {
             "ofn":  original_name,
@@ -1997,6 +2042,7 @@ async def upload_framework_doc(
             "uby":  str(current_user.id) if hasattr(current_user, "id") else None,
             "ver":  (version or "").strip(),
             "desc": (description or "").strip(),
+            "ext_status": new_status,
             "name": framework,
         })
         db.commit()

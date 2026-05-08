@@ -888,3 +888,87 @@ def test_repair_atomic_on_failure(monkeypatch):
         in str(call.args[0]).replace("\n", " ").replace("  ", " ")
     )
     assert insert_calls == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 19: framework_readiness — happy path: every control has a checkpoint.
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_returns_ready_for_complete_framework():
+    db = MagicMock()
+    row = MagicMock()
+    # (fwid, total_controls, zero_cp_controls)
+    row.__iter__ = lambda self: iter(("fid-1", 100, 0))
+    # Need to support tuple unpacking; use real tuple
+    select_result = MagicMock()
+    select_result.fetchone.return_value = ("fid-1", 100, 0)
+    db.execute.return_value = select_result
+
+    rd = framework_loader.framework_readiness(db, "MY_FRAMEWORK")
+    assert rd["is_ready"] is True
+    assert rd["framework_id"] == "fid-1"
+    assert rd["total_controls"] == 100
+    assert rd["zero_cp_controls"] == 0
+    assert rd["reason"] is None
+    assert rd["structured"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 20: framework_readiness — not ready when any zero_cp control exists.
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_not_ready_when_zero_cp_exists():
+    db = MagicMock()
+    select_result = MagicMock()
+    select_result.fetchone.return_value = ("fid-1", 50, 3)
+    db.execute.return_value = select_result
+
+    rd = framework_loader.framework_readiness(db, "MY_FRAMEWORK")
+    assert rd["is_ready"] is False
+    assert rd["zero_cp_controls"] == 3
+    assert rd["total_controls"] == 50
+    assert "3 of 50" in rd["reason"]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 21: framework_readiness — structured framework allowlist
+# (ECC-2:2024) is vacuously ready.
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_structured_framework_is_ready():
+    db = MagicMock()
+    # The function must NOT query the DB for structured frameworks.
+    db.execute.side_effect = AssertionError("structured framework should not query DB")
+
+    rd = framework_loader.framework_readiness(db, "ECC-2:2024")
+    assert rd["is_ready"] is True
+    assert rd["structured"] is True
+    assert rd["reason"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 22: framework_readiness — unknown framework is not ready.
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_unknown_framework_is_not_ready():
+    db = MagicMock()
+    select_result = MagicMock()
+    select_result.fetchone.return_value = None  # no matching row
+    db.execute.return_value = select_result
+
+    rd = framework_loader.framework_readiness(db, "NONEXISTENT")
+    assert rd["is_ready"] is False
+    assert "not found" in rd["reason"]
+    assert rd["framework_id"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 23: framework_readiness — empty framework (zero controls) is NOT ready.
+# Prevents an empty-shell framework from passing the gate.
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_empty_framework_is_not_ready():
+    db = MagicMock()
+    select_result = MagicMock()
+    select_result.fetchone.return_value = ("fid-empty", 0, 0)
+    db.execute.return_value = select_result
+
+    rd = framework_loader.framework_readiness(db, "EMPTY")
+    assert rd["is_ready"] is False
+    assert rd["total_controls"] == 0
+    assert "zero controls" in rd["reason"]

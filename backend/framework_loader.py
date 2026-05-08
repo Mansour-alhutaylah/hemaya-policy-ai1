@@ -787,3 +787,93 @@ def get_framework_stats(db):
         GROUP BY f.name
     """)).fetchall()
     return {r[0]: {"chunks": r[1], "documents": r[2]} for r in results}
+
+
+# ── Phase 4b: framework readiness gate ──────────────────────────────────────
+
+# Special framework names that use the structured ECC tables instead of
+# control_library / control_checkpoints. They are considered ready by
+# default because the readiness invariant (every control has a checkpoint)
+# is enforced by their own table structure.
+_STRUCTURED_FRAMEWORKS = frozenset({"ECC-2:2024"})
+
+
+def framework_readiness(db, framework_name):
+    """Return whether a framework is safe to cache and to analyze against.
+
+    A framework is READY iff every control_library row for the framework
+    has at least one matching control_checkpoints row. This invariant is
+    what prevents the "fake compliance coverage" failure mode: analysis of
+    a control with zero checkpoints reports no findings, falsely indicating
+    compliance.
+
+    Returns:
+        {
+            "is_ready":        bool,
+            "framework_id":    str | None,
+            "total_controls":  int,
+            "zero_cp_controls": int,
+            "reason":          str | None,  # human-readable when not ready
+            "structured":      bool,        # True for ECC-2:2024 et al.
+        }
+    """
+    if framework_name in _STRUCTURED_FRAMEWORKS:
+        return {
+            "is_ready": True,
+            "framework_id": None,
+            "total_controls": 0,
+            "zero_cp_controls": 0,
+            "reason": None,
+            "structured": True,
+        }
+
+    row = db.execute(text("""
+        SELECT
+            f.id::text AS fwid,
+            (SELECT COUNT(*) FROM control_library cl
+                WHERE cl.framework_id = f.id) AS total,
+            (SELECT COUNT(*) FROM control_library cl
+                WHERE cl.framework_id = f.id
+                  AND NOT EXISTS (
+                      SELECT 1 FROM control_checkpoints cc
+                      WHERE cc.framework = cl.framework_id::text
+                        AND cc.control_code = cl.control_code
+                  )) AS zero_cp
+        FROM frameworks f
+        WHERE f.name = :n
+    """), {"n": framework_name}).fetchone()
+
+    if not row:
+        return {
+            "is_ready": False,
+            "framework_id": None,
+            "total_controls": 0,
+            "zero_cp_controls": 0,
+            "reason": "framework not found",
+            "structured": False,
+        }
+
+    fwid, total, zero_cp = row
+    # An empty framework (no control_library rows) is treated as NOT ready —
+    # there is nothing to analyze against. The structured allowlist above is
+    # the only "vacuously ready" path.
+    if total == 0:
+        return {
+            "is_ready": False,
+            "framework_id": fwid,
+            "total_controls": 0,
+            "zero_cp_controls": 0,
+            "reason": "framework has zero controls; upload required",
+            "structured": False,
+        }
+
+    is_ready = (zero_cp == 0)
+    return {
+        "is_ready": is_ready,
+        "framework_id": fwid,
+        "total_controls": total,
+        "zero_cp_controls": zero_cp,
+        "reason": (None if is_ready
+                   else f"{zero_cp} of {total} control(s) have no checkpoints"),
+        "structured": False,
+    }
