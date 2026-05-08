@@ -239,7 +239,13 @@ def load_ecc2_controls(db) -> list[dict]:
     return controls
 
 
-async def _assess_control(control: dict, policy_chunks: list, policy_text: str) -> dict:
+async def _assess_control(
+    control: dict,
+    policy_chunks: list,
+    policy_text: str,
+    bm25_index=None,
+    diag: bool = False,
+) -> dict:
     """
     Assess one ECC-2 control against policy text.
 
@@ -249,6 +255,10 @@ async def _assess_control(control: dict, policy_chunks: list, policy_text: str) 
 
     L3 items are labelled in the prompt so GPT knows they are auxiliary hints,
     not additional regulatory requirements.
+
+    bm25_index: pre-built BM25Okapi over policy_chunks — pass from caller to
+                avoid rebuilding the index 200× (one rebuild per control call).
+    diag:       when True, print focused_text snippet and raw GPT response.
     """
     from backend.checkpoint_analyzer import _find_relevant_sections
     from rank_bm25 import BM25Okapi
@@ -258,17 +268,23 @@ async def _assess_control(control: dict, policy_chunks: list, policy_text: str) 
     audit_qs = control["audit_questions"]
     keywords = control["keywords"]
 
-    # Build BM25 index once for this control
-    if policy_chunks:
+    # Build BM25 index only if caller didn't provide one
+    if bm25_index is None and policy_chunks:
         tokenized = [c["text"].lower().split() for c in policy_chunks]
         bm25_index = BM25Okapi(tokenized)
-    else:
-        bm25_index = None
 
     # Find relevant policy sections using L1 text + L3 keywords
     focused_text, retrieval_quality = _find_relevant_sections(
         policy_chunks, control_text, keywords, bm25=bm25_index, offset=0
     )
+
+    if diag:
+        print(
+            f"    [ECC2][DIAG][{control_code}] "
+            f"focused_text={len(focused_text)} chars | "
+            f"retrieval_quality={retrieval_quality:.3f}"
+        )
+        print(f"    [ECC2][DIAG][{control_code}] focused_text[:300]: {focused_text[:300]!r}")
 
     # Build verification checkpoints
     checkpoints = [
@@ -304,6 +320,8 @@ async def _assess_control(control: dict, policy_chunks: list, policy_text: str) 
     # Call GPT
     try:
         raw = await call_llm(ECC2_VERIFIER_PROMPT, user_msg)
+        if diag:
+            print(f"    [ECC2][DIAG][{control_code}] raw GPT response: {raw[:600]}")
         gpt_data = json.loads(raw)
         results = gpt_data.get("checkpoints", [])
     except Exception as e:
@@ -615,6 +633,17 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
     print(f"  [ECC2] Loaded {len(policy_chunks)} chunks "
           f"({len(policy_text)} chars total policy text)")
 
+    # ── Build BM25 index ONCE over the policy corpus ──────────────────────
+    # Previously rebuilt inside _assess_control for every control (200×).
+    # The index only depends on policy_chunks, not the control being assessed.
+    from rank_bm25 import BM25Okapi
+    if policy_chunks:
+        _bm25_tokenized = [c["text"].lower().split() for c in policy_chunks]
+        global_bm25 = BM25Okapi(_bm25_tokenized)
+        print(f"  [ECC2] BM25 index built over {len(policy_chunks)} chunks")
+    else:
+        global_bm25 = None
+
     # ── Ensure legacy frameworks row exists (for compliance_results FK) ──
     legacy_fw_id = _ensure_framework_row(db)
     print(f"  [ECC2] Legacy framework row: {legacy_fw_id}")
@@ -623,16 +652,22 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
     sem = asyncio.Semaphore(8)
     results_list: list[dict] = []
 
-    async def _run_one(ctrl):
+    async def _run_one(ctrl, ctrl_idx: int):
         async with sem:
-            return await _assess_control(ctrl, policy_chunks, policy_text)
+            return await _assess_control(
+                ctrl, policy_chunks, policy_text,
+                bm25_index=global_bm25,
+                diag=(ctrl_idx < 3),  # detailed logs for first 3 controls only
+            )
 
     total_ctrl = len(active_controls)
     batch_size = 8
     for i in range(0, total_ctrl, batch_size):
         batch = active_controls[i:i + batch_size]
         t1 = time.time()
-        batch_results = await asyncio.gather(*[_run_one(c) for c in batch])
+        batch_results = await asyncio.gather(
+            *[_run_one(c, i + j) for j, c in enumerate(batch)]
+        )
         results_list.extend(batch_results)
         done = min(i + batch_size, total_ctrl)
         elapsed = round(time.time() - t1, 1)
