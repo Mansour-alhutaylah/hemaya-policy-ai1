@@ -24,6 +24,13 @@ WINDOW_OVERLAP = 2000
 MAX_EXTRACT_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 1.0
 
+# Per-checkpoint-batch retry: same shape, but with linearly increasing
+# backoff (1 s after attempt 1, 2 s after attempt 2). Retries cover transient
+# failure modes (5xx, 429, timeouts, malformed JSON, wrong schema). Permanent
+# 4xx (except 429) are not retried.
+MAX_CHECKPOINT_ATTEMPTS = 3
+CHECKPOINT_RETRY_BACKOFF_SECONDS = 1.0
+
 
 def _sliding_windows(s, window_size=WINDOW_SIZE, overlap=WINDOW_OVERLAP):
     """Yield (char_start, char_end, text) tuples in deterministic window order."""
@@ -491,73 +498,89 @@ Rules:
 
         batch_index = i // 10 + 1
         batch_codes = [c[1] for c in batch]
-        data = None
-        # Transport guard: HTTP / network errors. Any failure here is recorded
-        # so the caller can mark extraction_complete=False and skip the cache.
-        try:
-            r = await _openai_client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                         "Content-Type": "application/json"},
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content":
-                            f"FRAMEWORK: {framework_name}\n\n"
-                            f"CONTROLS:\n{batch_info}\n\n"
-                            f"FRAMEWORK TEXT (for context):\n{batch_context}"},
-                    ],
-                    "temperature": 0.0,
-                    "max_tokens": 4000,
-                    "response_format": {"type": "json_object"},
-                },
-            )
-        except Exception as e:
-            reason = f"transport: {type(e).__name__}: {e}"
-            failed_batches.append({"batch_index": batch_index,
-                                   "control_codes": batch_codes,
-                                   "reason": reason})
-            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
-            continue
+        data = None  # set to a dict with valid 'checkpoints' on success
+        last_reason = None
+        attempts_used = 0
+        permanent = False  # set to True for non-retryable 4xx responses
 
-        if r.status_code != 200:
-            reason = f"HTTP {r.status_code}: {r.text[:200]}"
-            failed_batches.append({"batch_index": batch_index,
-                                   "control_codes": batch_codes,
-                                   "reason": reason})
-            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
-            continue
+        for attempt in range(1, MAX_CHECKPOINT_ATTEMPTS + 1):
+            attempts_used = attempt
+            r = None
+            # Transport guard: HTTP / network errors → retryable.
+            try:
+                r = await _openai_client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                             "Content-Type": "application/json"},
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content":
+                                f"FRAMEWORK: {framework_name}\n\n"
+                                f"CONTROLS:\n{batch_info}\n\n"
+                                f"FRAMEWORK TEXT (for context):\n{batch_context}"},
+                        ],
+                        "temperature": 0.0,
+                        "max_tokens": 4000,
+                        "response_format": {"type": "json_object"},
+                    },
+                )
+            except Exception as e:
+                last_reason = f"transport: {type(e).__name__}: {e}"
+                print(f"    [fw-checkpoints] batch {batch_index} "
+                      f"attempt {attempt}/{MAX_CHECKPOINT_ATTEMPTS}: failure ({last_reason})")
+            else:
+                if r.status_code != 200:
+                    last_reason = f"HTTP {r.status_code}: {r.text[:200]}"
+                    # Permanent 4xx (except 429 rate limit) — stop retrying.
+                    if 400 <= r.status_code < 500 and r.status_code != 429:
+                        permanent = True
+                    print(f"    [fw-checkpoints] batch {batch_index} "
+                          f"attempt {attempt}/{MAX_CHECKPOINT_ATTEMPTS}: failure ({last_reason})"
+                          f"{' [permanent]' if permanent else ''}")
+                else:
+                    # JSON guard: explicit JSONDecodeError → retryable.
+                    try:
+                        candidate = json.loads(r.json()["choices"][0]["message"]["content"])
+                    except json.JSONDecodeError as e:
+                        last_reason = f"JSONDecodeError: {e}"
+                        print(f"    [fw-checkpoints] batch {batch_index} "
+                              f"attempt {attempt}/{MAX_CHECKPOINT_ATTEMPTS}: failure ({last_reason})")
+                    except Exception as e:
+                        last_reason = f"response_parse: {type(e).__name__}: {e}"
+                        print(f"    [fw-checkpoints] batch {batch_index} "
+                              f"attempt {attempt}/{MAX_CHECKPOINT_ATTEMPTS}: failure ({last_reason})")
+                    else:
+                        # Schema guard: wrong shape → retryable (LLM blip).
+                        if not isinstance(candidate.get("checkpoints"), list):
+                            last_reason = "schema: 'checkpoints' missing or not a list"
+                            print(f"    [fw-checkpoints] batch {batch_index} "
+                                  f"attempt {attempt}/{MAX_CHECKPOINT_ATTEMPTS}: failure ({last_reason})")
+                        else:
+                            data = candidate
+                            print(f"    [fw-checkpoints] batch {batch_index} "
+                                  f"attempt {attempt}/{MAX_CHECKPOINT_ATTEMPTS}: success "
+                                  f"({len(data['checkpoints'])} control entries)")
+                            break  # success — exit retry loop
 
-        # JSON guard: explicit JSONDecodeError handling. Without this, the
-        # outer try/except previously swallowed parse errors and silently
-        # dropped 10 controls' worth of checkpoints per malformed batch.
-        try:
-            data = json.loads(r.json()["choices"][0]["message"]["content"])
-        except json.JSONDecodeError as e:
-            reason = f"JSONDecodeError: {e}"
-            failed_batches.append({"batch_index": batch_index,
-                                   "control_codes": batch_codes,
-                                   "reason": reason})
-            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
-            continue
-        except Exception as e:
-            reason = f"response_parse: {type(e).__name__}: {e}"
-            failed_batches.append({"batch_index": batch_index,
-                                   "control_codes": batch_codes,
-                                   "reason": reason})
-            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
-            continue
+            if permanent:
+                break  # don't retry hard 4xx
 
-        # Schema guard: a 200 response with valid JSON but the wrong shape
-        # (e.g. {"items": [...]} instead of {"checkpoints": [...]}) used to
-        # silently coerce to an empty list and skip the batch.
-        if not isinstance(data.get("checkpoints"), list):
-            reason = "schema: 'checkpoints' missing or not a list"
-            failed_batches.append({"batch_index": batch_index,
-                                   "control_codes": batch_codes,
-                                   "reason": reason})
-            print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
+            # Don't sleep after the last attempt.
+            if attempt < MAX_CHECKPOINT_ATTEMPTS:
+                await asyncio.sleep(CHECKPOINT_RETRY_BACKOFF_SECONDS * attempt)
+
+        if data is None:
+            # All attempts exhausted (or stopped early on permanent 4xx).
+            failed_batches.append({
+                "batch_index": batch_index,
+                "control_codes": batch_codes,
+                "reason": last_reason or "unknown",
+                "retry_count": max(0, attempts_used - 1),
+            })
+            print(f"    [fw-checkpoints] batch {batch_index}: PERMANENT FAILURE "
+                  f"after {attempts_used} attempt(s) ({last_reason})")
             continue
 
         # Buffer this batch's rows; do NOT execute INSERT yet.

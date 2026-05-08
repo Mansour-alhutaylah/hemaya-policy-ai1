@@ -90,6 +90,8 @@ def test_checkpoint_batch_http_error_is_tracked(monkeypatch):
     async def fake_post(*args, **kwargs):
         return bad_response
 
+    # Zero out backoff so the 3-attempt retry runs instantly.
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
     monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
 
     result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
@@ -102,6 +104,8 @@ def test_checkpoint_batch_http_error_is_tracked(monkeypatch):
     fb = result["failed_batches"][0]
     assert "HTTP 500" in fb["reason"]
     assert fb["control_codes"] == ["C-1", "C-2"]
+    # 3 attempts = 2 retries
+    assert fb["retry_count"] == 2
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -117,6 +121,7 @@ def test_checkpoint_batch_json_decode_error_is_tracked(monkeypatch):
     async def fake_post(*args, **kwargs):
         return response
 
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
     monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
 
     result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
@@ -129,6 +134,7 @@ def test_checkpoint_batch_json_decode_error_is_tracked(monkeypatch):
     fb = result["failed_batches"][0]
     assert "JSONDecodeError" in fb["reason"]
     assert fb["control_codes"] == ["C-1", "C-2"]
+    assert fb["retry_count"] == 2
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -145,6 +151,7 @@ def test_checkpoint_batch_schema_violation_is_tracked(monkeypatch):
     async def fake_post(*args, **kwargs):
         return response
 
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
     monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
 
     result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
@@ -158,6 +165,7 @@ def test_checkpoint_batch_schema_violation_is_tracked(monkeypatch):
     assert "schema" in fb["reason"]
     assert "checkpoints" in fb["reason"]
     assert fb["control_codes"] == ["C-1", "C-2"]
+    assert fb["retry_count"] == 2
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -205,6 +213,7 @@ def test_checkpoint_batch_transport_error_is_tracked(monkeypatch):
     async def fake_post(*args, **kwargs):
         raise httpx.TimeoutException("upstream timeout")
 
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
     monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
 
     result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
@@ -217,6 +226,7 @@ def test_checkpoint_batch_transport_error_is_tracked(monkeypatch):
     fb = result["failed_batches"][0]
     assert "transport" in fb["reason"]
     assert "TimeoutException" in fb["reason"]
+    assert fb["retry_count"] == 2
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -424,7 +434,10 @@ def test_atomic_partial_failure_inserts_nothing_and_rolls_back(monkeypatch):
     _patch_sync(monkeypatch)
     db = _make_db_with_n_controls(20)  # 2 batches of 10
 
-    # Sequence: batch 1 succeeds with valid checkpoints, batch 2 fails (HTTP 500).
+    # Sequence: batch 1 succeeds (1 call), batch 2 fails HTTP 500 on every
+    # retry (Phase 3 adds MAX_CHECKPOINT_ATTEMPTS=3 retries, so we queue
+    # 3 failures for batch 2). The retries are 5xx, which IS retryable but
+    # never recovers — the batch ends up in failed_batches.
     success_inner = json.dumps({
         "checkpoints": [
             {"control_code": f"C-{i}", "items": [
@@ -436,10 +449,13 @@ def test_atomic_partial_failure_inserts_nothing_and_rolls_back(monkeypatch):
     success_body = json.dumps({"choices": [{"message": {"content": success_inner}}]})
     success_response = _make_response(status_code=200, raw_body=success_body)
     failure_response = _make_response(status_code=500, raw_body="upstream error")
-    queue = [success_response, failure_response]
+    # batch 1: 1 call. batch 2: up to MAX_CHECKPOINT_ATTEMPTS=3 calls.
+    queue = [success_response] + [failure_response] * 3
 
     async def fake_post(*args, **kwargs):
         return queue.pop(0)
+    # Speed up the test: zero out retry backoff.
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
     monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
 
     result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
@@ -528,3 +544,106 @@ def test_atomic_happy_path_force_true_commits_once_with_all_inserts(monkeypatch)
     # Exactly one commit (atomic at the end). No rollback.
     assert db.commit.call_count == 1
     assert db.rollback.call_count == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 12: Phase 3 retry — first attempt returns invalid JSON, second
+# attempt returns valid JSON. The function recovers and the batch is NOT
+# in failed_batches.
+# ─────────────────────────────────────────────────────────────────────────
+def test_checkpoint_batch_retry_succeeds_on_second_attempt(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_two_controls()
+
+    bad_body = json.dumps({"choices": [{"message": {"content": "garbage {"}}]})
+    good_inner = json.dumps({
+        "checkpoints": [
+            {"control_code": "C-1", "items": [
+                {"index": 1, "requirement": "R1", "keywords": []},
+            ]},
+            {"control_code": "C-2", "items": [
+                {"index": 1, "requirement": "R2", "keywords": []},
+            ]},
+        ]
+    })
+    good_body = json.dumps({"choices": [{"message": {"content": good_inner}}]})
+    queue = [
+        _make_response(200, raw_body=bad_body),
+        _make_response(200, raw_body=good_body),
+    ]
+
+    async def fake_post(*args, **kwargs):
+        return queue.pop(0)
+
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=False, control_window_map={},
+    ))
+
+    assert result["total_checkpoints"] == 2
+    assert result["failed_batches"] == []
+    # Sanity: the queue should be exhausted (both responses were used).
+    assert queue == []
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 13: Phase 3 — permanent 4xx (e.g., 401 Unauthorized) is NOT retried.
+# Records the failure with retry_count=0 (one attempt, no retries).
+# ─────────────────────────────────────────────────────────────────────────
+def test_checkpoint_batch_permanent_4xx_is_not_retried(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_two_controls()
+
+    call_count = {"n": 0}
+
+    async def fake_post(*args, **kwargs):
+        call_count["n"] += 1
+        return _make_response(status_code=401, raw_body="invalid api key")
+
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=False, control_window_map={},
+    ))
+
+    # Exactly one OpenAI call — the 401 stops retries.
+    assert call_count["n"] == 1
+    assert result["total_checkpoints"] == 0
+    assert len(result["failed_batches"]) == 1
+    fb = result["failed_batches"][0]
+    assert "HTTP 401" in fb["reason"]
+    # retry_count == 0 because we used 1 attempt and stopped (no retries).
+    assert fb["retry_count"] == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 14: Phase 3 — HTTP 429 (rate limit) IS retried (treated as transient).
+# Confirms 429 is excluded from the permanent-4xx classification.
+# ─────────────────────────────────────────────────────────────────────────
+def test_checkpoint_batch_429_is_retried(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_two_controls()
+
+    call_count = {"n": 0}
+
+    async def fake_post(*args, **kwargs):
+        call_count["n"] += 1
+        return _make_response(status_code=429, raw_body="rate limit")
+
+    monkeypatch.setattr(framework_loader, "CHECKPOINT_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=False, control_window_map={},
+    ))
+
+    # Three attempts (initial + 2 retries) before giving up.
+    assert call_count["n"] == 3
+    assert len(result["failed_batches"]) == 1
+    assert result["failed_batches"][0]["retry_count"] == 2
