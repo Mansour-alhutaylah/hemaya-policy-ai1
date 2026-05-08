@@ -944,6 +944,24 @@ def test_framework_readiness_structured_framework_is_ready():
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Test 21b: SACS-002 is also a structured framework. It has its own
+# analyzer (run_sacs002_analysis) and its own tables (sacs002_metadata
+# + ecc_* layer tables) and must bypass the control_library readiness
+# check exactly like ECC-2:2024. A regression here means analyze_policy
+# returns HTTP 409 for any request that includes "SACS-002".
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_sacs002_is_ready():
+    db = MagicMock()
+    db.execute.side_effect = AssertionError("structured framework should not query DB")
+
+    rd = framework_loader.framework_readiness(db, "SACS-002")
+    assert rd["is_ready"] is True
+    assert rd["structured"] is True
+    assert rd["reason"] is None
+    assert rd["framework_id"] is None  # not looked up; vacuously ready
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Test 22: framework_readiness — unknown framework is not ready.
 # ─────────────────────────────────────────────────────────────────────────
 def test_framework_readiness_unknown_framework_is_not_ready():

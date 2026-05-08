@@ -791,11 +791,21 @@ def get_framework_stats(db):
 
 # ── Phase 4b: framework readiness gate ──────────────────────────────────────
 
-# Special framework names that use the structured ECC tables instead of
+# Special framework names that use structured tables instead of
 # control_library / control_checkpoints. They are considered ready by
 # default because the readiness invariant (every control has a checkpoint)
 # is enforced by their own table structure.
-_STRUCTURED_FRAMEWORKS = frozenset({"ECC-2:2024"})
+#
+# Each entry has a dedicated analyzer routed at /api/functions/analyze_policy
+# and its own backing tables:
+#   ECC-2:2024  → ecc_framework / ecc_compliance_metadata / ecc_ai_checkpoints
+#                  (run_ecc2_analysis)
+#   SACS-002    → sacs002_metadata + ecc_* layer tables
+#                  (run_sacs002_analysis)
+# Adding an entry here exempts the name from the control_library readiness
+# check; the structured analyzer is responsible for its own completeness
+# invariants.
+_STRUCTURED_FRAMEWORKS = frozenset({"ECC-2:2024", "SACS-002"})
 
 
 def framework_readiness(db, framework_name):
