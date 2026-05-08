@@ -426,11 +426,16 @@ async def _run_checkpoint_batch_loop(
         system = """For each control listed, generate 3-5 specific YES/NO checkpoints
 that an auditor would verify. Each checkpoint must be a concrete, testable requirement.
 
+CRITICAL — control_code formatting:
+Set "control_code" to EXACTLY the same string from the input CONTROLS list.
+Do NOT add prefixes (such as "ECC-"). Do NOT strip prefixes. Do NOT change
+the format. Copy the code character-for-character.
+
 Return ONLY valid JSON:
 {
   "checkpoints": [
     {
-      "control_code": "ECC-1-1-1",
+      "control_code": "<exact code from input>",
       "items": [
         {"index": 1, "requirement": "Cybersecurity strategy document exists",
          "keywords": ["strategy", "cybersecurity strategy"]},
@@ -538,8 +543,29 @@ Rules:
             continue
 
         # Buffer this batch's rows; do NOT execute INSERT yet.
+        # GPT can mangle control_code formatting (e.g., return "ECC-1-1-1"
+        # when we sent "1-1-1"), so each returned code is normalized to the
+        # exact code we requested. Codes that don't match any requested code
+        # are skipped — inserting them would produce orphan rows whose
+        # control_code matches no control_library row.
+        batch_code_set = set(batch_codes)
+        skipped_codes = []
+        normalized_codes = 0
         for ctrl_cp in data.get("checkpoints", []):
-            cc = ctrl_cp.get("control_code", "")
+            cc = (ctrl_cp.get("control_code") or "").strip()
+            if cc not in batch_code_set:
+                # Try to recover via prefix/suffix containment.
+                matched = next(
+                    (v for v in batch_code_set
+                     if cc.endswith(v) or v.endswith(cc) or v in cc or cc in v),
+                    None,
+                )
+                if matched:
+                    normalized_codes += 1
+                    cc = matched
+                else:
+                    skipped_codes.append(cc or "<empty>")
+                    continue  # do not insert orphan
             for item in ctrl_cp.get("items", []):
                 req = item.get("requirement", "")
                 if not req:
@@ -552,6 +578,13 @@ Rules:
                     "req": req,
                     "kw": json.dumps(item.get("keywords", [])),
                 })
+        if normalized_codes:
+            print(f"    [fw-checkpoints] batch {i // 10 + 1}: "
+                  f"normalized {normalized_codes} GPT-mangled code(s)")
+        if skipped_codes:
+            print(f"    [fw-checkpoints] batch {i // 10 + 1}: "
+                  f"WARN skipped {len(skipped_codes)} unrecognized code(s): "
+                  f"{skipped_codes[:5]}")
         print(f"    [fw-checkpoints] batch {i // 10 + 1}/"
               f"{(len(controls) + 9) // 10}: buffered "
               f"(pending_rows={len(pending_rows)})")

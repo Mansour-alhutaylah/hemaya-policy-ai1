@@ -764,7 +764,101 @@ def test_repair_noop_when_no_missing_controls(monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Test 17: repair atomicity — failure rolls back, no INSERTs persist.
+# Test 17a: control_code normalization — GPT prefixes the code (e.g. returns
+# "ECC-1-2-2" when we sent "1-2-2"). The buffer logic must recover the
+# original code by suffix/containment match and insert with the requested code.
+# ─────────────────────────────────────────────────────────────────────────
+def test_run_loop_normalizes_prefixed_codes(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_two_controls()  # batch_codes = ["C-1", "C-2"]
+
+    # GPT returns "ECC-C-1" and "PREFIX-C-2" — both should normalize.
+    inner = json.dumps({
+        "checkpoints": [
+            {"control_code": "ECC-C-1", "items": [
+                {"index": 1, "requirement": "R1", "keywords": []},
+            ]},
+            {"control_code": "PREFIX-C-2", "items": [
+                {"index": 1, "requirement": "R2", "keywords": []},
+                {"index": 2, "requirement": "R3", "keywords": []},
+            ]},
+        ]
+    })
+    raw_body = json.dumps({"choices": [{"message": {"content": inner}}]})
+    response = _make_response(200, raw_body=raw_body)
+
+    async def fake_post(*args, **kwargs):
+        return response
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=False, control_window_map={},
+    ))
+
+    # Both codes recovered → 3 checkpoints inserted with the requested codes.
+    assert result["total_checkpoints"] == 3
+    assert result["failed_batches"] == []
+
+    # Verify the INSERT calls used the BATCH codes ("C-1", "C-2"), not the
+    # GPT-returned mangled codes ("ECC-C-1", "PREFIX-C-2").
+    inserted_codes = []
+    for call in db.execute.call_args_list:
+        sql_str = str(call.args[0]).replace("\n", " ").replace("  ", " ")
+        if "INSERT INTO control_checkpoints" in sql_str:
+            inserted_codes.append(call.args[1]["cc"])
+    assert sorted(inserted_codes) == ["C-1", "C-2", "C-2"]
+    assert "ECC-C-1" not in inserted_codes
+    assert "PREFIX-C-2" not in inserted_codes
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 17b: unmatchable codes are skipped — GPT returns a control_code that
+# bears no relation to any requested code. No insert; no exception.
+# ─────────────────────────────────────────────────────────────────────────
+def test_run_loop_skips_unmatchable_codes(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_two_controls()  # batch_codes = ["C-1", "C-2"]
+
+    inner = json.dumps({
+        "checkpoints": [
+            # Valid first
+            {"control_code": "C-1", "items": [
+                {"index": 1, "requirement": "R1", "keywords": []},
+            ]},
+            # Garbage code — must be skipped
+            {"control_code": "WHATEVER-99", "items": [
+                {"index": 1, "requirement": "RX", "keywords": []},
+            ]},
+        ]
+    })
+    raw_body = json.dumps({"choices": [{"message": {"content": inner}}]})
+    response = _make_response(200, raw_body=raw_body)
+
+    async def fake_post(*args, **kwargs):
+        return response
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=False, control_window_map={},
+    ))
+
+    # Only the matching code's checkpoint persists.
+    assert result["total_checkpoints"] == 1
+    assert result["failed_batches"] == []
+
+    inserted_codes = [
+        call.args[1]["cc"]
+        for call in db.execute.call_args_list
+        if "INSERT INTO control_checkpoints"
+        in str(call.args[0]).replace("\n", " ").replace("  ", " ")
+    ]
+    assert inserted_codes == ["C-1"]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 18: repair atomicity — failure rolls back, no INSERTs persist.
 # ─────────────────────────────────────────────────────────────────────────
 def test_repair_atomic_on_failure(monkeypatch):
     db = _make_db_for_repair(["X-1", "X-2"])
