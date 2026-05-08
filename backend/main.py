@@ -22,7 +22,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from backend import auth, database, models, schemas
-from backend.database import get_db
+from backend.database import get_db, set_user_context
 from backend.email_utils import (
     send_otp_email,
     send_password_reset_email,
@@ -246,6 +246,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
+    set_user_context(db, user.id)
     return user
 
 

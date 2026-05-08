@@ -19,7 +19,7 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from backend import auth, models
-from backend.database import get_db
+from backend.database import get_db, set_user_context
 from backend.checkpoint_analyzer import score_remediation_draft
 from backend.remediation_engine import generate_remediation_draft
 
@@ -49,6 +49,7 @@ def _get_current_user(
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise exc
+    set_user_context(db, user.id)
     return user
 
 

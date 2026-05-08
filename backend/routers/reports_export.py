@@ -29,7 +29,7 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from backend import auth, models
-from backend.database import get_db
+from backend.database import get_db, set_user_context
 
 router = APIRouter(prefix="/api/reports", tags=["reports-export"])
 
@@ -53,6 +53,7 @@ def _get_current_user(
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
         raise exc
+    set_user_context(db, user.id)
     return user
 
 
