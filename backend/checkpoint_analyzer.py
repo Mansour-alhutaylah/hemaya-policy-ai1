@@ -429,13 +429,19 @@ def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
 
 # ── Analyze one control (all its checkpoints) ────────────────────────────────
 
-async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, policy_chunks):
+async def _analyze_control(db, policy_id, control_code, checkpoints, embedding,
+                           policy_chunks, *, bm25_index=None):
     """
     Analyze one control with 3-signal confidence:
       Signal 1: GPT self-reported confidence
       Signal 2: Retrieval quality (top BM25+keyword score)
       Signal 3: Inter-run agreement (two GPT passes with different context)
     policy_chunks: list of {"text": str, "classification": str}
+    bm25_index:    pre-built rank_bm25.BM25Okapi over the same policy_chunks.
+                   Pass it in from run_checkpoint_analysis (Phase 8) to avoid
+                   rebuilding the index once per control. When None, the index
+                   is built locally for backward compatibility with any
+                   direct callers (e.g., unit tests).
     """
     t0 = time.time()
     framework = checkpoints[0]["framework"]
@@ -451,15 +457,20 @@ async def _analyze_control(db, policy_id, control_code, checkpoints, embedding, 
                 kw = []
         per_cp_kw.append(kw)
 
-    # Fix 3: build BM25 index ONCE per control, not once per checkpoint.
-    # Previously rebuilt inside _find_relevant_sections on every call —
-    # that was O(checkpoints²) per control.  Reusing it is O(checkpoints).
-    from rank_bm25 import BM25Okapi
-    if policy_chunks:
-        _bm25_tokenized = [c["text"].lower().split() for c in policy_chunks]
-        _bm25_index = BM25Okapi(_bm25_tokenized)
+    # Phase 8: prefer the run-scoped bm25_index passed from
+    # run_checkpoint_analysis. Build locally only when missing — preserves
+    # backward compatibility with direct callers / tests that don't supply
+    # a pre-built index. The index only depends on policy_chunks (constant
+    # within an analysis run), so the run-scoped version is what we want.
+    if bm25_index is not None:
+        _bm25_index = bm25_index
     else:
-        _bm25_index = None
+        from rank_bm25 import BM25Okapi
+        if policy_chunks:
+            _bm25_tokenized = [c["text"].lower().split() for c in policy_chunks]
+            _bm25_index = BM25Okapi(_bm25_tokenized)
+        else:
+            _bm25_index = None
 
     # Fix 5: semantic retrieval using the control-level embedding (once per
     # control, not per checkpoint).  Finds chunks that are *semantically*
@@ -783,6 +794,21 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
                          for r in chunk_rows if r[0]]
     print(f"  Loaded {len(policy_chunks)} chunk texts for targeted search")
 
+    # Phase 8: build BM25 ONCE per analysis run, not once per control. The
+    # index only depends on policy_chunks, which is fixed for the entire
+    # run, so rebuilding it inside _analyze_control was wasted work
+    # proportional to control_count. Mirrors the ECC-2 perf fix in
+    # a3b11e2. Pass the index down via _analyze_control's bm25_index kwarg;
+    # _analyze_control still falls back to building its own when None.
+    from rank_bm25 import BM25Okapi as _BM25Okapi
+    if policy_chunks:
+        _bm25_index_run = _BM25Okapi(
+            [c["text"].lower().split() for c in policy_chunks]
+        )
+        print(f"  BM25 index built ONCE over {len(policy_chunks)} policy chunks")
+    else:
+        _bm25_index_run = None
+
     # ── Framework filter ─────────────────────────────────────────────────
     t1 = time.time()
     try:
@@ -924,7 +950,8 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
         async def _run(code, emb):
             async with sem:
                 return await _analyze_control(
-                    db, policy_id, code, controls[code], emb, policy_chunks
+                    db, policy_id, code, controls[code], emb, policy_chunks,
+                    bm25_index=_bm25_index_run,
                 )
 
         results_list = []
