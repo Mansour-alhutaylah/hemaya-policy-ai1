@@ -120,6 +120,16 @@ def startup_seed():
         print("[startup] SACS-002 framework row ensured")
     except Exception as e:
         print(f"[startup] SACS-002 row warning: {e}")
+
+    # Auto-import SACS-002 from bundled JSON files if structured tables are empty.
+    # Idempotent — skips immediately if ecc_framework already has SACS-002 rows.
+    try:
+        from backend.sacs002_analyzer import seed_sacs002_if_empty
+        n = seed_sacs002_if_empty(db)
+        if n > 0:
+            print(f"[startup] SACS-002 structured data ready ({n} controls)")
+    except Exception as e:
+        print(f"[startup] SACS-002 auto-import warning: {e}")
     finally:
         db.close()
 

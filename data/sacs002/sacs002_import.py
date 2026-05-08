@@ -128,13 +128,17 @@ def import_framework(l1: list, l2: list, l3: list, conn, force: bool) -> None:
         print(f"    {cur.rowcount} rows inserted into ecc_framework")
 
         # Layer 2 — ecc_compliance_metadata
+        # applicability is NULL for all SACS-002 controls: the shared
+        # applicability_enum has ECC-specific values that don't map cleanly to
+        # SACS-002's section/class scheme. Applicability is stored instead in
+        # sacs002_metadata.section and sacs002_metadata.applicable_classes.
         print("  Inserting Layer 2 (ecc_compliance_metadata)...")
         l2_cm_rows = [
             (
                 FRAMEWORK_ID,
                 r["control_code"],
-                r.get("applicability", "all_third_parties"),
-                r.get("applicability_note"),
+                None,                           # applicability — NULL; use sacs002_metadata instead
+                None,                           # applicability_note
                 r.get("responsible_party"),
                 r.get("frequency"),
                 "SACS-002",                     # ecc_version_introduced

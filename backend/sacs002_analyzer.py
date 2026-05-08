@@ -133,6 +133,141 @@ def _ensure_framework_row(db) -> str:
     return str(row[0])
 
 
+def seed_sacs002_if_empty(db) -> int:
+    """
+    Auto-import SACS-002 from bundled JSON files if ecc_framework has no rows.
+    Returns the number of L1 rows now in the database (0 if files are missing).
+    Called from startup_seed() so data is always present without a manual import step.
+    """
+    from pathlib import Path
+
+    count = db.execute(sql_text(
+        "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = :fwid"
+    ), {"fwid": FRAMEWORK_ID}).fetchone()[0]
+
+    if count > 0:
+        return count
+
+    base = Path(__file__).parent.parent / "data" / "sacs002"
+    l1_path = base / "sacs002_layer1_official.json"
+    l2_path = base / "sacs002_layer2_metadata.json"
+    l3_path = base / "sacs002_layer3_ai_checkpoints.json"
+
+    if not l1_path.exists():
+        print(f"  [SACS002] Auto-import skipped: {l1_path} not found")
+        return 0
+
+    print(f"  [SACS002] Auto-importing from {base} ...")
+    l1 = json.load(open(l1_path, encoding="utf-8"))
+    l2 = json.load(open(l2_path, encoding="utf-8"))
+    l3 = json.load(open(l3_path, encoding="utf-8"))
+    l2_map = {r["control_code"]: r for r in l2}
+
+    # L1 — ecc_framework
+    for r in l1:
+        db.execute(sql_text("""
+            INSERT INTO ecc_framework
+                (framework_id, domain_code, domain_name, subdomain_code, subdomain_name,
+                 control_code, control_type, control_text, parent_control_code,
+                 is_ecc2_new, ecc2_change_note, source_page)
+            VALUES
+                (:fwid, NULL, NULL, NULL, NULL,
+                 :cc, 'main_control', :txt, NULL,
+                 FALSE, NULL, :pg)
+            ON CONFLICT (framework_id, control_code) DO NOTHING
+        """), {"fwid": FRAMEWORK_ID, "cc": r["control_code"],
+               "txt": r["control_text"], "pg": r.get("source_page")})
+
+    # L2 — ecc_compliance_metadata
+    # applicability is NULL for all SACS-002 rows: the shared applicability_enum
+    # has ECC-specific values that don't cover SACS-002's section/class scheme.
+    # Applicability is stored in sacs002_metadata.section + applicable_classes.
+    for r in l2:
+        db.execute(sql_text("""
+            INSERT INTO ecc_compliance_metadata
+                (framework_id, control_code, applicability, applicability_note,
+                 responsible_party, frequency, ecc_version_introduced,
+                 change_from_ecc1, deleted_in_ecc2)
+            VALUES
+                (:fwid, :cc, NULL, NULL,
+                 :rp, :freq, 'SACS-002',
+                 NULL, FALSE)
+            ON CONFLICT (framework_id, control_code) DO NOTHING
+        """), {"fwid": FRAMEWORK_ID, "cc": r["control_code"],
+               "rp": r.get("responsible_party"),
+               "freq": r.get("frequency")})
+
+    # L2 — sacs002_metadata (NIST mapping, section, applicability classes)
+    for r in l2:
+        l1r = next((x for x in l1 if x["control_code"] == r["control_code"]), {})
+        db.execute(sql_text("""
+            INSERT INTO sacs002_metadata
+                (framework_id, control_code, section,
+                 nist_function_code, nist_function_name,
+                 nist_category_code, nist_category_name,
+                 applicable_classes,
+                 governance_control, technical_control, operational_control,
+                 review_required, approval_required, testing_required,
+                 monitoring_required, third_party_assessment)
+            VALUES
+                (:fwid, :cc, :sec,
+                 :fc, :fn, :catc, :catn,
+                 CAST(:ac AS jsonb),
+                 :gov, :tech, :ops,
+                 :rev, :appr, :test,
+                 :mon, :tpa)
+            ON CONFLICT (framework_id, control_code) DO NOTHING
+        """), {
+            "fwid": FRAMEWORK_ID,
+            "cc":   r["control_code"],
+            "sec":  l1r.get("section", "A"),
+            "fc":   l1r.get("function_code"),
+            "fn":   l1r.get("function_name"),
+            "catc": l1r.get("category_code"),
+            "catn": l1r.get("category_name"),
+            "ac":   json.dumps(l1r.get("applicable_classes", [])),
+            "gov":  bool(r.get("governance_control", False)),
+            "tech": bool(r.get("technical_control", False)),
+            "ops":  bool(r.get("operational_control", False)),
+            "rev":  bool(r.get("review_required", False)),
+            "appr": bool(r.get("approval_required", False)),
+            "test": bool(r.get("testing_required", False)),
+            "mon":  bool(r.get("monitoring_required", False)),
+            "tpa":  bool(r.get("third_party_assessment", False)),
+        })
+
+    # L3 — ecc_ai_checkpoints
+    for r in l3:
+        db.execute(sql_text("""
+            INSERT INTO ecc_ai_checkpoints
+                (framework_id, control_code, ai_generated, model_version,
+                 audit_questions, suggested_evidence, indicators_of_implementation,
+                 maturity_signals, possible_documents, possible_technical_evidence)
+            VALUES
+                (:fwid, :cc, TRUE, :mv,
+                 CAST(:aq AS jsonb), CAST(:se AS jsonb), CAST(:ii AS jsonb),
+                 CAST(:ms AS jsonb), CAST(:pd AS jsonb), CAST(:pte AS jsonb))
+            ON CONFLICT DO NOTHING
+        """), {
+            "fwid": FRAMEWORK_ID,
+            "cc":   r["control_code"],
+            "mv":   r.get("model_version", "claude-sonnet-4-6"),
+            "aq":   json.dumps(r.get("audit_questions", [])),
+            "se":   json.dumps(r.get("suggested_evidence", [])),
+            "ii":   json.dumps(r.get("indicators_of_implementation", [])),
+            "ms":   json.dumps(r.get("maturity_signals", {})),
+            "pd":   json.dumps(r.get("possible_documents", [])),
+            "pte":  json.dumps(r.get("possible_technical_evidence", [])),
+        })
+
+    db.commit()
+    final_count = db.execute(sql_text(
+        "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = :fwid"
+    ), {"fwid": FRAMEWORK_ID}).fetchone()[0]
+    print(f"  [SACS002] Auto-import complete: {final_count} controls in ecc_framework")
+    return final_count
+
+
 def load_sacs002_controls(db) -> list[dict]:
     rows = db.execute(sql_text("""
         SELECT
@@ -488,24 +623,57 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
     try:
         controls = load_sacs002_controls(db)
     except Exception as e:
+        import traceback as _tb
         print(f"  [SACS002] ERROR loading controls: {e}")
+        print(_tb.format_exc())
         return {
             FRAMEWORK_ID: {
                 "error": (
                     f"SACS-002 structured tables not loaded: {e}. "
-                    "Run: python data/sacs002/sacs002_import.py --force"
+                    "Server restart should auto-import the data."
                 )
             }
         }
 
     if not controls:
-        return {
-            FRAMEWORK_ID: {
-                "error": "SACS-002 controls not found in ecc_framework. Run sacs002_import.py."
+        # Diagnostic: count raw rows in ecc_framework to confirm data absence
+        try:
+            raw = db.execute(sql_text(
+                "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = :fwid"
+            ), {"fwid": FRAMEWORK_ID}).fetchone()[0]
+            print(f"  [SACS002] load_sacs002_controls returned 0 controls "
+                  f"(ecc_framework has {raw} rows for SACS-002). "
+                  f"Attempting inline seed...")
+        except Exception:
+            raw = "unknown"
+            print(f"  [SACS002] load_sacs002_controls returned 0 controls; "
+                  f"ecc_framework row count unknown.")
+        # Attempt inline seed so the current request can still proceed
+        try:
+            n = seed_sacs002_if_empty(db)
+            if n > 0:
+                controls = load_sacs002_controls(db)
+                print(f"  [SACS002] Inline seed loaded {n} controls; "
+                      f"proceeding with {len(controls)} controls")
+        except Exception as seed_err:
+            print(f"  [SACS002] Inline seed failed: {seed_err}")
+        if not controls:
+            return {
+                FRAMEWORK_ID: {
+                    "error": (
+                        "SACS-002 controls not found in ecc_framework "
+                        f"(raw count={raw}). "
+                        "Restart the server to trigger auto-import."
+                    )
+                }
             }
-        }
 
-    print(f"  [SACS002] {len(controls)} controls loaded")
+    sample = [c["control_code"] for c in controls[:3]]
+    l2_loaded = sum(1 for c in controls if c["l2_loaded"])
+    l3_loaded = sum(1 for c in controls if c["l3_loaded"])
+    print(f"  [SACS002] {len(controls)} controls loaded "
+          f"(first 3: {sample}) "
+          f"L2={l2_loaded}/{len(controls)} L3={l3_loaded}/{len(controls)}")
     _report(22, f"SACS-002: Analysing {len(controls)} controls")
 
     try:

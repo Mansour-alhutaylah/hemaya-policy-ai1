@@ -363,7 +363,7 @@ export default function Policies() {
       if (res.ok) {
         const fwStatus = await res.json();
         if (!fwStatus.ready) {
-          setPendingAnalysisPolicy(policy);
+          setPendingAnalysisPolicy({ ...policy, _fwSource: fwStatus.source });
           setShowFrameworkWarning(true);
           return;
         }
@@ -868,7 +868,14 @@ export default function Policies() {
               Framework Document Not Loaded
             </DialogTitle>
             <DialogDescription>
-              {pendingAnalysisPolicy?.framework_code ? (
+              {pendingAnalysisPolicy?._fwSource === 'structured_ecc_tables' ? (
+                <>
+                  The structured control data for{' '}
+                  <strong>{pendingAnalysisPolicy.framework_code}</strong> has not been imported
+                  into the database yet. This framework does not require a PDF upload — it uses
+                  pre-built structured tables that must be populated by an administrator.
+                </>
+              ) : pendingAnalysisPolicy?.framework_code ? (
                 <>
                   The reference document for{' '}
                   <strong>{pendingAnalysisPolicy.framework_code}</strong> hasn't been uploaded yet,
@@ -886,11 +893,14 @@ export default function Policies() {
           <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg my-2">
             <Database className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-amber-700 dark:text-amber-200">
-              Ask an administrator to upload the reference document for
-              {pendingAnalysisPolicy?.framework_code
-                ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
-                : ' this framework '}
-              from the Admin <strong>Frameworks</strong> panel for the best results.
+              {pendingAnalysisPolicy?._fwSource === 'structured_ecc_tables'
+                ? <>Ask an administrator to restart the server or run the import script for <strong>{pendingAnalysisPolicy.framework_code}</strong>.</>
+                : <>Ask an administrator to upload the reference document for{' '}
+                    {pendingAnalysisPolicy?.framework_code
+                      ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
+                      : ' this framework '}
+                    from the Admin <strong>Frameworks</strong> panel for the best results.</>
+              }
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-2">
