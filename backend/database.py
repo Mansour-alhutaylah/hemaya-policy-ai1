@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 
 load_dotenv()
@@ -13,25 +13,50 @@ _raw_url = os.getenv("DATABASE_URL")
 if not _raw_url:
     raise RuntimeError("DATABASE_URL environment variable is not set. Add it to your .env file.")
 
-# SQLAlchemy 2.x removed the legacy 'postgres://' dialect alias that older
-# Supabase / Heroku / Render connection strings still use. Normalise it here
-# so the server starts regardless of which prefix the host provides.
+# Normalise legacy 'postgres://' prefix (Supabase / Heroku / Render).
 SQLALCHEMY_DATABASE_URL = _raw_url.replace("postgres://", "postgresql://", 1)
 
-# Build connect_args. Supabase (and most managed PG hosts) require TLS, so
-# we inject sslmode=require only when the URL doesn't already carry it.
+# Inject sslmode=require when the URL doesn't already carry it.
 _connect_args: dict = {"connect_timeout": 30}
 if "sslmode" not in SQLALCHEMY_DATABASE_URL:
     _connect_args["sslmode"] = "require"
 
-# NullPool: never hold idle connections — critical for Supabase's connection
-# limit on free-tier projects. pool_pre_ping is omitted because it is a no-op
-# with NullPool in SQLAlchemy 2.x (there is no pooled connection to ping).
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    poolclass=NullPool,
-    connect_args=_connect_args,
-)
+# Pool strategy — auto-detected from the port in DATABASE_URL:
+#
+#   :6543  →  Supabase PgBouncer pooler (transaction or session mode).
+#             PgBouncer already manages its own pool.  SQLAlchemy must use
+#             NullPool so it does not hold connections the pooler has released.
+#
+#   :5432  →  Direct PostgreSQL connection.
+#   other  →  Unknown host/port; treat as direct and use a conservative pool.
+#
+# QueuePool settings for direct connections:
+#   pool_size=3       — 3 always-open connections (covers normal request load)
+#   max_overflow=5    — up to 8 total under burst (API + 1 analysis job)
+#   pool_recycle=300  — recycle before Supabase's 300 s idle-connection timeout
+#   pool_pre_ping     — discard stale connections silently on checkout
+#
+_is_pooler = ":6543" in SQLALCHEMY_DATABASE_URL
+
+if _is_pooler:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        poolclass=NullPool,
+        connect_args=_connect_args,
+    )
+    print("[db] Using NullPool (Supabase pooler port 6543 detected)")
+else:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        poolclass=QueuePool,
+        pool_size=3,
+        max_overflow=5,
+        pool_recycle=300,
+        pool_pre_ping=True,
+        connect_args=_connect_args,
+    )
+    print("[db] Using QueuePool(3+5, recycle=300s) (direct connection)")
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

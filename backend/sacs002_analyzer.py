@@ -353,7 +353,18 @@ def load_sacs002_controls(db) -> list[dict]:
     return controls
 
 
-async def _assess_control(control: dict, policy_chunks: list, policy_text: str) -> dict:
+async def _assess_control(
+    control: dict,
+    policy_chunks: list,
+    policy_text: str,
+    bm25_index=None,
+    diag: bool = False,
+) -> dict:
+    """
+    bm25_index: pre-built BM25Okapi over policy_chunks — caller should build
+                once and pass in to avoid rebuilding the index 92× per run.
+    diag:       when True, log focused_text preview and raw GPT response.
+    """
     from backend.checkpoint_analyzer import _find_relevant_sections
     from rank_bm25 import BM25Okapi
 
@@ -362,15 +373,22 @@ async def _assess_control(control: dict, policy_chunks: list, policy_text: str) 
     audit_qs = control["audit_questions"]
     keywords = control["keywords"]
 
-    if policy_chunks:
+    # Build BM25 only if the caller did not provide a pre-built index
+    if bm25_index is None and policy_chunks:
         tokenized = [c["text"].lower().split() for c in policy_chunks]
         bm25_index = BM25Okapi(tokenized)
-    else:
-        bm25_index = None
 
     focused_text, retrieval_quality = _find_relevant_sections(
         policy_chunks, control_text, keywords, bm25=bm25_index, offset=0
     )
+
+    if diag:
+        print(
+            f"    [SACS002][DIAG][{control_code}] "
+            f"focused_text={len(focused_text)} chars | "
+            f"retrieval_quality={retrieval_quality:.3f}"
+        )
+        print(f"    [SACS002][DIAG][{control_code}] focused_text[:300]: {focused_text[:300]!r}")
 
     checkpoints = [
         {
@@ -403,6 +421,8 @@ async def _assess_control(control: dict, policy_chunks: list, policy_text: str) 
 
     try:
         raw = await call_llm(SACS002_VERIFIER_PROMPT, user_msg)
+        if diag:
+            print(f"    [SACS002][DIAG][{control_code}] raw GPT response: {raw[:600]}")
         gpt_data = json.loads(raw)
         results = gpt_data.get("checkpoints", [])
     except Exception as e:
@@ -696,21 +716,37 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
     print(f"  [SACS002] Loaded {len(policy_chunks)} chunks "
           f"({len(policy_text)} chars total policy text)")
 
+    # Build BM25 index ONCE over the policy corpus.
+    # Previously rebuilt inside _assess_control for every control (92×).
+    # The index depends only on policy_chunks, not on the control being assessed.
+    from rank_bm25 import BM25Okapi
+    if policy_chunks:
+        global_bm25 = BM25Okapi([c["text"].lower().split() for c in policy_chunks])
+        print(f"  [SACS002] BM25 index built over {len(policy_chunks)} chunks")
+    else:
+        global_bm25 = None
+
     legacy_fw_id = _ensure_framework_row(db)
 
     sem = asyncio.Semaphore(8)
     results_list: list[dict] = []
 
-    async def _run_one(ctrl):
+    async def _run_one(ctrl, ctrl_idx: int):
         async with sem:
-            return await _assess_control(ctrl, policy_chunks, policy_text)
+            return await _assess_control(
+                ctrl, policy_chunks, policy_text,
+                bm25_index=global_bm25,
+                diag=(ctrl_idx < 3),  # detailed logs for first 3 controls only
+            )
 
     total_ctrl = len(controls)
     batch_size = 8
     for i in range(0, total_ctrl, batch_size):
         batch = controls[i:i + batch_size]
         t1 = time.time()
-        batch_results = await asyncio.gather(*[_run_one(c) for c in batch])
+        batch_results = await asyncio.gather(
+            *[_run_one(c, i + j) for j, c in enumerate(batch)]
+        )
         results_list.extend(batch_results)
         done = min(i + batch_size, total_ctrl)
         elapsed = round(time.time() - t1, 1)

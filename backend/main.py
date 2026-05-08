@@ -48,129 +48,158 @@ app.include_router(export_router)
 
 @app.on_event("startup")
 def startup_seed():
-    """Seed checkpoint data, run safe idempotent schema migrations, and register ECC-2:2024 on server start."""
+    """
+    Startup tasks split into two tiers:
+
+    Tier A — DDL migrations (ALTER TABLE, CREATE TABLE):
+        Only run when RUN_STARTUP_MIGRATIONS=true.
+        Safe to skip on normal restarts once schema is up to date.
+        Set this flag when deploying a new version that adds columns or tables.
+
+    Tier B — Data seeds (always run, idempotent):
+        seed_checkpoints, framework row inserts, SACS-002 auto-import.
+        These use INSERT ... ON CONFLICT DO NOTHING and are safe every boot.
+    """
     from backend.checkpoint_seed import seed_checkpoints
     from sqlalchemy import text as _ddl
 
-    # Idempotent DDL — adds new columns without touching existing data.
-    # Safe to run on every startup; Postgres IF NOT EXISTS prevents errors.
-    try:
-        with database.engine.connect() as _conn:
-            _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS mapping_id  VARCHAR"))
-            _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS owner_name  VARCHAR"))
-            _conn.execute(_ddl("""
-                CREATE TABLE IF NOT EXISTS remediation_drafts (
-                    id                   VARCHAR PRIMARY KEY,
-                    policy_id            VARCHAR NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
-                    mapping_review_id    VARCHAR REFERENCES mapping_reviews(id) ON DELETE SET NULL,
-                    control_id           VARCHAR REFERENCES control_library(id) ON DELETE SET NULL,
-                    framework_id         VARCHAR REFERENCES frameworks(id) ON DELETE SET NULL,
-                    missing_requirements JSONB   NOT NULL DEFAULT '[]',
-                    ai_rationale         TEXT,
-                    suggested_policy_text TEXT   NOT NULL,
-                    section_headers      JSONB,
-                    remediation_status   VARCHAR NOT NULL DEFAULT 'draft',
-                    review_notes         TEXT,
-                    created_by           UUID    REFERENCES users(id) ON DELETE SET NULL,
-                    reviewed_by          UUID    REFERENCES users(id) ON DELETE SET NULL,
-                    reviewed_at          TIMESTAMPTZ,
-                    created_at           TIMESTAMPTZ DEFAULT NOW(),
-                    updated_at           TIMESTAMPTZ DEFAULT NOW()
-                )
-            """))
-            _conn.execute(_ddl("CREATE INDEX IF NOT EXISTS ix_remediation_drafts_policy_id ON remediation_drafts(policy_id)"))
-            _conn.execute(_ddl("""
-                CREATE TABLE IF NOT EXISTS policy_versions (
-                    id                    VARCHAR PRIMARY KEY,
-                    policy_id             VARCHAR NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
-                    version_number        INTEGER NOT NULL,
-                    version_type          VARCHAR NOT NULL,
-                    content               TEXT    NOT NULL,
-                    compliance_score      FLOAT,
-                    remediation_draft_id  VARCHAR REFERENCES remediation_drafts(id) ON DELETE SET NULL,
-                    change_summary        TEXT,
-                    created_by            UUID    REFERENCES users(id) ON DELETE SET NULL,
-                    created_at            TIMESTAMPTZ DEFAULT NOW(),
-                    UNIQUE (policy_id, version_number)
-                )
-            """))
-            _conn.execute(_ddl("CREATE INDEX IF NOT EXISTS ix_policy_versions_policy_id ON policy_versions(policy_id)"))
-            _conn.commit()
-    except Exception as e:
-        print(f"[startup] Migration warning: {e}")
+    _run_migrations = os.getenv("RUN_STARTUP_MIGRATIONS", "false").lower() == "true"
 
-    # Create sacs002_metadata if it doesn't exist yet.
-    # Uses TEXT instead of ENUM types to avoid DO$$ type-creation noise.
-    # The FK to ecc_framework is omitted here to tolerate cold-start ordering
-    # (ecc_framework may be empty on first boot before import runs).
-    try:
-        with database.engine.connect() as _conn:
-            _conn.execute(_ddl("""
-                CREATE TABLE IF NOT EXISTS sacs002_metadata (
-                    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    framework_id            VARCHAR(50)  NOT NULL DEFAULT 'SACS-002',
-                    control_code            VARCHAR(30)  NOT NULL,
-                    section                 TEXT,
-                    nist_function_code      VARCHAR(10),
-                    nist_function_name      TEXT,
-                    nist_category_code      VARCHAR(20),
-                    nist_category_name      TEXT,
-                    applicable_classes      JSONB,
-                    governance_control      BOOLEAN DEFAULT FALSE,
-                    technical_control       BOOLEAN DEFAULT FALSE,
-                    operational_control     BOOLEAN DEFAULT FALSE,
-                    review_required         BOOLEAN DEFAULT FALSE,
-                    approval_required       BOOLEAN DEFAULT FALSE,
-                    testing_required        BOOLEAN DEFAULT FALSE,
-                    monitoring_required     BOOLEAN DEFAULT FALSE,
-                    third_party_assessment  BOOLEAN DEFAULT FALSE,
-                    created_at              TIMESTAMPTZ DEFAULT NOW(),
-                    CONSTRAINT uq_sacs002_meta_control UNIQUE (framework_id, control_code)
-                )
-            """))
-            _conn.execute(_ddl(
-                "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_nist_cat "
-                "ON sacs002_metadata (nist_category_code)"
-            ))
-            _conn.execute(_ddl(
-                "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_section "
-                "ON sacs002_metadata (section)"
-            ))
-            _conn.commit()
-        print("[startup] sacs002_metadata table ensured")
-    except Exception as e:
-        print(f"[startup] sacs002_metadata DDL warning: {e}")
+    if _run_migrations:
+        # Idempotent DDL — adds new columns and tables without touching existing data.
+        # remediation_drafts and policy_versions arrived from remote (policy-versioning feature).
+        try:
+            with database.engine.connect() as _conn:
+                _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS mapping_id  VARCHAR"))
+                _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS owner_name  VARCHAR"))
+                _conn.execute(_ddl("""
+                    CREATE TABLE IF NOT EXISTS remediation_drafts (
+                        id                   VARCHAR PRIMARY KEY,
+                        policy_id            VARCHAR NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+                        mapping_review_id    VARCHAR REFERENCES mapping_reviews(id) ON DELETE SET NULL,
+                        control_id           VARCHAR REFERENCES control_library(id) ON DELETE SET NULL,
+                        framework_id         VARCHAR REFERENCES frameworks(id) ON DELETE SET NULL,
+                        missing_requirements JSONB   NOT NULL DEFAULT '[]',
+                        ai_rationale         TEXT,
+                        suggested_policy_text TEXT   NOT NULL,
+                        section_headers      JSONB,
+                        remediation_status   VARCHAR NOT NULL DEFAULT 'draft',
+                        review_notes         TEXT,
+                        created_by           UUID    REFERENCES users(id) ON DELETE SET NULL,
+                        reviewed_by          UUID    REFERENCES users(id) ON DELETE SET NULL,
+                        reviewed_at          TIMESTAMPTZ,
+                        created_at           TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at           TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
+                _conn.execute(_ddl("CREATE INDEX IF NOT EXISTS ix_remediation_drafts_policy_id ON remediation_drafts(policy_id)"))
+                _conn.execute(_ddl("""
+                    CREATE TABLE IF NOT EXISTS policy_versions (
+                        id                    VARCHAR PRIMARY KEY,
+                        policy_id             VARCHAR NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+                        version_number        INTEGER NOT NULL,
+                        version_type          VARCHAR NOT NULL,
+                        content               TEXT    NOT NULL,
+                        compliance_score      FLOAT,
+                        remediation_draft_id  VARCHAR REFERENCES remediation_drafts(id) ON DELETE SET NULL,
+                        change_summary        TEXT,
+                        created_by            UUID    REFERENCES users(id) ON DELETE SET NULL,
+                        created_at            TIMESTAMPTZ DEFAULT NOW(),
+                        UNIQUE (policy_id, version_number)
+                    )
+                """))
+                _conn.execute(_ddl("CREATE INDEX IF NOT EXISTS ix_policy_versions_policy_id ON policy_versions(policy_id)"))
+                _conn.commit()
+            print("[startup] gaps + remediation_drafts + policy_versions migrations complete")
+        except Exception as e:
+            print(f"[startup] Migration warning: {e}")
 
+    if _run_migrations:
+        # Idempotent DDL — adds new columns without touching existing data.
+        try:
+            with database.engine.connect() as _conn:
+                _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS mapping_id  VARCHAR"))
+                _conn.execute(_ddl("ALTER TABLE gaps ADD COLUMN IF NOT EXISTS owner_name  VARCHAR"))
+                _conn.commit()
+            print("[startup] gaps column migration complete")
+        except Exception as e:
+            print(f"[startup] Migration warning (gaps): {e}")
+
+        # Create sacs002_metadata if it doesn't exist yet.
+        # Uses TEXT instead of ENUM types to avoid DO$$ type-creation noise.
+        # FK to ecc_framework omitted to tolerate cold-start ordering.
+        try:
+            with database.engine.connect() as _conn:
+                _conn.execute(_ddl("""
+                    CREATE TABLE IF NOT EXISTS sacs002_metadata (
+                        id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        framework_id            VARCHAR(50)  NOT NULL DEFAULT 'SACS-002',
+                        control_code            VARCHAR(30)  NOT NULL,
+                        section                 TEXT,
+                        nist_function_code      VARCHAR(10),
+                        nist_function_name      TEXT,
+                        nist_category_code      VARCHAR(20),
+                        nist_category_name      TEXT,
+                        applicable_classes      JSONB,
+                        governance_control      BOOLEAN DEFAULT FALSE,
+                        technical_control       BOOLEAN DEFAULT FALSE,
+                        operational_control     BOOLEAN DEFAULT FALSE,
+                        review_required         BOOLEAN DEFAULT FALSE,
+                        approval_required       BOOLEAN DEFAULT FALSE,
+                        testing_required        BOOLEAN DEFAULT FALSE,
+                        monitoring_required     BOOLEAN DEFAULT FALSE,
+                        third_party_assessment  BOOLEAN DEFAULT FALSE,
+                        created_at              TIMESTAMPTZ DEFAULT NOW(),
+                        CONSTRAINT uq_sacs002_meta_control UNIQUE (framework_id, control_code)
+                    )
+                """))
+                _conn.execute(_ddl(
+                    "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_nist_cat "
+                    "ON sacs002_metadata (nist_category_code)"
+                ))
+                _conn.execute(_ddl(
+                    "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_section "
+                    "ON sacs002_metadata (section)"
+                ))
+                _conn.commit()
+            print("[startup] sacs002_metadata table ensured")
+        except Exception as e:
+            print(f"[startup] sacs002_metadata DDL warning: {e}")
+    else:
+        print("[startup] DDL migrations skipped (set RUN_STARTUP_MIGRATIONS=true to run)")
+
+    # ── Tier B: data seeds — always run, idempotent ───────────────────────
     db = database.SessionLocal()
     try:
-        seed_checkpoints(db)
-    except Exception as e:
-        print(f"Seed warning: {e}")
+        try:
+            seed_checkpoints(db)
+        except Exception as e:
+            print(f"[startup] seed_checkpoints warning: {e}")
 
-    # Ensure ECC-2:2024 and SACS-002 exist in the frameworks master table so
-    # they appear in the upload dropdown immediately — before any analysis has been run.
-    try:
-        from backend.ecc2_analyzer import _ensure_framework_row as _ecc2_row
-        _ecc2_row(db)
-        print("[startup] ECC-2:2024 framework row ensured")
-    except Exception as e:
-        print(f"[startup] ECC-2:2024 row warning: {e}")
-    try:
-        from backend.sacs002_analyzer import _ensure_framework_row as _sacs002_row
-        _sacs002_row(db)
-        print("[startup] SACS-002 framework row ensured")
-    except Exception as e:
-        print(f"[startup] SACS-002 row warning: {e}")
+        # Ensure ECC-2:2024 and SACS-002 exist in the frameworks master table
+        # so they appear in the upload dropdown immediately.
+        try:
+            from backend.ecc2_analyzer import _ensure_framework_row as _ecc2_row
+            _ecc2_row(db)
+            print("[startup] ECC-2:2024 framework row ensured")
+        except Exception as e:
+            print(f"[startup] ECC-2:2024 row warning: {e}")
+        try:
+            from backend.sacs002_analyzer import _ensure_framework_row as _sacs002_row
+            _sacs002_row(db)
+            print("[startup] SACS-002 framework row ensured")
+        except Exception as e:
+            print(f"[startup] SACS-002 row warning: {e}")
 
-    # Auto-import SACS-002 from bundled JSON files if structured tables are empty.
-    # Idempotent — skips immediately if ecc_framework already has SACS-002 rows.
-    try:
-        from backend.sacs002_analyzer import seed_sacs002_if_empty
-        n = seed_sacs002_if_empty(db)
-        if n > 0:
-            print(f"[startup] SACS-002 structured data ready ({n} controls)")
-    except Exception as e:
-        print(f"[startup] SACS-002 auto-import warning: {e}")
+        # Auto-import SACS-002 from bundled JSON files if structured tables are empty.
+        # Skips immediately (single COUNT query) when data already exists.
+        try:
+            from backend.sacs002_analyzer import seed_sacs002_if_empty
+            n = seed_sacs002_if_empty(db)
+            if n > 0:
+                print(f"[startup] SACS-002 structured data ready ({n} controls)")
+        except Exception as e:
+            print(f"[startup] SACS-002 auto-import warning: {e}")
     finally:
         db.close()
 
@@ -1688,11 +1717,12 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
             db.rollback()
             print(f"[analyze_policy] WARNING: final status update failed: {_ue}")
     except Exception as e:
+        _err_msg = f"Failed: {str(e)[:180]}"
         try:
             db.execute(
                 _t("UPDATE policies SET status='failed', progress=0, "
-                   "progress_stage='Analysis failed' WHERE id=:pid"),
-                {"pid": policy.id},
+                   "progress_stage=:msg, last_analyzed_at=:ts WHERE id=:pid"),
+                {"msg": _err_msg, "ts": datetime.now(timezone.utc), "pid": policy.id},
             )
             db.commit()
         except Exception:
@@ -1908,11 +1938,12 @@ async def _resume_analysis_in_background(policy_id: str, frameworks: list):
                 db.rollback()
                 print(f"[resume_analysis] WARNING: final status update failed: {_ue}")
     except Exception as e:
+        _err_msg = f"Failed: {str(e)[:180]}"
         try:
             db.execute(_t(
                 "UPDATE policies SET status='failed', progress=0, "
-                "progress_stage='Analysis failed' WHERE id = :pid"
-            ), {"pid": policy_id})
+                "progress_stage=:msg, last_analyzed_at=:ts WHERE id=:pid"
+            ), {"msg": _err_msg, "ts": datetime.now(timezone.utc), "pid": policy_id})
             db.commit()
         except Exception:
             db.rollback()

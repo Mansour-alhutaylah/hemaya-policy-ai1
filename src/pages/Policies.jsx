@@ -342,7 +342,10 @@ export default function Policies() {
         });
       }
     } catch (error) {
-      updatePolicyMutation.mutate({ id: policy.id, data: { status: 'uploaded' } });
+      // Refetch from DB so the red "Failed" badge from the backend shows through.
+      // Do NOT reset to 'uploaded' here — the backend already wrote status='failed'
+      // with the error detail in progress_stage.
+      await queryClient.refetchQueries({ queryKey: ['policies'] });
       toast({
         title: 'Analysis Failed',
         description: error.message || 'Failed to analyze policy',
