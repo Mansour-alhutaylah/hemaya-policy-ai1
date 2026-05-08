@@ -1352,48 +1352,41 @@ def accept_mapping(
      ai_rationale, evidence_snippet,
      control_title, control_code, severity_if_missing) = row
 
-    # Mark mapping accepted
+    # Mark mapping accepted (idempotent: re-running with same mapping_id is fine).
     db.execute(_t("""
         UPDATE mapping_reviews
         SET decision = 'Accepted', reviewed_at = NOW(), reviewer_id = :uid
         WHERE id = :mid
     """), {"uid": str(current_user.id), "mid": mapping_id})
 
-    # Check for an existing gap for this policy + control + framework combination
-    existing = db.execute(_t("""
-        SELECT id FROM gaps
-        WHERE policy_id = :pid AND control_id = :cid AND framework_id = :fid
-        LIMIT 1
-    """), {"pid": policy_id, "cid": control_id, "fid": framework_id}).fetchone()
-
-    gap_created = False
-    if not existing:
-        clean_rationale = _clean_ai_rationale(ai_rationale)
-        severity = _extract_severity(ai_rationale) or severity_if_missing or "Medium"
-        new_gap_id = str(__import__("uuid").uuid4())
-        db.execute(_t("""
-            INSERT INTO gaps
-              (id, policy_id, framework_id, control_id, control_name,
-               severity, status, description, remediation, mapping_id, created_at)
-            VALUES
-              (:id, :pid, :fid, :cid, :cname,
-               :sev, 'Open', :desc, :rem, :mid, NOW())
-        """), {
-            "id":    new_gap_id,
-            "pid":   policy_id,
-            "fid":   framework_id,
-            "cid":   control_id,
-            "cname": control_title or control_code or "Unknown Control",
-            "sev":   severity,
-            "desc":  clean_rationale or evidence_snippet or "",
-            "rem":   clean_rationale or "",
-            "mid":   mapping_id,
-        })
-        gap_created = True
-    else:
-        # Link existing gap to this mapping
-        db.execute(_t("UPDATE gaps SET mapping_id = :mid WHERE id = :gid"),
-                   {"mid": mapping_id, "gid": existing[0]})
+    # Phase 6 idempotency: INSERT...ON CONFLICT against the partial unique
+    # index uq_gaps_mapping_id (gaps.mapping_id, WHERE mapping_id IS NOT NULL).
+    # If the same mapping is accepted twice (double-click race, network retry,
+    # multi-tab user, etc.), the second INSERT no-ops and rowcount returns 0.
+    # The endpoint stays a 200 OK with gap_created=False on the second call.
+    clean_rationale = _clean_ai_rationale(ai_rationale)
+    severity = _extract_severity(ai_rationale) or severity_if_missing or "Medium"
+    new_gap_id = str(__import__("uuid").uuid4())
+    res = db.execute(_t("""
+        INSERT INTO gaps
+          (id, policy_id, framework_id, control_id, control_name,
+           severity, status, description, remediation, mapping_id, created_at)
+        VALUES
+          (:id, :pid, :fid, :cid, :cname,
+           :sev, 'Open', :desc, :rem, :mid, NOW())
+        ON CONFLICT (mapping_id) WHERE mapping_id IS NOT NULL DO NOTHING
+    """), {
+        "id":    new_gap_id,
+        "pid":   policy_id,
+        "fid":   framework_id,
+        "cid":   control_id,
+        "cname": control_title or control_code or "Unknown Control",
+        "sev":   severity,
+        "desc":  clean_rationale or evidence_snippet or "",
+        "rem":   clean_rationale or "",
+        "mid":   mapping_id,
+    })
+    gap_created = (res.rowcount == 1)
 
     db.commit()
     return {"status": "accepted", "gap_created": gap_created}
