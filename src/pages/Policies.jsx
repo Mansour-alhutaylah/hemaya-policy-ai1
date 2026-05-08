@@ -342,13 +342,19 @@ export default function Policies() {
         });
       }
     } catch (error) {
-      // Refetch from DB so the red "Failed" badge from the backend shows through.
-      // Do NOT reset to 'uploaded' here — the backend already wrote status='failed'
-      // with the error detail in progress_stage.
+      // Refetch from DB so the badge reflects the actual backend state.
+      // Do NOT reset to 'uploaded' — the backend already wrote the real status.
       await queryClient.refetchQueries({ queryKey: ['policies'] });
+
+      const msg = error.message || 'Failed to analyze policy';
+      const isNotReady = msg.toLowerCase().includes('no checkpoints') ||
+                         msg.toLowerCase().includes('upload required') ||
+                         msg.toLowerCase().includes('incomplete');
       toast({
-        title: 'Analysis Failed',
-        description: error.message || 'Failed to analyze policy',
+        title: isNotReady ? 'Framework Not Ready' : 'Analysis Failed',
+        description: isNotReady
+          ? `${msg} Re-upload the framework document to fix this.`
+          : msg,
         variant: 'destructive',
       });
     }

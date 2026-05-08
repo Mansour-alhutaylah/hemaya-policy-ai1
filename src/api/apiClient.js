@@ -38,9 +38,16 @@ async function request(method, url, data, opts = {}) {
       try {
         const j = JSON.parse(text);
         const detail = j.detail;
-        const msg = Array.isArray(detail)
-          ? detail.map((e) => e.msg || e.message || JSON.stringify(e)).join(", ")
-          : detail || j.error || "Request failed";
+        let msg;
+        if (Array.isArray(detail)) {
+          // FastAPI validation error list
+          msg = detail.map((e) => e.msg || e.message || JSON.stringify(e)).join(", ");
+        } else if (detail && typeof detail === "object") {
+          // Structured error object (e.g. frameworks_not_ready 409)
+          msg = detail.message || detail.error || JSON.stringify(detail);
+        } else {
+          msg = detail || j.error || "Request failed";
+        }
         throw new Error(msg);
       } catch (parseErr) {
         if (!(parseErr instanceof SyntaxError)) throw parseErr;

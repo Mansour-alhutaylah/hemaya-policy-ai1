@@ -1622,9 +1622,24 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     # so the UI can render an actionable "framework needs to be re-uploaded
     # / repaired" warning.
     from backend.framework_loader import framework_readiness
+    print(
+        f"[analyze_policy] policy_id={request.policy_id} "
+        f"frameworks={request.frameworks} "
+        f"policy.status={policy.status!r} "
+        f"progress={getattr(policy, 'progress', None)} "
+        f"progress_stage={getattr(policy, 'progress_stage', None)!r} "
+        f"last_analyzed_at={getattr(policy, 'last_analyzed_at', None)} "
+        f"pause_requested={getattr(policy, 'pause_requested', None)}"
+    )
     unready = []
     for fname in (request.frameworks or []):
         rd = framework_readiness(db, fname)
+        print(
+            f"[analyze_policy]   readiness({fname!r}): "
+            f"is_ready={rd['is_ready']} structured={rd.get('structured')} "
+            f"total={rd['total_controls']} zero_cp={rd['zero_cp_controls']} "
+            f"reason={rd.get('reason')!r}"
+        )
         if not rd["is_ready"]:
             unready.append({
                 "framework": fname,
@@ -1633,6 +1648,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
                 "zero_checkpoint_controls": rd["zero_cp_controls"],
             })
     if unready:
+        print(f"[analyze_policy] 409 — unready frameworks: {[u['framework'] for u in unready]}")
         raise HTTPException(status_code=409, detail={
             "error": "frameworks_not_ready",
             "message": ("One or more frameworks are incomplete (some controls "
@@ -3027,6 +3043,55 @@ def admin_delete_policy(
     db.delete(policy)
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/admin/policies/{policy_id}/reset_status")
+def admin_reset_policy_status(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """
+    Reset a policy that is stuck in 'processing' back to 'uploaded'.
+
+    Safe to call when:
+    - A previous analysis job crashed without writing status='failed'
+    - The server was restarted mid-analysis
+    - pause_requested was never cleared
+
+    Returns the old and new status so the caller can confirm the change.
+    """
+    from sqlalchemy import text as _t
+    row = db.execute(_t(
+        "SELECT status, progress, progress_stage, pause_requested "
+        "FROM policies WHERE id = :pid"
+    ), {"pid": policy_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    old_status, old_progress, old_stage, old_pause = row
+    db.execute(_t("""
+        UPDATE policies
+        SET status          = 'uploaded',
+            progress        = 0,
+            progress_stage  = 'Reset by admin',
+            pause_requested = FALSE,
+            paused_at       = NULL
+        WHERE id = :pid
+    """), {"pid": policy_id})
+    db.commit()
+    print(
+        f"[admin_reset] policy_id={policy_id} "
+        f"was status={old_status!r} progress={old_progress} "
+        f"stage={old_stage!r} pause_requested={old_pause} → reset to 'uploaded'"
+    )
+    return {
+        "ok": True,
+        "policy_id": policy_id,
+        "previous": {"status": old_status, "progress": old_progress,
+                     "progress_stage": old_stage, "pause_requested": old_pause},
+        "now": {"status": "uploaded", "progress": 0},
+    }
 
 
 @app.post("/api/admin/policies/{policy_id}/reanalyze")

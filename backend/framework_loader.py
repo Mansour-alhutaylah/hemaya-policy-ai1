@@ -804,7 +804,7 @@ def get_framework_stats(db):
 #                  (run_sacs002_analysis)
 # Adding an entry here exempts the name from the control_library readiness
 # check; the structured analyzer is responsible for its own completeness
-# invariants.
+# invariants. Add future structured frameworks here when their analyzer is wired in.
 _STRUCTURED_FRAMEWORKS = frozenset({"ECC-2:2024", "SACS-002"})
 
 
