@@ -829,12 +829,22 @@ def get_frameworks(
     params = dict(request.query_params)
     include_empty = params.get("include_empty") == "true"
 
-    # Subquery used in every variant to flag frameworks backed by the
-    # structured ECC tables instead of uploaded PDF chunks.
+    # Known structured frameworks: always appear in the dropdown regardless of
+    # whether their ecc_framework rows have been imported yet. Structured
+    # frameworks use dedicated DB tables rather than uploaded PDF chunks.
+    _STRUCTURED_NAMES = ("'ECC-2:2024'", "'SACS-002'")
+    _structured_name_list = ", ".join(_STRUCTURED_NAMES)
+
+    # is_structured = TRUE if ecc_framework has rows for this framework, OR
+    # if the name is a known structured framework (covers pre-import state).
     _structured_subq = (
-        "EXISTS (SELECT 1 FROM ecc_framework ef "
-        "WHERE ef.framework_id = f.name LIMIT 1)"
+        f"(EXISTS (SELECT 1 FROM ecc_framework ef WHERE ef.framework_id = f.name LIMIT 1)"
+        f" OR f.name IN ({_structured_name_list}))"
     )
+
+    # Debug/test entries have names starting with '_'. Exclude them from every
+    # non-admin query so they never reach the production dropdown.
+    _no_debug = "f.name NOT LIKE '\\_%%' ESCAPE '\\'"
 
     rich_with_empty = f"""
         SELECT f.id, f.name, f.description, f.version,
@@ -860,6 +870,7 @@ def get_frameworks(
         FROM frameworks f
         LEFT JOIN users u ON u.id = f.uploaded_by
         LEFT JOIN framework_chunks fc ON fc.framework_id = f.id
+        WHERE {_no_debug}
         GROUP BY f.id, u.email
         HAVING COUNT(fc.*) > 0
            OR {_structured_subq}
@@ -881,6 +892,7 @@ def get_frameworks(
                {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN framework_chunks fc ON fc.framework_id = f.id
+        WHERE {_no_debug}
         GROUP BY f.id, f.name, f.description
         HAVING COUNT(fc.*) > 0
            OR {_structured_subq}
