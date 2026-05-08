@@ -34,6 +34,7 @@ from backend.checkpoint_analyzer import (
     run_simulation, generate_insights, explain_mapping,
 )
 from backend.ecc2_analyzer import run_ecc2_analysis, verify_ecc2_loaded
+from backend.sacs002_analyzer import run_sacs002_analysis
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
 
@@ -63,14 +64,20 @@ def startup_seed():
     except Exception as e:
         print(f"Seed warning: {e}")
 
-    # Ensure ECC-2:2024 exists in the frameworks master table so it appears
-    # in the upload dropdown immediately — before any analysis has been run.
+    # Ensure ECC-2:2024 and SACS-002 exist in the frameworks master table so
+    # they appear in the upload dropdown immediately — before any analysis has been run.
     try:
-        from backend.ecc2_analyzer import _ensure_framework_row
-        _ensure_framework_row(db)
+        from backend.ecc2_analyzer import _ensure_framework_row as _ecc2_row
+        _ecc2_row(db)
         print("[startup] ECC-2:2024 framework row ensured")
     except Exception as e:
         print(f"[startup] ECC-2:2024 row warning: {e}")
+    try:
+        from backend.sacs002_analyzer import _ensure_framework_row as _sacs002_row
+        _sacs002_row(db)
+        print("[startup] SACS-002 framework row ensured")
+    except Exception as e:
+        print(f"[startup] SACS-002 row warning: {e}")
     finally:
         db.close()
 
@@ -1534,7 +1541,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     try:
         all_results = {}
 
-        # ── ECC-2:2024: route to structured analyzer ──────────────────────
+        # ── Structured analyzers (ECC-2:2024, SACS-002) ──────────────────
         frameworks_list = list(request.frameworks)
         if "ECC-2:2024" in frameworks_list:
             frameworks_list.remove("ECC-2:2024")
@@ -1542,6 +1549,13 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
                 db, request.policy_id, progress_cb=_progress_cb
             )
             all_results.update(ecc2_result)
+
+        if "SACS-002" in frameworks_list:
+            frameworks_list.remove("SACS-002")
+            sacs002_result = await run_sacs002_analysis(
+                db, request.policy_id, progress_cb=_progress_cb
+            )
+            all_results.update(sacs002_result)
 
         # ── Other frameworks: use legacy checkpoint analyzer ───────────────
         if frameworks_list:
@@ -1582,6 +1596,56 @@ def ecc2_status(db: Session = Depends(get_db)):
         return verify_ecc2_loaded(db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ECC-2 status check failed: {e}")
+
+
+@app.get("/api/sacs002/status")
+def sacs002_status(db: Session = Depends(get_db)):
+    """
+    Verify that the SACS-002 structured data is loaded and the analyzer
+    is wired to the correct tables. Returns row counts for all three layers
+    plus sacs002_metadata, orphan checks, and a go/no-go status field.
+    """
+    from sqlalchemy import text as _st
+    result = {
+        "framework_id": "SACS-002",
+        "layer1_count": 0,
+        "layer2_count": 0,
+        "layer3_count": 0,
+        "sacs002_metadata_count": 0,
+        "orphan_l3_count": 0,
+        "errors": [],
+        "status": "not_loaded",
+    }
+    try:
+        result["layer1_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+        result["layer2_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_compliance_metadata WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+        result["layer3_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_ai_checkpoints WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+        result["sacs002_metadata_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM sacs002_metadata WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+        result["orphan_l3_count"] = db.execute(_st("""
+            SELECT COUNT(*)
+            FROM ecc_ai_checkpoints c
+            LEFT JOIN ecc_framework f
+                ON c.framework_id = f.framework_id AND c.control_code = f.control_code
+            WHERE c.framework_id = 'SACS-002' AND f.control_code IS NULL
+        """)).fetchone()[0]
+        if result["layer1_count"] >= 92 and result["layer3_count"] >= 92:
+            result["status"] = "loaded"
+        elif result["layer1_count"] > 0:
+            result["status"] = "partial"
+        else:
+            result["status"] = "not_loaded"
+    except Exception as e:
+        result["errors"].append(str(e))
+        raise HTTPException(status_code=500, detail=f"SACS-002 status check failed: {e}")
+    return result
 
 
 @app.post("/api/functions/pause_policy")
@@ -2087,13 +2151,13 @@ def framework_status(
     target = (request.query_params.get("framework") or "").strip()
 
     if target:
-        # ECC-2:2024 uses structured tables — check ecc_framework, not framework_chunks.
-        if target == "ECC-2:2024":
+        # Structured-table frameworks — check ecc_framework, not framework_chunks.
+        if target in ("ECC-2:2024", "SACS-002"):
             from sqlalchemy import text as _t
             try:
                 count = db.execute(_t(
-                    "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = 'ECC-2:2024'"
-                )).scalar() or 0
+                    "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = :fwid"
+                ), {"fwid": target}).scalar() or 0
             except Exception:
                 count = 0
             loaded = count > 0

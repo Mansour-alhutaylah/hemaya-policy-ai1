@@ -1,0 +1,75 @@
+THIRD PARTY CYBERSECURITY STANDARD COMPLIANCE POLICY
+Version 2.1 | Effective: January 2024
+
+1. PURPOSE AND SCOPE
+
+This policy establishes cybersecurity requirements for all third-party relationships with
+Saudi Aramco. It applies to all personnel, contractors, and subcontractors who access
+Saudi Aramco systems, networks, or data.
+
+2. ACCEPTABLE USE POLICY (TPC-1)
+
+Third Party must establish, maintain, and communicate a Cybersecurity Acceptable Use
+Policy (AUP) governing use of technology assets. All personnel must sign and acknowledge
+the AUP annually. The AUP prohibits unauthorized use, sharing of credentials, and
+installation of unauthorized software.
+
+3. CYBERSECURITY ROLES AND RESPONSIBILITIES (TPC-2, TPC-3)
+
+A designated Cybersecurity Officer is responsible for implementing and maintaining all
+cybersecurity controls. The Cybersecurity Officer reports to senior management quarterly
+on the status of the cybersecurity program. All third-party employees must complete
+cybersecurity awareness training within 30 days of hire and annually thereafter.
+
+4. ASSET MANAGEMENT (TPC-5)
+
+An inventory of all technology assets including hardware, software, and data stores is
+maintained and reviewed quarterly. Assets are classified according to sensitivity.
+Unauthorized hardware and software are not permitted on Saudi Aramco networks.
+
+5. ACCESS CONTROL
+
+5.1 User Access Management (TPC-7)
+Access to systems and applications is granted based on the principle of least privilege.
+Access requests must be approved by the asset owner and the Cybersecurity Officer.
+Access rights are reviewed quarterly and terminated immediately upon departure.
+
+5.2 Privileged Access (TPC-8)
+Privileged accounts are strictly controlled. A formal request and approval process
+is required for all privileged access. Privileged access sessions are logged and
+monitored. Shared privileged accounts are prohibited.
+
+5.3 Remote Access (TPC-9)
+Remote access to Saudi Aramco systems requires multi-factor authentication (MFA).
+Remote sessions must use encrypted VPN connections. Remote access logs are reviewed
+monthly for anomalies.
+
+6. DATA SECURITY
+
+6.1 Data Classification (TPC-24)
+Information is classified into four levels: Public, Internal, Confidential, and
+Restricted. All data must be labeled according to its classification. Handling
+procedures are defined for each classification level.
+
+6.2 Data Encryption (TPC-25)
+Data classified as Confidential or Restricted must be encrypted at rest using AES-256
+and in transit using TLS 1.2 or higher. Encryption keys are managed by the
+Cybersecurity Officer and rotated annually.
+
+7. VULNERABILITY MANAGEMENT (TPC-42)
+
+Systems are scanned for vulnerabilities monthly using approved scanning tools.
+Critical vulnerabilities must be remediated within 15 days. High vulnerabilities
+must be remediated within 30 days. Vulnerability reports are provided to Saudi Aramco
+upon request.
+
+8. INCIDENT RESPONSE (TPC-60)
+
+A documented incident response plan is maintained and tested annually. Security
+incidents affecting Saudi Aramco data or systems must be reported to Saudi Aramco
+within 24 hours of detection. Post-incident reviews are conducted and reports shared.
+
+9. COMPLIANCE REVIEW
+
+Compliance with this policy is reviewed annually by internal audit. Findings are
+reported to the Cybersecurity Officer and senior management for remediation tracking.

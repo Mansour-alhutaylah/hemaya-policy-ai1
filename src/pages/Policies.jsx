@@ -756,7 +756,7 @@ export default function Policies() {
                 {!frameworksLoading && frameworks.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {frameworks.find(fw => fw.name === newPolicy.framework)?.is_structured
-                      ? 'Uses structured ECC-2 tables — official control text verified.'
+                      ? 'Uses structured control tables — official control text verified.'
                       : 'The policy will be analyzed against this framework\'s controls.'}
                   </p>
                 )}

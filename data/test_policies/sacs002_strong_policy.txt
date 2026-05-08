@@ -1,0 +1,194 @@
+SACS-002 THIRD PARTY CYBERSECURITY COMPLIANCE POLICY
+Classification: Confidential | Version 3.0 | Effective: March 2024
+Owner: Chief Information Security Officer | Review Cycle: Annual
+
+=============================================================================
+SECTION A — GENERAL REQUIREMENTS (All Third Parties)
+=============================================================================
+
+1. ACCEPTABLE USE POLICY (TPC-1)
+
+Third Party MUST establish, maintain, and communicate a Cybersecurity Acceptable Use
+Policy (AUP) governing the use of Third Party Technology Assets. The AUP must be
+signed by all users prior to access, reviewed annually, and updated to address new
+threat vectors. Violations of the AUP result in immediate access revocation and
+disciplinary action up to and including termination.
+
+2. CYBERSECURITY PROGRAM (TPC-2)
+
+A formal cybersecurity program is established and documented, encompassing governance,
+risk management, technical controls, and compliance monitoring. The program is reviewed
+and approved by senior management annually. Program objectives align with Saudi Aramco's
+third-party cybersecurity requirements and NIST CSF principles.
+
+3. CYBERSECURITY ROLES AND RESPONSIBILITIES (TPC-3)
+
+A designated Cybersecurity Officer (CSO) is appointed with documented accountability
+for all cybersecurity controls. Role descriptions for all cybersecurity functions are
+documented, reviewed, and approved annually. The CSO has authority to enforce controls,
+escalate risks to executive leadership, and mandate remediation timelines.
+
+4. CYBERSECURITY AWARENESS AND TRAINING (TPC-4)
+
+All personnel must complete role-based cybersecurity awareness training within 5 days
+of hire and every 12 months thereafter. Training completion is tracked and reported
+quarterly to the CSO. Personnel with privileged access receive enhanced training
+covering social engineering, phishing, and insider threat recognition. Training records
+are retained for a minimum of 3 years.
+
+5. ASSET MANAGEMENT AND INVENTORY (TPC-5)
+
+A comprehensive inventory of all technology assets — including hardware, software,
+licensed applications, cloud services, and data repositories — is maintained and
+updated upon any change event. The inventory is reviewed and reconciled quarterly.
+Assets are classified according to sensitivity and criticality using a four-tier
+classification scheme: Public, Internal, Confidential, and Restricted.
+
+6. CYBERSECURITY RISK ASSESSMENT (TPC-6)
+
+A formal risk assessment is conducted annually and upon significant changes to the
+environment. The assessment identifies, evaluates, and prioritizes cybersecurity risks.
+Risk treatment decisions — accept, mitigate, transfer, or avoid — are documented and
+approved by senior management. Risk registers are reviewed quarterly and updated as
+new risks emerge.
+
+7. ACCESS CONTROL — USER IDENTITY MANAGEMENT (TPC-7)
+
+Access to all systems and applications is governed by the principle of least privilege.
+All access requests must be approved by the data owner and the CSO. User access rights
+are formally reviewed quarterly and immediately revoked upon role change or departure.
+Shared accounts are prohibited. Each user maintains a unique identifier and access
+logs are retained for a minimum of 12 months.
+
+8. PRIVILEGED ACCESS MANAGEMENT (TPC-8)
+
+Privileged accounts — including local administrator, service accounts, and root access
+— are strictly controlled. A formal approval workflow is required for all privileged
+access grants. Privileged sessions are recorded and monitored. Privileged account
+credentials are rotated every 90 days. Standing privileged access is prohibited; just-
+in-time access is used where technically feasible.
+
+9. REMOTE ACCESS SECURITY (TPC-9)
+
+All remote access to Saudi Aramco systems requires multi-factor authentication (MFA)
+using TOTP or hardware tokens. Remote sessions are established exclusively via encrypted
+VPN using TLS 1.3 or IPSec. Session timeouts are enforced at 15 minutes of inactivity.
+Remote access logs are reviewed weekly for anomalies and suspicious activity.
+
+10. NETWORK SEGMENTATION (TPC-10)
+
+Production, development, and test environments are segregated by network segment.
+Saudi Aramco-connected systems are isolated in a dedicated network zone with controlled
+ingress and egress. Firewall rules are reviewed quarterly and unused rules are removed.
+All firewall rule changes require a documented change request and CSO approval.
+
+11. SECURITY MONITORING AND LOGGING (TPC-20)
+
+Security events are logged for all critical systems including authentication events,
+privileged access, configuration changes, and data access. Logs are centralized in a
+SIEM solution, retained for a minimum of 12 months, and reviewed daily. Automated
+alerting is configured for high-severity events with escalation to the CSO within 1 hour.
+
+=============================================================================
+SECTION A — DATA SECURITY AND INFORMATION MANAGEMENT
+=============================================================================
+
+12. DATA CLASSIFICATION AND HANDLING (TPC-24)
+
+All data is classified into four levels: Public, Internal, Confidential, and Restricted.
+Classification is applied at the point of creation and maintained throughout the data
+lifecycle. Handling procedures — including storage, transmission, sharing, and disposal
+— are defined and enforced for each classification level. Data owners are responsible for
+ensuring correct classification and handling.
+
+13. DATA ENCRYPTION (TPC-25)
+
+Data classified Confidential or Restricted must be encrypted at rest using AES-256
+and in transit using TLS 1.2 or higher. Encryption key management procedures are
+documented, reviewed annually, and keys are rotated every 12 months. Encryption
+exceptions require documented risk acceptance signed by the CSO.
+
+14. SECURE DATA DISPOSAL (TPC-26)
+
+All media and storage devices containing Saudi Aramco data must be securely disposed
+of using NIST SP 800-88 compliant methods. A certificate of destruction is obtained
+and retained for all physical media disposals. Logical deletion of sensitive data
+follows documented secure erasure procedures.
+
+=============================================================================
+SECTION B — SPECIFIC REQUIREMENTS
+=============================================================================
+
+15. VULNERABILITY MANAGEMENT (TPC-42)
+
+Systems connecting to Saudi Aramco networks are scanned for vulnerabilities using
+approved scanning tools on a monthly basis. Critical vulnerabilities (CVSS ≥ 9.0)
+must be remediated within 15 days. High vulnerabilities (CVSS 7.0–8.9) must be
+remediated within 30 days. Vulnerability scan reports and remediation status are
+provided to Saudi Aramco upon request and reviewed with the Saudi Aramco security
+team quarterly.
+
+16. PENETRATION TESTING (TPC-43)
+
+Annual penetration testing is conducted by an independent qualified third party.
+Scope covers all systems and interfaces that connect to Saudi Aramco. Test findings
+are documented, risk-rated, and remediated within defined timelines. Testing results
+and remediation evidence are available to Saudi Aramco upon request.
+
+17. SECURITY INCIDENT MANAGEMENT (TPC-60)
+
+A documented incident response plan (IRP) is maintained, tested via tabletop exercises
+annually, and updated following every major incident. Security incidents that affect
+or potentially affect Saudi Aramco data or systems must be reported to Saudi Aramco's
+Cybersecurity Operations Center within 2 hours of detection. Post-incident reviews
+are conducted within 5 business days and written reports are shared with Saudi Aramco
+including root cause, impact, and corrective actions implemented.
+
+18. SECURE DEVELOPMENT LIFECYCLE (TPC-70)
+
+Software developed for Saudi Aramco follows a documented Secure Development Lifecycle
+(SDLC) incorporating threat modeling, security requirements, secure coding standards,
+code review, SAST/DAST testing, and security sign-off before release. OWASP Top 10
+and SANS Top 25 vulnerabilities are addressed in all custom code. Security testing
+results are documented and retained.
+
+19. CLOUD SECURITY (TPC-80)
+
+Cloud services used in the delivery of Saudi Aramco services are configured according
+to the CSP's security hardening benchmarks (CIS or equivalent). Data residency
+requirements are documented and enforced to restrict Saudi Aramco data to approved
+geographic regions. Cloud access control follows least privilege; all cloud administrative
+access requires MFA. Cloud security posture is reviewed quarterly using CSPM tooling.
+
+20. SUPPLY CHAIN SECURITY (TPC-85)
+
+All sub-contractors and fourth parties with access to Saudi Aramco data or systems
+are subject to the same cybersecurity requirements as the Third Party. A register of
+sub-contractors is maintained and reviewed quarterly. Sub-contractor cybersecurity
+compliance is assessed annually. Saudi Aramco is notified within 5 business days of
+any new sub-contractor engagement or termination.
+
+=============================================================================
+COMPLIANCE, AUDIT, AND EXCEPTIONS
+=============================================================================
+
+21. COMPLIANCE MONITORING
+
+Compliance with this policy is monitored continuously through automated controls
+and reviewed formally by internal audit on an annual basis. Audit findings are
+reported to senior management and the CSO within 5 business days. A formal
+remediation plan with owners and timelines is produced within 10 business days.
+
+22. EXCEPTION MANAGEMENT
+
+Policy exceptions must be formally requested, risk-assessed, and approved by the
+CSO and senior management. All exceptions are time-bounded (maximum 90 days),
+documented in the exception register, and reviewed at each renewal. Exceptions
+are disclosed to Saudi Aramco upon request.
+
+23. POLICY REVIEW AND UPDATES
+
+This policy is reviewed annually or upon significant changes to the threat landscape,
+regulatory requirements, or Saudi Aramco directives. Updates are approved by the CSO
+and communicated to all relevant personnel within 10 business days of approval.
+Previous policy versions are archived and retained for 5 years.
