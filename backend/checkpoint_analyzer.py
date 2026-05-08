@@ -848,10 +848,22 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
         ), {"fw": fw}).fetchone()
         framework_id = fw_row[0] if fw_row else None
 
+        # Phase 5: only analyze checkpoints whose parent control_library row
+        # is active (or has NULL status, for backward compatibility with
+        # legacy controls created before the status column existed).
+        # Joining at the SQL level is also our defense against orphan
+        # checkpoint rows whose control_code has no matching control_library
+        # entry — those would never resolve to a control_id later anyway.
         rows = db.execute(sql_text(
-            "SELECT id, control_code, checkpoint_index, requirement, keywords, weight "
-            "FROM control_checkpoints WHERE framework=:fwid "
-            "ORDER BY control_code, checkpoint_index"
+            "SELECT cc.id, cc.control_code, cc.checkpoint_index, "
+            "       cc.requirement, cc.keywords, cc.weight "
+            "FROM control_checkpoints cc "
+            "JOIN control_library cl "
+            "  ON cl.framework_id::text = cc.framework "
+            " AND cl.control_code = cc.control_code "
+            "WHERE cc.framework = :fwid "
+            "  AND (cl.status IS NULL OR cl.status = 'active') "
+            "ORDER BY cc.control_code, cc.checkpoint_index"
         ), {"fwid": framework_id}).fetchall()
         print(f"    Load checkpoints: {round(time.time()-t1, 2)}s -- "
               f"{len(rows)} checkpoints")
