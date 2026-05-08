@@ -1,0 +1,84 @@
+INFORMATION SECURITY POLICY
+Organization: Midcorp Ltd
+Classification: Internal
+Version: 2.1
+Approved by: Chief Information Security Officer
+Review cycle: Annual
+
+1. PURPOSE AND SCOPE
+This Information Security Policy establishes the security requirements for all information systems, data, and personnel at Midcorp Ltd. It applies to all employees, contractors, and third parties with access to company systems.
+
+2. CYBERSECURITY GOVERNANCE
+
+2.1 Roles and Responsibilities
+The Chief Information Security Officer (CISO) is responsible for overseeing the information security program. A dedicated cybersecurity team reports to the CISO. Department managers are responsible for enforcing security policies within their teams.
+
+2.2 Risk Management
+The organization conducts annual information security risk assessments. Identified risks are documented in the risk register and assigned to risk owners. Risk treatment plans are reviewed quarterly.
+
+2.3 Policy Review
+All security policies are reviewed at least annually and updated when significant changes occur to the technology environment or regulatory requirements.
+
+3. ACCESS CONTROL AND IDENTITY MANAGEMENT
+
+3.1 User Access
+Access to information systems is granted on a least-privilege basis. Access rights are approved by the system owner and reviewed every six months. User accounts are created through the IT helpdesk following a formal request process.
+
+3.2 Authentication
+All users must authenticate using a username and password. Passwords must be at least 12 characters and include uppercase, lowercase, numbers, and special characters. Passwords must be changed every 90 days. Multi-factor authentication (MFA) is required for all remote access and for administrators accessing privileged systems.
+
+3.3 Privileged Access
+Administrator accounts are separate from regular user accounts. Privileged access is logged and monitored. Administrators must use dedicated workstations for privileged tasks.
+
+3.4 Access Termination
+User access is revoked within 24 hours of employment termination. Quarterly access reviews identify and remove unnecessary access rights.
+
+4. NETWORK SECURITY
+
+4.1 Network Segmentation
+The corporate network is segmented into zones based on sensitivity. Production systems are isolated from development and test environments. Firewalls control traffic between network segments.
+
+4.2 Remote Access
+Remote access to company systems requires a VPN with MFA. Remote access sessions are logged.
+
+5. EMAIL AND COMMUNICATION SECURITY
+
+5.1 Email Security
+The organization uses email filtering to block spam, phishing, and malicious attachments. Employees must not open suspicious email attachments or click on unverified links. Sensitive information must not be sent via unencrypted email.
+
+6. DATA PROTECTION AND BACKUP
+
+6.1 Data Classification
+Information is classified as Public, Internal, Confidential, or Restricted. Handling requirements apply to each classification level.
+
+6.2 Backup
+Critical system data is backed up daily. Backups are stored in a geographically separate location. Backup restoration is tested quarterly.
+
+6.3 Encryption
+Confidential and Restricted data must be encrypted when stored on portable devices or transmitted over public networks. AES-256 encryption is the minimum standard.
+
+7. INCIDENT RESPONSE
+
+7.1 Incident Reporting
+All suspected security incidents must be reported to the IT Security team within 1 hour of discovery. An incident log is maintained.
+
+7.2 Incident Handling
+A documented incident response procedure is in place. Incidents are classified by severity (Critical, High, Medium, Low). Critical incidents trigger escalation to senior management.
+
+7.3 Post-Incident Review
+A post-incident review is conducted within 5 business days of resolving a critical or high-severity incident.
+
+8. PHYSICAL SECURITY
+Data centers and server rooms are accessed only by authorized personnel. Access is controlled by badge readers and logged. Visitors must be escorted.
+
+9. VULNERABILITY MANAGEMENT
+Vulnerability scans are conducted monthly on all internet-facing systems. Critical and high-severity vulnerabilities must be patched within 30 days. A patch management process is documented.
+
+10. AWARENESS AND TRAINING
+All employees receive cybersecurity awareness training upon joining. Annual refresher training is mandatory. Phishing simulation exercises are conducted quarterly.
+
+11. THIRD-PARTY SECURITY
+Third parties with access to company data must sign a data processing agreement. Third-party security practices are reviewed before engagement.
+
+12. COMPLIANCE
+This policy complies with applicable laws and regulations. Non-compliance is subject to disciplinary action up to and including termination.

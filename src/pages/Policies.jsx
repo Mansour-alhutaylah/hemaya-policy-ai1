@@ -327,14 +327,18 @@ export default function Policies() {
       });
 
       if (result.success) {
-        queryClient.invalidateQueries({ queryKey: ['policies'] });
+        // Refetch immediately so the badge flips from Processing → Analyzed
+        // without waiting for the next polling tick (which may have already
+        // stopped because the API call itself returned).
+        await queryClient.refetchQueries({ queryKey: ['policies'] });
         queryClient.invalidateQueries({ queryKey: ['complianceResults'] });
         queryClient.invalidateQueries({ queryKey: ['gaps'] });
         queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
 
         toast({
           title: 'Analysis Complete',
-          description: `Created ${result.mappings_created} mappings and identified ${result.gaps_created} gaps.`,
+          description: `Analysis complete for ${policy.file_name}.`,
         });
       }
     } catch (error) {
@@ -363,7 +367,7 @@ export default function Policies() {
       if (res.ok) {
         const fwStatus = await res.json();
         if (!fwStatus.ready) {
-          setPendingAnalysisPolicy(policy);
+          setPendingAnalysisPolicy({ ...policy, _fwSource: fwStatus.source });
           setShowFrameworkWarning(true);
           return;
         }
@@ -736,7 +740,14 @@ export default function Policies() {
                   <SelectContent>
                     {frameworks.map((fw) => (
                       <SelectItem key={fw.id} value={fw.name}>
-                        {fw.name}
+                        <span className="flex items-center gap-2">
+                          {fw.name}
+                          {fw.is_structured && (
+                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                              Structured
+                            </span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -748,7 +759,9 @@ export default function Policies() {
                 )}
                 {!frameworksLoading && frameworks.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    The policy will be analyzed against this framework's controls.
+                    {frameworks.find(fw => fw.name === newPolicy.framework)?.is_structured
+                      ? 'Uses structured control tables — official control text verified.'
+                      : 'The policy will be analyzed against this framework\'s controls.'}
                   </p>
                 )}
               </div>
@@ -859,7 +872,14 @@ export default function Policies() {
               Framework Document Not Loaded
             </DialogTitle>
             <DialogDescription>
-              {pendingAnalysisPolicy?.framework_code ? (
+              {pendingAnalysisPolicy?._fwSource === 'structured_ecc_tables' ? (
+                <>
+                  The structured control data for{' '}
+                  <strong>{pendingAnalysisPolicy.framework_code}</strong> has not been imported
+                  into the database yet. This framework does not require a PDF upload — it uses
+                  pre-built structured tables that must be populated by an administrator.
+                </>
+              ) : pendingAnalysisPolicy?.framework_code ? (
                 <>
                   The reference document for{' '}
                   <strong>{pendingAnalysisPolicy.framework_code}</strong> hasn't been uploaded yet,
@@ -877,11 +897,14 @@ export default function Policies() {
           <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg my-2">
             <Database className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-amber-700 dark:text-amber-200">
-              Ask an administrator to upload the reference document for
-              {pendingAnalysisPolicy?.framework_code
-                ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
-                : ' this framework '}
-              from the Admin <strong>Frameworks</strong> panel for the best results.
+              {pendingAnalysisPolicy?._fwSource === 'structured_ecc_tables'
+                ? <>Ask an administrator to restart the server or run the import script for <strong>{pendingAnalysisPolicy.framework_code}</strong>.</>
+                : <>Ask an administrator to upload the reference document for{' '}
+                    {pendingAnalysisPolicy?.framework_code
+                      ? <> <strong>{pendingAnalysisPolicy.framework_code}</strong> </>
+                      : ' this framework '}
+                    from the Admin <strong>Frameworks</strong> panel for the best results.</>
+              }
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-2">

@@ -519,11 +519,14 @@ def seed_checkpoints(db):
             "DELETE FROM control_library WHERE framework_id=:fwid"
         ), {"fwid": nca_fw_id})
         for code, title in CONTROL_TITLES.items():
+            # ON CONFLICT relies on uq_control_library_framework_code; defends
+            # against the DELETE+INSERT racing with another seeder.
             db.execute(sql_text("""
                 INSERT INTO control_library
                 (id, framework_id, control_code, title, keywords,
                  severity_if_missing, created_at)
                 VALUES (:id, :fwid, :code, :title, :kw, 'High', NOW())
+                ON CONFLICT (framework_id, control_code) DO NOTHING
             """), {
                 "id": str(uuid.uuid4()),
                 "fwid": nca_fw_id,
@@ -585,11 +588,15 @@ def ensure_control_library_sync(db):
         ), {"fid": fw_id}).fetchone()
         fw_display = fw_name_row[0] if fw_name_row else fw_id[:8]
 
+        # ON CONFLICT closes the check-then-insert race between the SELECT
+        # at line 564 and the INSERT here. Two threads can both see "exists=NULL"
+        # but only one can INSERT successfully under the unique constraint.
         db.execute(sql_text("""
             INSERT INTO control_library
             (id, control_code, title, keywords, severity_if_missing,
              framework_id, created_at)
             VALUES (:id, :cc, :title, :kw, 'High', :fid, :cat)
+            ON CONFLICT (framework_id, control_code) DO NOTHING
         """), {
             "id": str(uuid.uuid4()),
             "cc": control_code,

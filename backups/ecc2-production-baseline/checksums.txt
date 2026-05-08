@@ -1,0 +1,36 @@
+# ECC-2:2024 Production Baseline — SHA256 Checksums
+# Generated: 2026-05-07 03:37:15 UTC
+# Branch: main
+# Commit: 19061f19a9616aa46aa1a8dc1ff77018dd9be383
+
+## ECC-2 Source Data (data/ecc2/)
+58297e8eb702cb90d20e299789176eef0b2e6d956bec6b7e0d3d74661c2f88f8 *data/ecc2/ecc2_layer1_official.json
+f308c694b1ed2c16cabc6b43eb70de520757234aea105bceb66cd5460ebeebde *data/ecc2/ecc2_layer2_metadata.json
+374e8480d252aaf4cd6b2a9710b3305b1299ce4d59ba1ad766e4a037662eb87b *data/ecc2/ecc2_layer3_ai_checkpoints.json
+61b0d03130347d2f766c35b9cad6a38219562d0fb74c528290e320a9b0353b6e *data/ecc2/ecc2_layer3_domain1.json
+cf235d5a8c82775f63a25aee5bae9c7db97e6f4ca5b405e042391c1a29967401 *data/ecc2/ecc2_layer3_domain2.json
+0546d284dcc41f84189a2d1add91c1bff92f25e4fc2f19e645a09ee1d8289f9c *data/ecc2/ecc2_layer3_domain3.json
+408cf1215ac1709582f81149e78af09f9d332a19584cd8de55d99b152116089f *data/ecc2/ecc2_layer3_domain4.json
+b8cb06a41edbbe108028fbe414db341b42bd08e26d8ab8df750bfd6252f3a6ae *data/ecc2/ecc2_schema.sql
+69294dd51db3191b1f4eb323b6cdd4e7c623e6c073fb6737d4426ea20eb959c3 *data/ecc2/ecc2_import.py
+017220ae03d540aecdf2666dde95919b6d5629f9d0a7abf59b45442a5eb48306 *data/ecc2/ecc2_validation_report.md
+
+## ECC-2 Analyzer (backend/)
+3dea20389f361613e5df89826bd1b2563591d1b478dea1e2f14033540d45bc43 *backend/ecc2_analyzer.py
+
+## Modified Backend Files
+4f3a6ca7c2848f92ff431d6e98af063d6935a5dae90c8c2dfe26fca69781c12f *backend/main.py
+c4811aab19948aac3f98d3c775ae39913c13046798b793c67f23efed93f77375 *backend/checkpoint_analyzer.py
+819ec4c9cf04735769816741a161ff9d060aafede958ac3c097aef9dafbb7923 *backend/database.py
+6abe1c7940317bf71d67b22055eab9b0a6f2fa08dcd985623a1c6ace262f3aa4 *backend/framework_loader.py
+341e5db8718e63226aada78dc6eb5b90145bf40c0a06307ad93dc9e7d76b5ce4 *backend/text_extractor.py
+d5b47379a69f86a91cdcbf0d678166dc72610ffdbfd29a10688b257168a8e0d7 *backend/vector_store.py
+
+## Modified Frontend Files
+c8dc348155d71e262d0efa1896683c49493782ac478b47e31cbb3e2c9bd8a35d *src/pages/Policies.jsx
+851d989adf4d0769ebd5ff1ca3617945806cd2ed5754042fae80ea8cf2aaff87 *src/lib/query-client.js
+
+## Test Policies
+a47ac56658dec3c9c749966b798853ed9644672518fe6b24d0ad1ab2f0fad330 *data/test_policies/strong_policy.txt
+a164a12c209873640703c92979767a8bc16878485fec35a00d8cbaba00d36d77 *data/test_policies/medium_policy.txt
+4b8ae1a96f438f75227744b1cc32b697996d6fc5ccf66af30ea086c10fdfa4d1 *data/test_policies/weak_policy.txt

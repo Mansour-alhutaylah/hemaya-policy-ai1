@@ -45,7 +45,9 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    /* Slightly more saturated and a touch darker so cards (pure white) have
+       visible separation from the page surface in light mode. */
+    --background: 220 23% 96%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
@@ -53,11 +55,13 @@
     --popover-foreground: 222 47% 11%;
     --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
+    /* Secondary is used as a subtle tinted surface (e.g. admin sidebar);
+       it must read as distinct from both --background and --card. */
+    --secondary: 220 17% 93%;
     --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
+    --muted: 220 17% 93%;
     --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 94%;
+    --accent: 220 18% 90%;
     --accent-foreground: 222 47% 11%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;

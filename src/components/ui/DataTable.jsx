@@ -56,15 +56,20 @@ export default function DataTable({
   }
 
   return (
-    <div className={cn("rounded-xl border border-border bg-card overflow-hidden", className)}>
+    // Card-style container with clean rounded corners + subtle shadow. The
+    // shadow lifts the table off the soft page background just enough to
+    // read as a distinct surface (matches the reference look).
+    <div className={cn("rounded-xl border border-border bg-card shadow-sm overflow-hidden", className)}>
       <Table>
         <TableHeader>
-          <TableRow className="bg-muted/50 hover:bg-muted/50 border-border">
+          {/* Header row — slightly tinted muted band with uppercase tracked
+              caps for a modern SaaS data-table feel. */}
+          <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border">
             {columns.map((col, i) => (
               <TableHead
                 key={i}
                 className={cn(
-                  "font-semibold text-muted-foreground text-xs uppercase tracking-wide",
+                  "h-11 font-semibold text-muted-foreground text-[11px] uppercase tracking-wider",
                   col.className
                 )}
               >
@@ -79,12 +84,15 @@ export default function DataTable({
               key={row.id || rowIndex}
               onClick={() => onRowClick?.(row)}
               className={cn(
-                "transition-colors border-border",
+                "transition-colors border-b border-border/60 last:border-0",
                 onRowClick && "cursor-pointer hover:bg-muted/40"
               )}
             >
               {columns.map((col, colIndex) => (
-                <TableCell key={colIndex} className={cn("py-4", col.cellClassName)}>
+                <TableCell
+                  key={colIndex}
+                  className={cn("py-3.5 text-sm", col.cellClassName)}
+                >
                   {col.cell ? col.cell(row) : row[col.accessor]}
                 </TableCell>
               ))}

@@ -1,0 +1,3590 @@
+[
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-1",
+    "section": "A",
+    "category_code": "GV",
+    "audit_questions": [
+      "Is there a documented GV requirement policy formally approved and communicated to all personnel?",
+      "Does the GV requirement policy define scope, responsibilities, and review cycle?",
+      "Is the GV requirement policy reviewed and updated at least annually?"
+    ],
+    "suggested_evidence": [
+      "Signed policy document",
+      "Policy approval record",
+      "Annual review log"
+    ],
+    "indicators_of_implementation": [
+      "Policy document exists",
+      "Management approval on file",
+      "Staff acknowledgment records"
+    ],
+    "maturity_signals": {
+      "initial": "No documented GV requirement process or implementation.",
+      "developing": "Gv requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Gv requirement implemented with documented policy or procedure.",
+      "managed": "Gv requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Gv requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "GV_requirement_policy.pdf",
+      "GV_requirement_procedure.pdf",
+      "GV_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for GV requirement",
+      "Tool/system report for GV requirement",
+      "Audit log sample for GV requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-2",
+    "section": "A",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is password management enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for password management?",
+      "Is there logging and monitoring of password management events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented password management process or implementation.",
+      "developing": "Password management partially implemented; gaps in coverage or documentation.",
+      "defined": "Password management implemented with documented policy or procedure.",
+      "managed": "Password management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Password management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "password_management_policy.pdf",
+      "password_management_procedure.pdf",
+      "password_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for password management",
+      "Tool/system report for password management",
+      "Audit log sample for password management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-3",
+    "section": "A",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-4",
+    "section": "A",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is multi-factor authentication enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for multi-factor authentication?",
+      "Is there logging and monitoring of multi-factor authentication events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented multi-factor authentication process or implementation.",
+      "developing": "Multi-factor authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Multi-factor authentication implemented with documented policy or procedure.",
+      "managed": "Multi-factor authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Multi-factor authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "multi-factor_authentication_policy.pdf",
+      "multi-factor_authentication_procedure.pdf",
+      "multi-factor_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for multi-factor authentication",
+      "Tool/system report for multi-factor authentication",
+      "Audit log sample for multi-factor authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-5",
+    "section": "A",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is multi-factor authentication enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for multi-factor authentication?",
+      "Is there logging and monitoring of multi-factor authentication events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented multi-factor authentication process or implementation.",
+      "developing": "Multi-factor authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Multi-factor authentication implemented with documented policy or procedure.",
+      "managed": "Multi-factor authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Multi-factor authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "multi-factor_authentication_policy.pdf",
+      "multi-factor_authentication_procedure.pdf",
+      "multi-factor_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for multi-factor authentication",
+      "Tool/system report for multi-factor authentication",
+      "Audit log sample for multi-factor authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-6",
+    "section": "A",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-7",
+    "section": "A",
+    "category_code": "AT",
+    "audit_questions": [
+      "Is mandatory AT requirement training conducted and tracked for all users?",
+      "Do training records show completion dates and topics covered?",
+      "Is the training content updated to reflect current threats?"
+    ],
+    "suggested_evidence": [
+      "Training completion records",
+      "Training content/curriculum",
+      "Acknowledgment forms"
+    ],
+    "indicators_of_implementation": [
+      "All users trained annually",
+      "Records maintained",
+      "Content reviewed for relevance"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AT requirement process or implementation.",
+      "developing": "At requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "At requirement implemented with documented policy or procedure.",
+      "managed": "At requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "At requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AT_requirement_policy.pdf",
+      "AT_requirement_procedure.pdf",
+      "AT_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AT requirement",
+      "Tool/system report for AT requirement",
+      "Audit log sample for AT requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-8",
+    "section": "A",
+    "category_code": "AT",
+    "audit_questions": [
+      "Is mandatory AT requirement training conducted and tracked for all users?",
+      "Do training records show completion dates and topics covered?",
+      "Is the training content updated to reflect current threats?"
+    ],
+    "suggested_evidence": [
+      "Training completion records",
+      "Training content/curriculum",
+      "Acknowledgment forms"
+    ],
+    "indicators_of_implementation": [
+      "All users trained annually",
+      "Records maintained",
+      "Content reviewed for relevance"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AT requirement process or implementation.",
+      "developing": "At requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "At requirement implemented with documented policy or procedure.",
+      "managed": "At requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "At requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AT_requirement_policy.pdf",
+      "AT_requirement_procedure.pdf",
+      "AT_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AT requirement",
+      "Tool/system report for AT requirement",
+      "Audit log sample for AT requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-9",
+    "section": "A",
+    "category_code": "AT",
+    "audit_questions": [
+      "Is mandatory AT requirement training conducted and tracked for all users?",
+      "Do training records show completion dates and topics covered?",
+      "Is the training content updated to reflect current threats?"
+    ],
+    "suggested_evidence": [
+      "Training completion records",
+      "Training content/curriculum",
+      "Acknowledgment forms"
+    ],
+    "indicators_of_implementation": [
+      "All users trained annually",
+      "Records maintained",
+      "Content reviewed for relevance"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AT requirement process or implementation.",
+      "developing": "At requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "At requirement implemented with documented policy or procedure.",
+      "managed": "At requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "At requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AT_requirement_policy.pdf",
+      "AT_requirement_procedure.pdf",
+      "AT_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AT requirement",
+      "Tool/system report for AT requirement",
+      "Audit log sample for AT requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-10",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is password management implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that password management covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented password management process or implementation.",
+      "developing": "Password management partially implemented; gaps in coverage or documentation.",
+      "defined": "Password management implemented with documented policy or procedure.",
+      "managed": "Password management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Password management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "password_management_policy.pdf",
+      "password_management_procedure.pdf",
+      "password_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for password management",
+      "Tool/system report for password management",
+      "Audit log sample for password management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-11",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-12",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is anti-virus protection implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that anti-virus protection covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented anti-virus protection process or implementation.",
+      "developing": "Anti-virus protection partially implemented; gaps in coverage or documentation.",
+      "defined": "Anti-virus protection implemented with documented policy or procedure.",
+      "managed": "Anti-virus protection consistently implemented, monitored, and reviewed.",
+      "optimizing": "Anti-virus protection continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "anti-virus_protection_policy.pdf",
+      "anti-virus_protection_procedure.pdf",
+      "anti-virus_protection_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for anti-virus protection",
+      "Tool/system report for anti-virus protection",
+      "Audit log sample for anti-virus protection"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-13",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is SPF / email authentication implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that SPF / email authentication covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented SPF / email authentication process or implementation.",
+      "developing": "Spf / email authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Spf / email authentication implemented with documented policy or procedure.",
+      "managed": "Spf / email authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Spf / email authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "SPF_/_email_authentication_policy.pdf",
+      "SPF_/_email_authentication_procedure.pdf",
+      "SPF_/_email_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for SPF / email authentication",
+      "Tool/system report for SPF / email authentication",
+      "Audit log sample for SPF / email authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-14",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is SPF / email authentication implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that SPF / email authentication covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented SPF / email authentication process or implementation.",
+      "developing": "Spf / email authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Spf / email authentication implemented with documented policy or procedure.",
+      "managed": "Spf / email authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Spf / email authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "SPF_/_email_authentication_policy.pdf",
+      "SPF_/_email_authentication_procedure.pdf",
+      "SPF_/_email_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for SPF / email authentication",
+      "Tool/system report for SPF / email authentication",
+      "Audit log sample for SPF / email authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-15",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is SPF / email authentication implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that SPF / email authentication covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented SPF / email authentication process or implementation.",
+      "developing": "Spf / email authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Spf / email authentication implemented with documented policy or procedure.",
+      "managed": "Spf / email authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Spf / email authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "SPF_/_email_authentication_policy.pdf",
+      "SPF_/_email_authentication_procedure.pdf",
+      "SPF_/_email_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for SPF / email authentication",
+      "Tool/system report for SPF / email authentication",
+      "Audit log sample for SPF / email authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-16",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-17",
+    "section": "A",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-18",
+    "section": "A",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for employee off-boarding?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented employee off-boarding process or implementation.",
+      "developing": "Employee off-boarding partially implemented; gaps in coverage or documentation.",
+      "defined": "Employee off-boarding implemented with documented policy or procedure.",
+      "managed": "Employee off-boarding consistently implemented, monitored, and reviewed.",
+      "optimizing": "Employee off-boarding continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "employee_off-boarding_policy.pdf",
+      "employee_off-boarding_procedure.pdf",
+      "employee_off-boarding_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for employee off-boarding",
+      "Tool/system report for employee off-boarding",
+      "Audit log sample for employee off-boarding"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-19",
+    "section": "A",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for IP requirement?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented IP requirement process or implementation.",
+      "developing": "Ip requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ip requirement implemented with documented policy or procedure.",
+      "managed": "Ip requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ip requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "IP_requirement_policy.pdf",
+      "IP_requirement_procedure.pdf",
+      "IP_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for IP requirement",
+      "Tool/system report for IP requirement",
+      "Audit log sample for IP requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-20",
+    "section": "A",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is PT requirement implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented PT requirement process or implementation.",
+      "developing": "Pt requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Pt requirement implemented with documented policy or procedure.",
+      "managed": "Pt requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Pt requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "PT_requirement_policy.pdf",
+      "PT_requirement_procedure.pdf",
+      "PT_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for PT requirement",
+      "Tool/system report for PT requirement",
+      "Audit log sample for PT requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-21",
+    "section": "A",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is PT requirement implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented PT requirement process or implementation.",
+      "developing": "Pt requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Pt requirement implemented with documented policy or procedure.",
+      "managed": "Pt requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Pt requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "PT_requirement_policy.pdf",
+      "PT_requirement_procedure.pdf",
+      "PT_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for PT requirement",
+      "Tool/system report for PT requirement",
+      "Audit log sample for PT requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-22",
+    "section": "A",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is firewall management implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented firewall management process or implementation.",
+      "developing": "Firewall management partially implemented; gaps in coverage or documentation.",
+      "defined": "Firewall management implemented with documented policy or procedure.",
+      "managed": "Firewall management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Firewall management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "firewall_management_policy.pdf",
+      "firewall_management_procedure.pdf",
+      "firewall_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for firewall management",
+      "Tool/system report for firewall management",
+      "Audit log sample for firewall management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-23",
+    "section": "A",
+    "category_code": "CO",
+    "audit_questions": [
+      "Is there a documented communication plan for CO requirement?",
+      "Are contacts and escalation paths defined and tested?",
+      "Are communication records maintained?"
+    ],
+    "suggested_evidence": [
+      "Communication plan document",
+      "Contact list with roles",
+      "Communication drill records"
+    ],
+    "indicators_of_implementation": [
+      "Plan documented",
+      "Contacts current",
+      "Communication tested"
+    ],
+    "maturity_signals": {
+      "initial": "No documented CO requirement process or implementation.",
+      "developing": "Co requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Co requirement implemented with documented policy or procedure.",
+      "managed": "Co requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Co requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "CO_requirement_policy.pdf",
+      "CO_requirement_procedure.pdf",
+      "CO_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for CO requirement",
+      "Tool/system report for CO requirement",
+      "Audit log sample for CO requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-24",
+    "section": "B",
+    "category_code": "AM",
+    "audit_questions": [
+      "Is there a documented AM requirement classification scheme?",
+      "Is the classification applied consistently to all relevant assets?",
+      "Are classification decisions reviewed regularly?"
+    ],
+    "suggested_evidence": [
+      "Classification policy",
+      "Asset inventory with classification labels",
+      "Review records"
+    ],
+    "indicators_of_implementation": [
+      "Policy documented",
+      "Applied to all assets",
+      "Periodic review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AM requirement process or implementation.",
+      "developing": "Am requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Am requirement implemented with documented policy or procedure.",
+      "managed": "Am requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Am requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AM_requirement_policy.pdf",
+      "AM_requirement_procedure.pdf",
+      "AM_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AM requirement",
+      "Tool/system report for AM requirement",
+      "Audit log sample for AM requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-25",
+    "section": "B",
+    "category_code": "GV",
+    "audit_questions": [
+      "Is there a documented GV requirement policy formally approved and communicated to all personnel?",
+      "Does the GV requirement policy define scope, responsibilities, and review cycle?",
+      "Is the GV requirement policy reviewed and updated at least annually?"
+    ],
+    "suggested_evidence": [
+      "Signed policy document",
+      "Policy approval record",
+      "Annual review log"
+    ],
+    "indicators_of_implementation": [
+      "Policy document exists",
+      "Management approval on file",
+      "Staff acknowledgment records"
+    ],
+    "maturity_signals": {
+      "initial": "No documented GV requirement process or implementation.",
+      "developing": "Gv requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Gv requirement implemented with documented policy or procedure.",
+      "managed": "Gv requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Gv requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "GV_requirement_policy.pdf",
+      "GV_requirement_procedure.pdf",
+      "GV_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for GV requirement",
+      "Tool/system report for GV requirement",
+      "Audit log sample for GV requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-26",
+    "section": "B",
+    "category_code": "GV",
+    "audit_questions": [
+      "Is there a documented GV requirement policy formally approved and communicated to all personnel?",
+      "Does the GV requirement policy define scope, responsibilities, and review cycle?",
+      "Is the GV requirement policy reviewed and updated at least annually?"
+    ],
+    "suggested_evidence": [
+      "Signed policy document",
+      "Policy approval record",
+      "Annual review log"
+    ],
+    "indicators_of_implementation": [
+      "Policy document exists",
+      "Management approval on file",
+      "Staff acknowledgment records"
+    ],
+    "maturity_signals": {
+      "initial": "No documented GV requirement process or implementation.",
+      "developing": "Gv requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Gv requirement implemented with documented policy or procedure.",
+      "managed": "Gv requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Gv requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "GV_requirement_policy.pdf",
+      "GV_requirement_procedure.pdf",
+      "GV_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for GV requirement",
+      "Tool/system report for GV requirement",
+      "Audit log sample for GV requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-27",
+    "section": "B",
+    "category_code": "RA",
+    "audit_questions": [
+      "Is penetration testing conducted at the required frequency by qualified personnel?",
+      "Are findings documented, tracked, and remediated?",
+      "Are results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Assessment report",
+      "Remediation tracking records",
+      "Management report or sign-off"
+    ],
+    "indicators_of_implementation": [
+      "Assessment conducted on schedule",
+      "Findings remediated",
+      "Management aware"
+    ],
+    "maturity_signals": {
+      "initial": "No documented penetration testing process or implementation.",
+      "developing": "Penetration testing partially implemented; gaps in coverage or documentation.",
+      "defined": "Penetration testing implemented with documented policy or procedure.",
+      "managed": "Penetration testing consistently implemented, monitored, and reviewed.",
+      "optimizing": "Penetration testing continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "penetration_testing_policy.pdf",
+      "penetration_testing_procedure.pdf",
+      "penetration_testing_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for penetration testing",
+      "Tool/system report for penetration testing",
+      "Audit log sample for penetration testing"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-28",
+    "section": "B",
+    "category_code": "RA",
+    "audit_questions": [
+      "Is penetration testing conducted at the required frequency by qualified personnel?",
+      "Are findings documented, tracked, and remediated?",
+      "Are results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Assessment report",
+      "Remediation tracking records",
+      "Management report or sign-off"
+    ],
+    "indicators_of_implementation": [
+      "Assessment conducted on schedule",
+      "Findings remediated",
+      "Management aware"
+    ],
+    "maturity_signals": {
+      "initial": "No documented penetration testing process or implementation.",
+      "developing": "Penetration testing partially implemented; gaps in coverage or documentation.",
+      "defined": "Penetration testing implemented with documented policy or procedure.",
+      "managed": "Penetration testing consistently implemented, monitored, and reviewed.",
+      "optimizing": "Penetration testing continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "penetration_testing_policy.pdf",
+      "penetration_testing_procedure.pdf",
+      "penetration_testing_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for penetration testing",
+      "Tool/system report for penetration testing",
+      "Audit log sample for penetration testing"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-29",
+    "section": "B",
+    "category_code": "RA",
+    "audit_questions": [
+      "Is penetration testing conducted at the required frequency by qualified personnel?",
+      "Are findings documented, tracked, and remediated?",
+      "Are results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Assessment report",
+      "Remediation tracking records",
+      "Management report or sign-off"
+    ],
+    "indicators_of_implementation": [
+      "Assessment conducted on schedule",
+      "Findings remediated",
+      "Management aware"
+    ],
+    "maturity_signals": {
+      "initial": "No documented penetration testing process or implementation.",
+      "developing": "Penetration testing partially implemented; gaps in coverage or documentation.",
+      "defined": "Penetration testing implemented with documented policy or procedure.",
+      "managed": "Penetration testing consistently implemented, monitored, and reviewed.",
+      "optimizing": "Penetration testing continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "penetration_testing_policy.pdf",
+      "penetration_testing_procedure.pdf",
+      "penetration_testing_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for penetration testing",
+      "Tool/system report for penetration testing",
+      "Audit log sample for penetration testing"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-30",
+    "section": "B",
+    "category_code": "RA",
+    "audit_questions": [
+      "Is RA requirement conducted at the required frequency by qualified personnel?",
+      "Are findings documented, tracked, and remediated?",
+      "Are results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Assessment report",
+      "Remediation tracking records",
+      "Management report or sign-off"
+    ],
+    "indicators_of_implementation": [
+      "Assessment conducted on schedule",
+      "Findings remediated",
+      "Management aware"
+    ],
+    "maturity_signals": {
+      "initial": "No documented RA requirement process or implementation.",
+      "developing": "Ra requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ra requirement implemented with documented policy or procedure.",
+      "managed": "Ra requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ra requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "RA_requirement_policy.pdf",
+      "RA_requirement_procedure.pdf",
+      "RA_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for RA requirement",
+      "Tool/system report for RA requirement",
+      "Audit log sample for RA requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-31",
+    "section": "B",
+    "category_code": "RM",
+    "audit_questions": [
+      "Is there a documented risk management process for RM requirement?",
+      "Are identified risks tracked in a risk register with owners and treatment plans?",
+      "Is the risk register reviewed at the required frequency?"
+    ],
+    "suggested_evidence": [
+      "Risk assessment records",
+      "Risk register",
+      "Risk treatment plans"
+    ],
+    "indicators_of_implementation": [
+      "Process documented",
+      "Risks tracked",
+      "Register reviewed regularly"
+    ],
+    "maturity_signals": {
+      "initial": "No documented RM requirement process or implementation.",
+      "developing": "Rm requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Rm requirement implemented with documented policy or procedure.",
+      "managed": "Rm requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Rm requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "RM_requirement_policy.pdf",
+      "RM_requirement_procedure.pdf",
+      "RM_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for RM requirement",
+      "Tool/system report for RM requirement",
+      "Audit log sample for RM requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-32",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-33",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is access review enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for access review?",
+      "Is there logging and monitoring of access review events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented access review process or implementation.",
+      "developing": "Access review partially implemented; gaps in coverage or documentation.",
+      "defined": "Access review implemented with documented policy or procedure.",
+      "managed": "Access review consistently implemented, monitored, and reviewed.",
+      "optimizing": "Access review continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "access_review_policy.pdf",
+      "access_review_procedure.pdf",
+      "access_review_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for access review",
+      "Tool/system report for access review",
+      "Audit log sample for access review"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-34",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-35",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-36",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-37",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is multi-factor authentication enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for multi-factor authentication?",
+      "Is there logging and monitoring of multi-factor authentication events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented multi-factor authentication process or implementation.",
+      "developing": "Multi-factor authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Multi-factor authentication implemented with documented policy or procedure.",
+      "managed": "Multi-factor authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Multi-factor authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "multi-factor_authentication_policy.pdf",
+      "multi-factor_authentication_procedure.pdf",
+      "multi-factor_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for multi-factor authentication",
+      "Tool/system report for multi-factor authentication",
+      "Audit log sample for multi-factor authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-38",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-39",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-40",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-41",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-42",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is encryption enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for encryption?",
+      "Is there logging and monitoring of encryption events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-43",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-44",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is multi-factor authentication enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for multi-factor authentication?",
+      "Is there logging and monitoring of multi-factor authentication events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented multi-factor authentication process or implementation.",
+      "developing": "Multi-factor authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Multi-factor authentication implemented with documented policy or procedure.",
+      "managed": "Multi-factor authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Multi-factor authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "multi-factor_authentication_policy.pdf",
+      "multi-factor_authentication_procedure.pdf",
+      "multi-factor_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for multi-factor authentication",
+      "Tool/system report for multi-factor authentication",
+      "Audit log sample for multi-factor authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-45",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is multi-factor authentication enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for multi-factor authentication?",
+      "Is there logging and monitoring of multi-factor authentication events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented multi-factor authentication process or implementation.",
+      "developing": "Multi-factor authentication partially implemented; gaps in coverage or documentation.",
+      "defined": "Multi-factor authentication implemented with documented policy or procedure.",
+      "managed": "Multi-factor authentication consistently implemented, monitored, and reviewed.",
+      "optimizing": "Multi-factor authentication continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "multi-factor_authentication_policy.pdf",
+      "multi-factor_authentication_procedure.pdf",
+      "multi-factor_authentication_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for multi-factor authentication",
+      "Tool/system report for multi-factor authentication",
+      "Audit log sample for multi-factor authentication"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-46",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is firewall management enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for firewall management?",
+      "Is there logging and monitoring of firewall management events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented firewall management process or implementation.",
+      "developing": "Firewall management partially implemented; gaps in coverage or documentation.",
+      "defined": "Firewall management implemented with documented policy or procedure.",
+      "managed": "Firewall management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Firewall management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "firewall_management_policy.pdf",
+      "firewall_management_procedure.pdf",
+      "firewall_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for firewall management",
+      "Tool/system report for firewall management",
+      "Audit log sample for firewall management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-47",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is visitor management enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for visitor management?",
+      "Is there logging and monitoring of visitor management events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented visitor management process or implementation.",
+      "developing": "Visitor management partially implemented; gaps in coverage or documentation.",
+      "defined": "Visitor management implemented with documented policy or procedure.",
+      "managed": "Visitor management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Visitor management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "visitor_management_policy.pdf",
+      "visitor_management_procedure.pdf",
+      "visitor_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for visitor management",
+      "Tool/system report for visitor management",
+      "Audit log sample for visitor management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-48",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is visitor management enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for visitor management?",
+      "Is there logging and monitoring of visitor management events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented visitor management process or implementation.",
+      "developing": "Visitor management partially implemented; gaps in coverage or documentation.",
+      "defined": "Visitor management implemented with documented policy or procedure.",
+      "managed": "Visitor management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Visitor management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "visitor_management_policy.pdf",
+      "visitor_management_procedure.pdf",
+      "visitor_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for visitor management",
+      "Tool/system report for visitor management",
+      "Audit log sample for visitor management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-49",
+    "section": "B",
+    "category_code": "AC",
+    "audit_questions": [
+      "Is AC requirement enforced and documented with configuration evidence?",
+      "Are access reviews conducted at the required frequency for AC requirement?",
+      "Is there logging and monitoring of AC requirement events?"
+    ],
+    "suggested_evidence": [
+      "Access control configuration screenshots",
+      "Access review records",
+      "Audit logs"
+    ],
+    "indicators_of_implementation": [
+      "Technical configuration active",
+      "Review records current",
+      "Log retention policy enforced"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AC requirement process or implementation.",
+      "developing": "Ac requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ac requirement implemented with documented policy or procedure.",
+      "managed": "Ac requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ac requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AC_requirement_policy.pdf",
+      "AC_requirement_procedure.pdf",
+      "AC_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AC requirement",
+      "Tool/system report for AC requirement",
+      "Audit log sample for AC requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-50",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is backup management implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that backup management covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented backup management process or implementation.",
+      "developing": "Backup management partially implemented; gaps in coverage or documentation.",
+      "defined": "Backup management implemented with documented policy or procedure.",
+      "managed": "Backup management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Backup management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "backup_management_policy.pdf",
+      "backup_management_procedure.pdf",
+      "backup_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for backup management",
+      "Tool/system report for backup management",
+      "Audit log sample for backup management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-51",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-52",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is encryption implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that encryption covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-53",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is encryption implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that encryption covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-54",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is encryption implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that encryption covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-55",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is encryption implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that encryption covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-56",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-57",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-58",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is encryption implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that encryption covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-59",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-60",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-61",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-62",
+    "section": "B",
+    "category_code": "DS",
+    "audit_questions": [
+      "Is DS requirement implemented and verified through technical testing?",
+      "Are configuration settings documented and regularly reviewed?",
+      "Is there evidence that DS requirement covers all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Technical configuration evidence",
+      "Test/scan reports",
+      "Asset inventory with coverage mapping"
+    ],
+    "indicators_of_implementation": [
+      "Control active on all in-scope systems",
+      "No exceptions without approval",
+      "Regular testing conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented DS requirement process or implementation.",
+      "developing": "Ds requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ds requirement implemented with documented policy or procedure.",
+      "managed": "Ds requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ds requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "DS_requirement_policy.pdf",
+      "DS_requirement_procedure.pdf",
+      "DS_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for DS requirement",
+      "Tool/system report for DS requirement",
+      "Audit log sample for DS requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-63",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for IP requirement?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented IP requirement process or implementation.",
+      "developing": "Ip requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ip requirement implemented with documented policy or procedure.",
+      "managed": "Ip requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ip requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "IP_requirement_policy.pdf",
+      "IP_requirement_procedure.pdf",
+      "IP_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for IP requirement",
+      "Tool/system report for IP requirement",
+      "Audit log sample for IP requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-64",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for backup management?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented backup management process or implementation.",
+      "developing": "Backup management partially implemented; gaps in coverage or documentation.",
+      "defined": "Backup management implemented with documented policy or procedure.",
+      "managed": "Backup management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Backup management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "backup_management_policy.pdf",
+      "backup_management_procedure.pdf",
+      "backup_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for backup management",
+      "Tool/system report for backup management",
+      "Audit log sample for backup management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-65",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for encryption?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented encryption process or implementation.",
+      "developing": "Encryption partially implemented; gaps in coverage or documentation.",
+      "defined": "Encryption implemented with documented policy or procedure.",
+      "managed": "Encryption consistently implemented, monitored, and reviewed.",
+      "optimizing": "Encryption continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "encryption_policy.pdf",
+      "encryption_procedure.pdf",
+      "encryption_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for encryption",
+      "Tool/system report for encryption",
+      "Audit log sample for encryption"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-66",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for data sanitization?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented data sanitization process or implementation.",
+      "developing": "Data sanitization partially implemented; gaps in coverage or documentation.",
+      "defined": "Data sanitization implemented with documented policy or procedure.",
+      "managed": "Data sanitization consistently implemented, monitored, and reviewed.",
+      "optimizing": "Data sanitization continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "data_sanitization_policy.pdf",
+      "data_sanitization_procedure.pdf",
+      "data_sanitization_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for data sanitization",
+      "Tool/system report for data sanitization",
+      "Audit log sample for data sanitization"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-67",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for disaster recovery?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented disaster recovery process or implementation.",
+      "developing": "Disaster recovery partially implemented; gaps in coverage or documentation.",
+      "defined": "Disaster recovery implemented with documented policy or procedure.",
+      "managed": "Disaster recovery consistently implemented, monitored, and reviewed.",
+      "optimizing": "Disaster recovery continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "disaster_recovery_policy.pdf",
+      "disaster_recovery_procedure.pdf",
+      "disaster_recovery_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for disaster recovery",
+      "Tool/system report for disaster recovery",
+      "Audit log sample for disaster recovery"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-68",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for business continuity?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented business continuity process or implementation.",
+      "developing": "Business continuity partially implemented; gaps in coverage or documentation.",
+      "defined": "Business continuity implemented with documented policy or procedure.",
+      "managed": "Business continuity consistently implemented, monitored, and reviewed.",
+      "optimizing": "Business continuity continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "business_continuity_policy.pdf",
+      "business_continuity_procedure.pdf",
+      "business_continuity_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for business continuity",
+      "Tool/system report for business continuity",
+      "Audit log sample for business continuity"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-69",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for business continuity?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented business continuity process or implementation.",
+      "developing": "Business continuity partially implemented; gaps in coverage or documentation.",
+      "defined": "Business continuity implemented with documented policy or procedure.",
+      "managed": "Business continuity consistently implemented, monitored, and reviewed.",
+      "optimizing": "Business continuity continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "business_continuity_policy.pdf",
+      "business_continuity_procedure.pdf",
+      "business_continuity_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for business continuity",
+      "Tool/system report for business continuity",
+      "Audit log sample for business continuity"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-70",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for business continuity?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented business continuity process or implementation.",
+      "developing": "Business continuity partially implemented; gaps in coverage or documentation.",
+      "defined": "Business continuity implemented with documented policy or procedure.",
+      "managed": "Business continuity consistently implemented, monitored, and reviewed.",
+      "optimizing": "Business continuity continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "business_continuity_policy.pdf",
+      "business_continuity_procedure.pdf",
+      "business_continuity_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for business continuity",
+      "Tool/system report for business continuity",
+      "Audit log sample for business continuity"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-71",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for employee on-boarding?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented employee on-boarding process or implementation.",
+      "developing": "Employee on-boarding partially implemented; gaps in coverage or documentation.",
+      "defined": "Employee on-boarding implemented with documented policy or procedure.",
+      "managed": "Employee on-boarding consistently implemented, monitored, and reviewed.",
+      "optimizing": "Employee on-boarding continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "employee_on-boarding_policy.pdf",
+      "employee_on-boarding_procedure.pdf",
+      "employee_on-boarding_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for employee on-boarding",
+      "Tool/system report for employee on-boarding",
+      "Audit log sample for employee on-boarding"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-72",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for vulnerability scanning?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented vulnerability scanning process or implementation.",
+      "developing": "Vulnerability scanning partially implemented; gaps in coverage or documentation.",
+      "defined": "Vulnerability scanning implemented with documented policy or procedure.",
+      "managed": "Vulnerability scanning consistently implemented, monitored, and reviewed.",
+      "optimizing": "Vulnerability scanning continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "vulnerability_scanning_policy.pdf",
+      "vulnerability_scanning_procedure.pdf",
+      "vulnerability_scanning_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for vulnerability scanning",
+      "Tool/system report for vulnerability scanning",
+      "Audit log sample for vulnerability scanning"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-73",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for IP requirement?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented IP requirement process or implementation.",
+      "developing": "Ip requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ip requirement implemented with documented policy or procedure.",
+      "managed": "Ip requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ip requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "IP_requirement_policy.pdf",
+      "IP_requirement_procedure.pdf",
+      "IP_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for IP requirement",
+      "Tool/system report for IP requirement",
+      "Audit log sample for IP requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-74",
+    "section": "B",
+    "category_code": "IP",
+    "audit_questions": [
+      "Are formal procedures documented and followed for IP requirement?",
+      "Are procedures reviewed and updated when processes change?",
+      "Is there evidence of procedure execution (logs, records, sign-offs)?"
+    ],
+    "suggested_evidence": [
+      "Written procedure document",
+      "Procedure execution log",
+      "Review/update records"
+    ],
+    "indicators_of_implementation": [
+      "Procedures documented",
+      "Execution evidence exists",
+      "Annual review conducted"
+    ],
+    "maturity_signals": {
+      "initial": "No documented IP requirement process or implementation.",
+      "developing": "Ip requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ip requirement implemented with documented policy or procedure.",
+      "managed": "Ip requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ip requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "IP_requirement_policy.pdf",
+      "IP_requirement_procedure.pdf",
+      "IP_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for IP requirement",
+      "Tool/system report for IP requirement",
+      "Audit log sample for IP requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-75",
+    "section": "B",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is audit logging implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented audit logging process or implementation.",
+      "developing": "Audit logging partially implemented; gaps in coverage or documentation.",
+      "defined": "Audit logging implemented with documented policy or procedure.",
+      "managed": "Audit logging consistently implemented, monitored, and reviewed.",
+      "optimizing": "Audit logging continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "audit_logging_policy.pdf",
+      "audit_logging_procedure.pdf",
+      "audit_logging_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for audit logging",
+      "Tool/system report for audit logging",
+      "Audit log sample for audit logging"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-76",
+    "section": "B",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is firewall management implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented firewall management process or implementation.",
+      "developing": "Firewall management partially implemented; gaps in coverage or documentation.",
+      "defined": "Firewall management implemented with documented policy or procedure.",
+      "managed": "Firewall management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Firewall management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "firewall_management_policy.pdf",
+      "firewall_management_procedure.pdf",
+      "firewall_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for firewall management",
+      "Tool/system report for firewall management",
+      "Audit log sample for firewall management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-77",
+    "section": "B",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is intrusion detection/prevention implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented intrusion detection/prevention process or implementation.",
+      "developing": "Intrusion detection/prevention partially implemented; gaps in coverage or documentation.",
+      "defined": "Intrusion detection/prevention implemented with documented policy or procedure.",
+      "managed": "Intrusion detection/prevention consistently implemented, monitored, and reviewed.",
+      "optimizing": "Intrusion detection/prevention continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "intrusion_detection/prevention_policy.pdf",
+      "intrusion_detection/prevention_procedure.pdf",
+      "intrusion_detection/prevention_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for intrusion detection/prevention",
+      "Tool/system report for intrusion detection/prevention",
+      "Audit log sample for intrusion detection/prevention"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-78",
+    "section": "B",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is firewall management implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented firewall management process or implementation.",
+      "developing": "Firewall management partially implemented; gaps in coverage or documentation.",
+      "defined": "Firewall management implemented with documented policy or procedure.",
+      "managed": "Firewall management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Firewall management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "firewall_management_policy.pdf",
+      "firewall_management_procedure.pdf",
+      "firewall_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for firewall management",
+      "Tool/system report for firewall management",
+      "Audit log sample for firewall management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-79",
+    "section": "B",
+    "category_code": "PT",
+    "audit_questions": [
+      "Is PT requirement implemented and configured according to best practices?",
+      "Are updates/signatures maintained current (within defined timeframes)?",
+      "Is coverage verified across all in-scope systems?"
+    ],
+    "suggested_evidence": [
+      "Configuration evidence",
+      "Update/patch log",
+      "Coverage report"
+    ],
+    "indicators_of_implementation": [
+      "Technology deployed",
+      "Updates current",
+      "Coverage verified"
+    ],
+    "maturity_signals": {
+      "initial": "No documented PT requirement process or implementation.",
+      "developing": "Pt requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Pt requirement implemented with documented policy or procedure.",
+      "managed": "Pt requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Pt requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "PT_requirement_policy.pdf",
+      "PT_requirement_procedure.pdf",
+      "PT_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for PT requirement",
+      "Tool/system report for PT requirement",
+      "Audit log sample for PT requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-80",
+    "section": "B",
+    "category_code": "AE",
+    "audit_questions": [
+      "Is AE requirement monitored continuously with alerts configured?",
+      "Are security events logged and retained per policy?",
+      "Are anomalies investigated and documented?"
+    ],
+    "suggested_evidence": [
+      "Monitoring tool configuration",
+      "Alert rules evidence",
+      "Incident/anomaly investigation records"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring active",
+      "Log retention enforced",
+      "Alerts respond to events"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AE requirement process or implementation.",
+      "developing": "Ae requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ae requirement implemented with documented policy or procedure.",
+      "managed": "Ae requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ae requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AE_requirement_policy.pdf",
+      "AE_requirement_procedure.pdf",
+      "AE_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AE requirement",
+      "Tool/system report for AE requirement",
+      "Audit log sample for AE requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-81",
+    "section": "B",
+    "category_code": "AE",
+    "audit_questions": [
+      "Is AE requirement monitored continuously with alerts configured?",
+      "Are security events logged and retained per policy?",
+      "Are anomalies investigated and documented?"
+    ],
+    "suggested_evidence": [
+      "Monitoring tool configuration",
+      "Alert rules evidence",
+      "Incident/anomaly investigation records"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring active",
+      "Log retention enforced",
+      "Alerts respond to events"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AE requirement process or implementation.",
+      "developing": "Ae requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Ae requirement implemented with documented policy or procedure.",
+      "managed": "Ae requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Ae requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AE_requirement_policy.pdf",
+      "AE_requirement_procedure.pdf",
+      "AE_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AE requirement",
+      "Tool/system report for AE requirement",
+      "Audit log sample for AE requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-82",
+    "section": "B",
+    "category_code": "CM",
+    "audit_questions": [
+      "Is CM requirement monitored on the required schedule?",
+      "Are findings from monitoring acted upon within defined timeframes?",
+      "Are monitoring results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Monitoring schedule",
+      "Scan/review reports",
+      "Remediation tracking"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring conducted on schedule",
+      "Findings remediated",
+      "Reports to management"
+    ],
+    "maturity_signals": {
+      "initial": "No documented CM requirement process or implementation.",
+      "developing": "Cm requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Cm requirement implemented with documented policy or procedure.",
+      "managed": "Cm requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Cm requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "CM_requirement_policy.pdf",
+      "CM_requirement_procedure.pdf",
+      "CM_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for CM requirement",
+      "Tool/system report for CM requirement",
+      "Audit log sample for CM requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-83",
+    "section": "B",
+    "category_code": "CM",
+    "audit_questions": [
+      "Is CM requirement monitored on the required schedule?",
+      "Are findings from monitoring acted upon within defined timeframes?",
+      "Are monitoring results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Monitoring schedule",
+      "Scan/review reports",
+      "Remediation tracking"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring conducted on schedule",
+      "Findings remediated",
+      "Reports to management"
+    ],
+    "maturity_signals": {
+      "initial": "No documented CM requirement process or implementation.",
+      "developing": "Cm requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Cm requirement implemented with documented policy or procedure.",
+      "managed": "Cm requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Cm requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "CM_requirement_policy.pdf",
+      "CM_requirement_procedure.pdf",
+      "CM_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for CM requirement",
+      "Tool/system report for CM requirement",
+      "Audit log sample for CM requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-84",
+    "section": "B",
+    "category_code": "CM",
+    "audit_questions": [
+      "Is CM requirement monitored on the required schedule?",
+      "Are findings from monitoring acted upon within defined timeframes?",
+      "Are monitoring results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Monitoring schedule",
+      "Scan/review reports",
+      "Remediation tracking"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring conducted on schedule",
+      "Findings remediated",
+      "Reports to management"
+    ],
+    "maturity_signals": {
+      "initial": "No documented CM requirement process or implementation.",
+      "developing": "Cm requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Cm requirement implemented with documented policy or procedure.",
+      "managed": "Cm requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Cm requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "CM_requirement_policy.pdf",
+      "CM_requirement_procedure.pdf",
+      "CM_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for CM requirement",
+      "Tool/system report for CM requirement",
+      "Audit log sample for CM requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-85",
+    "section": "B",
+    "category_code": "CM",
+    "audit_questions": [
+      "Is patch management monitored on the required schedule?",
+      "Are findings from monitoring acted upon within defined timeframes?",
+      "Are monitoring results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Monitoring schedule",
+      "Scan/review reports",
+      "Remediation tracking"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring conducted on schedule",
+      "Findings remediated",
+      "Reports to management"
+    ],
+    "maturity_signals": {
+      "initial": "No documented patch management process or implementation.",
+      "developing": "Patch management partially implemented; gaps in coverage or documentation.",
+      "defined": "Patch management implemented with documented policy or procedure.",
+      "managed": "Patch management consistently implemented, monitored, and reviewed.",
+      "optimizing": "Patch management continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "patch_management_policy.pdf",
+      "patch_management_procedure.pdf",
+      "patch_management_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for patch management",
+      "Tool/system report for patch management",
+      "Audit log sample for patch management"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-86",
+    "section": "B",
+    "category_code": "CM",
+    "audit_questions": [
+      "Is CM requirement monitored on the required schedule?",
+      "Are findings from monitoring acted upon within defined timeframes?",
+      "Are monitoring results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Monitoring schedule",
+      "Scan/review reports",
+      "Remediation tracking"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring conducted on schedule",
+      "Findings remediated",
+      "Reports to management"
+    ],
+    "maturity_signals": {
+      "initial": "No documented CM requirement process or implementation.",
+      "developing": "Cm requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Cm requirement implemented with documented policy or procedure.",
+      "managed": "Cm requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Cm requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "CM_requirement_policy.pdf",
+      "CM_requirement_procedure.pdf",
+      "CM_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for CM requirement",
+      "Tool/system report for CM requirement",
+      "Audit log sample for CM requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-87",
+    "section": "B",
+    "category_code": "CM",
+    "audit_questions": [
+      "Is audit logging monitored on the required schedule?",
+      "Are findings from monitoring acted upon within defined timeframes?",
+      "Are monitoring results reported to management?"
+    ],
+    "suggested_evidence": [
+      "Monitoring schedule",
+      "Scan/review reports",
+      "Remediation tracking"
+    ],
+    "indicators_of_implementation": [
+      "Monitoring conducted on schedule",
+      "Findings remediated",
+      "Reports to management"
+    ],
+    "maturity_signals": {
+      "initial": "No documented audit logging process or implementation.",
+      "developing": "Audit logging partially implemented; gaps in coverage or documentation.",
+      "defined": "Audit logging implemented with documented policy or procedure.",
+      "managed": "Audit logging consistently implemented, monitored, and reviewed.",
+      "optimizing": "Audit logging continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "audit_logging_policy.pdf",
+      "audit_logging_procedure.pdf",
+      "audit_logging_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for audit logging",
+      "Tool/system report for audit logging",
+      "Audit log sample for audit logging"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-88",
+    "section": "B",
+    "category_code": "CO",
+    "audit_questions": [
+      "Is there a documented communication plan for CO requirement?",
+      "Are contacts and escalation paths defined and tested?",
+      "Are communication records maintained?"
+    ],
+    "suggested_evidence": [
+      "Communication plan document",
+      "Contact list with roles",
+      "Communication drill records"
+    ],
+    "indicators_of_implementation": [
+      "Plan documented",
+      "Contacts current",
+      "Communication tested"
+    ],
+    "maturity_signals": {
+      "initial": "No documented CO requirement process or implementation.",
+      "developing": "Co requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Co requirement implemented with documented policy or procedure.",
+      "managed": "Co requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Co requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "CO_requirement_policy.pdf",
+      "CO_requirement_procedure.pdf",
+      "CO_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for CO requirement",
+      "Tool/system report for CO requirement",
+      "Audit log sample for CO requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-89",
+    "section": "B",
+    "category_code": "AN",
+    "audit_questions": [
+      "Is there a documented process for incident response analysis?",
+      "Are all relevant events analyzed and classified?",
+      "Are analysis results used to improve security posture?"
+    ],
+    "suggested_evidence": [
+      "Analysis procedure",
+      "Incident classification records",
+      "Lessons learned documentation"
+    ],
+    "indicators_of_implementation": [
+      "Process documented",
+      "Events classified consistently",
+      "Improvements implemented"
+    ],
+    "maturity_signals": {
+      "initial": "No documented incident response process or implementation.",
+      "developing": "Incident response partially implemented; gaps in coverage or documentation.",
+      "defined": "Incident response implemented with documented policy or procedure.",
+      "managed": "Incident response consistently implemented, monitored, and reviewed.",
+      "optimizing": "Incident response continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "incident_response_policy.pdf",
+      "incident_response_procedure.pdf",
+      "incident_response_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for incident response",
+      "Tool/system report for incident response",
+      "Audit log sample for incident response"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-90",
+    "section": "B",
+    "category_code": "AN",
+    "audit_questions": [
+      "Is there a documented process for AN requirement analysis?",
+      "Are all relevant events analyzed and classified?",
+      "Are analysis results used to improve security posture?"
+    ],
+    "suggested_evidence": [
+      "Analysis procedure",
+      "Incident classification records",
+      "Lessons learned documentation"
+    ],
+    "indicators_of_implementation": [
+      "Process documented",
+      "Events classified consistently",
+      "Improvements implemented"
+    ],
+    "maturity_signals": {
+      "initial": "No documented AN requirement process or implementation.",
+      "developing": "An requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "An requirement implemented with documented policy or procedure.",
+      "managed": "An requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "An requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "AN_requirement_policy.pdf",
+      "AN_requirement_procedure.pdf",
+      "AN_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for AN requirement",
+      "Tool/system report for AN requirement",
+      "Audit log sample for AN requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-91",
+    "section": "B",
+    "category_code": "MI",
+    "audit_questions": [
+      "Are remediation timeframes defined and tracked for MI requirement?",
+      "Is there evidence of timely remediation within defined SLAs?",
+      "Are unresolved items escalated and tracked?"
+    ],
+    "suggested_evidence": [
+      "Vulnerability/incident tracking records",
+      "SLA compliance reports",
+      "Escalation records"
+    ],
+    "indicators_of_implementation": [
+      "Timeframes defined",
+      "SLA compliance tracked",
+      "Escalation process active"
+    ],
+    "maturity_signals": {
+      "initial": "No documented MI requirement process or implementation.",
+      "developing": "Mi requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Mi requirement implemented with documented policy or procedure.",
+      "managed": "Mi requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Mi requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "MI_requirement_policy.pdf",
+      "MI_requirement_procedure.pdf",
+      "MI_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for MI requirement",
+      "Tool/system report for MI requirement",
+      "Audit log sample for MI requirement"
+    ]
+  },
+  {
+    "AI_GENERATED": true,
+    "framework_id": "SACS-002",
+    "control_code": "TPC-92",
+    "section": "B",
+    "category_code": "MI",
+    "audit_questions": [
+      "Are remediation timeframes defined and tracked for MI requirement?",
+      "Is there evidence of timely remediation within defined SLAs?",
+      "Are unresolved items escalated and tracked?"
+    ],
+    "suggested_evidence": [
+      "Vulnerability/incident tracking records",
+      "SLA compliance reports",
+      "Escalation records"
+    ],
+    "indicators_of_implementation": [
+      "Timeframes defined",
+      "SLA compliance tracked",
+      "Escalation process active"
+    ],
+    "maturity_signals": {
+      "initial": "No documented MI requirement process or implementation.",
+      "developing": "Mi requirement partially implemented; gaps in coverage or documentation.",
+      "defined": "Mi requirement implemented with documented policy or procedure.",
+      "managed": "Mi requirement consistently implemented, monitored, and reviewed.",
+      "optimizing": "Mi requirement continuously improved based on metrics and incidents."
+    },
+    "possible_documents": [
+      "MI_requirement_policy.pdf",
+      "MI_requirement_procedure.pdf",
+      "MI_requirement_evidence.pdf"
+    ],
+    "possible_technical_evidence": [
+      "Configuration screenshot for MI requirement",
+      "Tool/system report for MI requirement",
+      "Audit log sample for MI requirement"
+    ]
+  }
+]

@@ -1,0 +1,31 @@
+THIRD PARTY CYBERSECURITY POLICY
+
+1. General
+
+Our organization takes cybersecurity seriously. We follow industry best practices and
+have policies in place to protect information and systems. All employees are expected to
+behave responsibly with technology resources.
+
+2. Information Security
+
+We have an information security program that addresses data protection. Sensitive
+information is protected appropriately. Our systems are secured against unauthorized access.
+
+3. Third Party Management
+
+We work with third parties under agreements that include security requirements. Third
+parties are expected to maintain adequate security controls. We review third party
+relationships periodically.
+
+4. Access Control
+
+Access to systems is managed. Users have accounts and passwords. Administrative access is
+limited to authorized personnel.
+
+5. Incident Response
+
+Security incidents are handled by our IT team. Issues are reported and investigated.
+
+6. Compliance
+
+We comply with applicable laws and regulations. Security controls are reviewed annually.

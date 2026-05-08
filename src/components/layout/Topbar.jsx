@@ -82,7 +82,10 @@ export default function Topbar() {
   };
 
   return (
-    <header className="h-16 bg-card border-b border-border flex items-center justify-end px-6 sticky top-0 z-30">
+    // Translucent sticky bar above the soft page background. The slight
+    // backdrop blur and stronger border give it the lifted "anchored band"
+    // feeling typical of polished SaaS dashboards, without an overt shadow.
+    <header className="h-16 bg-card/85 supports-[backdrop-filter]:bg-card/70 backdrop-blur border-b border-border flex items-center justify-end px-6 sticky top-0 z-30">
       {/* Actions */}
       <div className="flex items-center gap-2">
         <ThemeToggle variant="inline" />

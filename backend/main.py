@@ -33,6 +33,8 @@ from backend.checkpoint_analyzer import (
     run_checkpoint_analysis, chat_with_context, chat_with_user_context,
     run_simulation, generate_insights, explain_mapping,
 )
+from backend.ecc2_analyzer import run_ecc2_analysis, verify_ecc2_loaded
+from backend.sacs002_analyzer import run_sacs002_analysis
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text
 from backend.routers.remediation import router as remediation_router
@@ -46,7 +48,7 @@ app.include_router(export_router)
 
 @app.on_event("startup")
 def startup_seed():
-    """Seed checkpoint data and run safe idempotent schema migrations on start."""
+    """Seed checkpoint data, run safe idempotent schema migrations, and register ECC-2:2024 on server start."""
     from backend.checkpoint_seed import seed_checkpoints
     from sqlalchemy import text as _ddl
 
@@ -97,11 +99,78 @@ def startup_seed():
     except Exception as e:
         print(f"[startup] Migration warning: {e}")
 
+    # Create sacs002_metadata if it doesn't exist yet.
+    # Uses TEXT instead of ENUM types to avoid DO$$ type-creation noise.
+    # The FK to ecc_framework is omitted here to tolerate cold-start ordering
+    # (ecc_framework may be empty on first boot before import runs).
+    try:
+        with database.engine.connect() as _conn:
+            _conn.execute(_ddl("""
+                CREATE TABLE IF NOT EXISTS sacs002_metadata (
+                    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    framework_id            VARCHAR(50)  NOT NULL DEFAULT 'SACS-002',
+                    control_code            VARCHAR(30)  NOT NULL,
+                    section                 TEXT,
+                    nist_function_code      VARCHAR(10),
+                    nist_function_name      TEXT,
+                    nist_category_code      VARCHAR(20),
+                    nist_category_name      TEXT,
+                    applicable_classes      JSONB,
+                    governance_control      BOOLEAN DEFAULT FALSE,
+                    technical_control       BOOLEAN DEFAULT FALSE,
+                    operational_control     BOOLEAN DEFAULT FALSE,
+                    review_required         BOOLEAN DEFAULT FALSE,
+                    approval_required       BOOLEAN DEFAULT FALSE,
+                    testing_required        BOOLEAN DEFAULT FALSE,
+                    monitoring_required     BOOLEAN DEFAULT FALSE,
+                    third_party_assessment  BOOLEAN DEFAULT FALSE,
+                    created_at              TIMESTAMPTZ DEFAULT NOW(),
+                    CONSTRAINT uq_sacs002_meta_control UNIQUE (framework_id, control_code)
+                )
+            """))
+            _conn.execute(_ddl(
+                "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_nist_cat "
+                "ON sacs002_metadata (nist_category_code)"
+            ))
+            _conn.execute(_ddl(
+                "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_section "
+                "ON sacs002_metadata (section)"
+            ))
+            _conn.commit()
+        print("[startup] sacs002_metadata table ensured")
+    except Exception as e:
+        print(f"[startup] sacs002_metadata DDL warning: {e}")
+
     db = database.SessionLocal()
     try:
         seed_checkpoints(db)
     except Exception as e:
         print(f"Seed warning: {e}")
+
+    # Ensure ECC-2:2024 and SACS-002 exist in the frameworks master table so
+    # they appear in the upload dropdown immediately — before any analysis has been run.
+    try:
+        from backend.ecc2_analyzer import _ensure_framework_row as _ecc2_row
+        _ecc2_row(db)
+        print("[startup] ECC-2:2024 framework row ensured")
+    except Exception as e:
+        print(f"[startup] ECC-2:2024 row warning: {e}")
+    try:
+        from backend.sacs002_analyzer import _ensure_framework_row as _sacs002_row
+        _sacs002_row(db)
+        print("[startup] SACS-002 framework row ensured")
+    except Exception as e:
+        print(f"[startup] SACS-002 row warning: {e}")
+
+    # Auto-import SACS-002 from bundled JSON files if structured tables are empty.
+    # Idempotent — skips immediately if ecc_framework already has SACS-002 rows.
+    try:
+        from backend.sacs002_analyzer import seed_sacs002_if_empty
+        n = seed_sacs002_if_empty(db)
+        if n > 0:
+            print(f"[startup] SACS-002 structured data ready ({n} controls)")
+    except Exception as e:
+        print(f"[startup] SACS-002 auto-import warning: {e}")
     finally:
         db.close()
 
@@ -853,11 +922,29 @@ def get_frameworks(
     params = dict(request.query_params)
     include_empty = params.get("include_empty") == "true"
 
-    rich_with_empty = """
+    # Known structured frameworks: always appear in the dropdown regardless of
+    # whether their ecc_framework rows have been imported yet. Structured
+    # frameworks use dedicated DB tables rather than uploaded PDF chunks.
+    _STRUCTURED_NAMES = ("'ECC-2:2024'", "'SACS-002'")
+    _structured_name_list = ", ".join(_STRUCTURED_NAMES)
+
+    # is_structured = TRUE if ecc_framework has rows for this framework, OR
+    # if the name is a known structured framework (covers pre-import state).
+    _structured_subq = (
+        f"(EXISTS (SELECT 1 FROM ecc_framework ef WHERE ef.framework_id = f.name LIMIT 1)"
+        f" OR f.name IN ({_structured_name_list}))"
+    )
+
+    # Debug/test entries have names starting with '_'. Exclude them from every
+    # non-admin query so they never reach the production dropdown.
+    _no_debug = "f.name NOT LIKE '\\_%%' ESCAPE '\\'"
+
+    rich_with_empty = f"""
         SELECT f.id, f.name, f.description, f.version,
                f.original_file_name, f.file_url, f.file_type, f.file_size,
                f.uploaded_at, u.email AS uploaded_by,
-               COALESCE(c.chunks, 0) AS chunks
+               COALESCE(c.chunks, 0) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN users u ON u.id = f.uploaded_by
         LEFT JOIN (
@@ -867,21 +954,25 @@ def get_frameworks(
         ) c ON c.framework_id = f.id
         ORDER BY f.name ASC
     """
-    rich_loaded_only = """
+    rich_loaded_only = f"""
         SELECT f.id, f.name, f.description, f.version,
                f.original_file_name, f.file_url, f.file_type, f.file_size,
                f.uploaded_at, u.email AS uploaded_by,
-               COUNT(fc.*) AS chunks
+               COUNT(fc.*) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN users u ON u.id = f.uploaded_by
-        JOIN framework_chunks fc ON fc.framework_id = f.id
+        LEFT JOIN framework_chunks fc ON fc.framework_id = f.id
+        WHERE {_no_debug}
         GROUP BY f.id, u.email
         HAVING COUNT(fc.*) > 0
+           OR {_structured_subq}
         ORDER BY f.name ASC
     """
-    basic_with_empty = """
+    basic_with_empty = f"""
         SELECT f.id, f.name, f.description,
-               COALESCE(c.chunks, 0) AS chunks
+               COALESCE(c.chunks, 0) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
         LEFT JOIN (
             SELECT framework_id, COUNT(*) AS chunks
@@ -889,12 +980,15 @@ def get_frameworks(
         ) c ON c.framework_id = f.id
         ORDER BY f.name ASC
     """
-    basic_loaded_only = """
-        SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks
+    basic_loaded_only = f"""
+        SELECT f.id, f.name, f.description, COUNT(fc.*) AS chunks,
+               {_structured_subq} AS is_structured
         FROM frameworks f
-        JOIN framework_chunks fc ON fc.framework_id = f.id
+        LEFT JOIN framework_chunks fc ON fc.framework_id = f.id
+        WHERE {_no_debug}
         GROUP BY f.id, f.name, f.description
         HAVING COUNT(fc.*) > 0
+           OR {_structured_subq}
         ORDER BY f.name ASC
     """
 
@@ -921,6 +1015,7 @@ def get_frameworks(
                 "uploaded_at": r[8].isoformat() if r[8] else None,
                 "uploaded_by": r[9],
                 "chunks": r[10] or 0,
+                "is_structured": bool(r[11]),
             }
             for r in rows
         ]
@@ -931,6 +1026,7 @@ def get_frameworks(
             "file_type": None, "file_size": None, "uploaded_at": None,
             "uploaded_by": None,
             "chunks": r[3] or 0,
+            "is_structured": bool(r[4]),
         }
         for r in rows
     ]
@@ -1498,6 +1594,31 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorised")
 
+    # Phase 4b readiness gate. Refuse to analyze against any framework that
+    # has controls without checkpoints — those produce silent "fake
+    # compliance" findings. Returns HTTP 409 with the per-framework status
+    # so the UI can render an actionable "framework needs to be re-uploaded
+    # / repaired" warning.
+    from backend.framework_loader import framework_readiness
+    unready = []
+    for fname in (request.frameworks or []):
+        rd = framework_readiness(db, fname)
+        if not rd["is_ready"]:
+            unready.append({
+                "framework": fname,
+                "reason": rd["reason"],
+                "total_controls": rd["total_controls"],
+                "zero_checkpoint_controls": rd["zero_cp_controls"],
+            })
+    if unready:
+        raise HTTPException(status_code=409, detail={
+            "error": "frameworks_not_ready",
+            "message": ("One or more frameworks are incomplete (some controls "
+                        "have no checkpoints). Re-upload the affected framework "
+                        "with force=true to retry."),
+            "unready_frameworks": unready,
+        })
+
     resume = bool(getattr(request, "resume", False))
 
     # Reset pause flag — a new run (or a resume) is starting.
@@ -1523,13 +1644,49 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
         set_policy_progress(db, policy.id, percent, stage)
 
     try:
-        results = await run_checkpoint_analysis(
-            db, request.policy_id, request.frameworks,
-            progress_cb=_progress_cb, resume=resume,
-        )
-        if isinstance(results, dict) and results.get("paused"):
-            return {"success": True, "paused": True, "results": results.get("results", {})}
-        set_policy_progress(db, policy.id, 100, "Completed")
+        all_results = {}
+
+        # ── Structured analyzers (ECC-2:2024, SACS-002) ──────────────────
+        frameworks_list = list(request.frameworks)
+        if "ECC-2:2024" in frameworks_list:
+            frameworks_list.remove("ECC-2:2024")
+            ecc2_result = await run_ecc2_analysis(
+                db, request.policy_id, progress_cb=_progress_cb
+            )
+            all_results.update(ecc2_result)
+
+        if "SACS-002" in frameworks_list:
+            frameworks_list.remove("SACS-002")
+            sacs002_result = await run_sacs002_analysis(
+                db, request.policy_id, progress_cb=_progress_cb
+            )
+            all_results.update(sacs002_result)
+
+        # ── Other frameworks: use legacy checkpoint analyzer ───────────────
+        if frameworks_list:
+            legacy_result = await run_checkpoint_analysis(
+                db, request.policy_id, frameworks_list,
+                progress_cb=_progress_cb, resume=resume,
+            )
+            if isinstance(legacy_result, dict) and legacy_result.get("paused"):
+                return {"success": True, "paused": True, "results": legacy_result.get("results", {})}
+            all_results.update(legacy_result)
+
+        # Mark the policy as fully analyzed — must happen BEFORE returning so
+        # the frontend polling loop sees status='analyzed' on the next refetch.
+        try:
+            db.execute(_t("""
+                UPDATE policies
+                SET status='analyzed',
+                    progress=100,
+                    progress_stage='Completed',
+                    last_analyzed_at=:ts
+                WHERE id=:pid
+            """), {"ts": datetime.now(timezone.utc), "pid": policy.id})
+            db.commit()
+        except Exception as _ue:
+            db.rollback()
+            print(f"[analyze_policy] WARNING: final status update failed: {_ue}")
     except Exception as e:
         try:
             db.execute(
@@ -1542,7 +1699,105 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
             db.rollback()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
 
-    return {"success": True, "results": results}
+    return {"success": True, "results": all_results}
+
+
+@app.get("/api/ecc2/status")
+def ecc2_status(db: Session = Depends(get_db)):
+    """
+    Verify that the ECC-2:2024 structured data is loaded and the analyzer
+    is wired to the correct tables.
+
+    Returns row counts for all three layers, orphan checks, a sample control
+    lookup, and a go/no-go status field.
+    """
+    try:
+        return verify_ecc2_loaded(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ECC-2 status check failed: {e}")
+
+
+@app.get("/api/sacs002/status")
+def sacs002_status(db: Session = Depends(get_db)):
+    """
+    Verify that the SACS-002 structured data is loaded and the analyzer
+    is wired to the correct tables. Returns row counts for all three layers
+    plus sacs002_metadata, orphan checks, and a go/no-go status field.
+    """
+    from sqlalchemy import text as _st
+    result = {
+        "framework_id": "SACS-002",
+        "layer1_count": 0,
+        "layer2_count": 0,
+        "layer3_count": 0,
+        "sacs002_metadata_count": 0,
+        "joined_count": 0,
+        "orphan_l3_count": 0,
+        "missing_l2_count": 0,
+        "errors": [],
+        "status": "not_loaded",
+    }
+    try:
+        result["layer1_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_framework: {e}")
+    try:
+        result["layer2_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_compliance_metadata WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_compliance_metadata: {e}")
+    try:
+        result["layer3_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_ai_checkpoints WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_ai_checkpoints: {e}")
+    try:
+        result["sacs002_metadata_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM sacs002_metadata WHERE framework_id = 'SACS-002'"
+        )).fetchone()[0]
+    except Exception as e:
+        # Table may not exist yet — created on next server restart
+        result["errors"].append(f"sacs002_metadata (run server restart to create): {e}")
+    try:
+        result["joined_count"] = db.execute(_st("""
+            SELECT COUNT(*) FROM ecc_framework f
+            LEFT JOIN ecc_compliance_metadata m
+                ON f.framework_id = m.framework_id AND f.control_code = m.control_code
+            WHERE f.framework_id = 'SACS-002'
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"joined_count: {e}")
+    try:
+        result["orphan_l3_count"] = db.execute(_st("""
+            SELECT COUNT(*)
+            FROM ecc_ai_checkpoints c
+            LEFT JOIN ecc_framework f
+                ON c.framework_id = f.framework_id AND c.control_code = f.control_code
+            WHERE c.framework_id = 'SACS-002' AND f.control_code IS NULL
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"orphan check: {e}")
+    try:
+        result["missing_l2_count"] = db.execute(_st("""
+            SELECT COUNT(*)
+            FROM ecc_framework f
+            LEFT JOIN ecc_compliance_metadata m
+                ON f.framework_id = m.framework_id AND f.control_code = m.control_code
+            WHERE f.framework_id = 'SACS-002' AND m.control_code IS NULL
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"missing_l2: {e}")
+    if result["layer1_count"] >= 92 and result["layer3_count"] >= 92:
+        result["status"] = "loaded"
+    elif result["layer1_count"] > 0:
+        result["status"] = "partial"
+    else:
+        result["status"] = "not_loaded"
+    return result
 
 
 @app.post("/api/functions/pause_policy")
@@ -1639,7 +1894,19 @@ async def _resume_analysis_in_background(policy_id: str, frameworks: list):
             db, policy_id, frameworks, progress_cb=_cb, resume=True
         )
         if not (isinstance(result, dict) and result.get("paused")):
-            set_policy_progress(db, policy_id, 100, "Completed")
+            try:
+                db.execute(_t("""
+                    UPDATE policies
+                    SET status='analyzed',
+                        progress=100,
+                        progress_stage='Completed',
+                        last_analyzed_at=:ts
+                    WHERE id=:pid
+                """), {"ts": datetime.now(timezone.utc), "pid": policy_id})
+                db.commit()
+            except Exception as _ue:
+                db.rollback()
+                print(f"[resume_analysis] WARNING: final status update failed: {_ue}")
     except Exception as e:
         try:
             db.execute(_t(
@@ -1949,14 +2216,33 @@ async def upload_framework_doc(
     result["force_reprocess"] = force
     result["file_hash"] = file_hash
 
-    # Only persist file_hash on the framework row if extraction was complete.
-    # Incomplete extractions must not be cached: a future re-upload with the
-    # same hash should re-run the pipeline rather than return a partial result.
-    persist_hash = bool(result.get("extraction_complete", True))
-    if not persist_hash:
+    # Phase 4b readiness gate. Only persist file_hash AND only mark the
+    # framework "ready" when BOTH conditions hold:
+    #   1. Extraction (windows + checkpoint generation) reported complete
+    #      (failed_windows + failed_checkpoint_batches both empty)
+    #   2. Every control_library row has at least one matching
+    #      control_checkpoints row (framework_readiness.is_ready)
+    # Without (2), analysis would silently report "no findings" for any
+    # zero-checkpoint control — the "fake compliance" failure the audit
+    # identified.
+    from backend.framework_loader import framework_readiness
+    extraction_complete = bool(result.get("extraction_complete", True))
+    rd = framework_readiness(db, framework)
+    persist_hash = extraction_complete and rd["is_ready"]
+    if extraction_complete and not rd["is_ready"]:
+        print(f"[fw-upload] extraction reported complete BUT readiness gate "
+              f"failed: {rd['reason']}; file_hash will NOT be persisted")
+    elif not extraction_complete:
         print(f"[fw-upload] extraction incomplete "
-              f"({result.get('failed_windows_count', 0)} window(s) failed); "
+              f"({result.get('failed_windows_count', 0)} window(s), "
+              f"{result.get('failed_checkpoint_batches_count', 0)} batch(es) failed); "
               f"file_hash will NOT be persisted to frameworks row")
+    new_status = (
+        "ready" if persist_hash
+        else ("incomplete" if extraction_complete else "failed")
+    )
+    result["readiness"] = rd
+    result["extraction_status"] = new_status
 
     # Update framework row with the file metadata so the UI can show the
     # real uploaded document and the Replace flow works cleanly.
@@ -1971,7 +2257,8 @@ async def upload_framework_doc(
                    uploaded_at = :at,
                    uploaded_by = :uby,
                    version     = COALESCE(NULLIF(:ver, ''), version),
-                   description = COALESCE(NULLIF(:desc, ''), description)
+                   description = COALESCE(NULLIF(:desc, ''), description),
+                   extraction_status = :ext_status
              WHERE name = :name
         """), {
             "ofn":  original_name,
@@ -1983,6 +2270,7 @@ async def upload_framework_doc(
             "uby":  str(current_user.id) if hasattr(current_user, "id") else None,
             "ver":  (version or "").strip(),
             "desc": (description or "").strip(),
+            "ext_status": new_status,
             "name": framework,
         })
         db.commit()
@@ -2027,6 +2315,24 @@ def framework_status(
     target = (request.query_params.get("framework") or "").strip()
 
     if target:
+        # Structured-table frameworks — check ecc_framework, not framework_chunks.
+        if target in ("ECC-2:2024", "SACS-002"):
+            from sqlalchemy import text as _t
+            try:
+                count = db.execute(_t(
+                    "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = :fwid"
+                ), {"fwid": target}).scalar() or 0
+            except Exception:
+                count = 0
+            loaded = count > 0
+            return {
+                "framework": target,
+                "frameworks": {target: {"chunks": count, "documents": 1 if loaded else 0}},
+                "ready": loaded,
+                "loaded": loaded,
+                "source": "structured_ecc_tables",
+            }
+
         fw_stats = stats.get(target, {"chunks": 0, "documents": 0})
         loaded = fw_stats.get("chunks", 0) > 0
         return {
@@ -2434,15 +2740,28 @@ def setup_system_settings():
                 ON CONFLICT (key) DO NOTHING
             """), {"k": key, "v": value})
 
-        # Add lockout columns to users (idempotent)
-        db.execute(_t("""
-            ALTER TABLE users
-            ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0
-        """))
-        db.execute(_t("""
-            ALTER TABLE users
-            ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ DEFAULT NULL
-        """))
+        # Add lockout columns to users only if they don't exist yet.
+        # Using information_schema avoids a DDL ALTER TABLE on every startup,
+        # which causes a statement-timeout on Supabase's connection pooler.
+        existing_cols = {
+            row[0]
+            for row in db.execute(_t("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'users'
+                  AND column_name IN ('failed_login_attempts', 'locked_until')
+            """)).fetchall()
+        }
+        if "failed_login_attempts" not in existing_cols:
+            db.execute(_t("""
+                ALTER TABLE users
+                ADD COLUMN failed_login_attempts INTEGER DEFAULT 0
+            """))
+        if "locked_until" not in existing_cols:
+            db.execute(_t("""
+                ALTER TABLE users
+                ADD COLUMN locked_until TIMESTAMPTZ DEFAULT NULL
+            """))
 
         db.commit()
         print("[startup] system_settings ready.")
