@@ -764,18 +764,26 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
     sec_b = [r for r in results_list if r.get("section") == "B"]
 
     try:
-        from backend.framework_loader import _upsert_compliance_result
-        _upsert_compliance_result(db, {
-            "policy_id": policy_id,
-            "framework_id": legacy_fw_id,
-            "compliance_score": round(score, 1),
-            "controls_covered": comp,
-            "controls_partial": part,
-            "controls_missing": miss,
-            "status": "completed",
-            "analyzed_at": datetime.now(timezone.utc),
-            "analysis_duration": duration,
-            "details": json.dumps({
+        db.execute(sql_text("""
+            INSERT INTO compliance_results
+                (id, policy_id, framework_id, compliance_score,
+                 controls_covered, controls_partial, controls_missing,
+                 status, analyzed_at, analysis_duration, details)
+            VALUES
+                (:id, :pid, :fwid, :sc, :cov, :par, :mis,
+                 'completed', :at, :dur, :det)
+            ON CONFLICT DO NOTHING
+        """), {
+            "id": str(uuid.uuid4()),
+            "pid": policy_id,
+            "fwid": legacy_fw_id,
+            "sc": round(score, 1),
+            "cov": comp,
+            "par": part,
+            "mis": miss,
+            "at": datetime.now(timezone.utc),
+            "dur": duration,
+            "det": json.dumps({
                 "framework": FRAMEWORK_ID,
                 "total_controls": total,
                 "compliant": comp,
@@ -784,9 +792,23 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
                 "section_a_count": len(sec_a),
                 "section_b_count": len(sec_b),
                 "by_nist_category": by_function,
+                "controls": [{
+                    "control_code": r["control_code"],
+                    "section": r.get("section"),
+                    "nist_category": r.get("nist_category_code"),
+                    "status": (
+                        "Compliant" if r["compliance_status"] == "compliant"
+                        else "Partial" if r["compliance_status"] == "partial"
+                        else "Non-Compliant"
+                    ),
+                    "score": r["score"],
+                    "confidence": r["confidence_score"],
+                    "evidence": r["evidence_text"][:300],
+                } for r in results_list],
             }),
         })
         db.commit()
+        print(f"  [SACS002] Saved compliance_results summary row")
     except Exception as e:
         db.rollback()
         print(f"  [SACS002] WARNING: compliance_results save failed: {e}")
