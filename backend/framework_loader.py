@@ -392,6 +392,13 @@ async def generate_checkpoints_for_framework(
 ):
     """Use GPT to generate YES/NO checkpoints for each control.
 
+    Atomic execution model (Phase 2): if force=True the DELETE is staged,
+    not committed. All generated checkpoint rows are buffered in memory and
+    INSERTed only after every batch succeeds. If any batch fails, the
+    transaction is rolled back, restoring the prior checkpoint state. This
+    eliminates the partial-write hazard where some batches' checkpoints
+    persisted while others failed silently.
+
     control_window_map: dict mapping control_code → the source window text
     that control was extracted from.  When provided, GPT receives the
     actual section of the document the control lives in rather than always
@@ -399,11 +406,15 @@ async def generate_checkpoints_for_framework(
     """
 
     if force:
+        # Stage delete inside the same transaction as the inserts. NO commit
+        # here — function-level commit at the end commits DELETE + inserts
+        # atomically. On any batch failure we db.rollback() and the prior
+        # checkpoints are preserved.
         deleted = db.execute(text(
             "DELETE FROM control_checkpoints WHERE framework = :fwid"
         ), {"fwid": framework_id}).rowcount
-        db.commit()
-        print(f"  [fw-checkpoints] force=True: deleted {deleted} existing checkpoints")
+        print(f"  [fw-checkpoints] force=True: staged delete of {deleted} "
+              f"existing checkpoints (will commit on success)")
     else:
         existing = db.execute(text(
             "SELECT COUNT(*) FROM control_checkpoints WHERE framework = :fwid"
@@ -420,14 +431,19 @@ async def generate_checkpoints_for_framework(
 
     if not controls:
         print(f"    No controls found for {framework_name}")
+        # Nothing to commit; if force=True the staged DELETE is left to the
+        # caller's transaction lifecycle (typically the next operation will
+        # commit or rollback as part of its own work).
         return {"total_checkpoints": 0, "failed_batches": []}
 
-    total_checkpoints = 0
     # One entry per batch that failed at HTTP / JSON / schema / transport level.
     # Surfacing these prevents the silent-data-loss class of bug where a
     # malformed batch silently dropped 10 controls' worth of checkpoints and
     # the framework was still marked extraction-complete.
     failed_batches = []
+    # Buffer of all checkpoint rows from successful batches. Inserted only
+    # after every batch succeeds (Option A atomic semantics).
+    pending_rows = []
 
     # Process controls in batches of 10 for efficiency
     for i in range(0, len(controls), 10):
@@ -544,18 +560,14 @@ Rules:
             print(f"    [fw-checkpoints] batch {batch_index}: failure ({reason})")
             continue
 
+        # Buffer this batch's rows; do NOT execute INSERT yet.
         for ctrl_cp in data.get("checkpoints", []):
             cc = ctrl_cp.get("control_code", "")
             for item in ctrl_cp.get("items", []):
                 req = item.get("requirement", "")
                 if not req:
                     continue
-                db.execute(text("""
-                    INSERT INTO control_checkpoints
-                    (id, framework, control_code, checkpoint_index,
-                     requirement, keywords, weight)
-                    VALUES (:id, :fw, :cc, :idx, :req, :kw, 1.0)
-                """), {
+                pending_rows.append({
                     "id": str(uuid.uuid4()),
                     "fw": framework_id,
                     "cc": cc,
@@ -563,17 +575,38 @@ Rules:
                     "req": req,
                     "kw": json.dumps(item.get("keywords", [])),
                 })
-                total_checkpoints += 1
+        print(f"    [fw-checkpoints] batch {i // 10 + 1}/"
+              f"{(len(controls) + 9) // 10}: buffered "
+              f"(pending_rows={len(pending_rows)})")
 
-        db.commit()
-        print(f"    Checkpoints batch {i // 10 + 1}/"
-              f"{(len(controls) + 9) // 10}: {total_checkpoints} total")
+    # Atomic execution: if any batch failed, abandon ALL pending rows and
+    # rollback the staged DELETE. Old checkpoints (if any) are preserved.
+    if failed_batches:
+        db.rollback()
+        print(f"    [fw-checkpoints] ABORT: {len(failed_batches)} batch(es) failed; "
+              f"rolled back staged DELETE and discarded {len(pending_rows)} "
+              f"pending checkpoint(s). Prior state preserved.")
+        return {"total_checkpoints": 0, "failed_batches": failed_batches}
 
+    # All batches succeeded. INSERT every buffered row, then commit the
+    # DELETE+INSERTs together. ON CONFLICT (framework, control_code,
+    # checkpoint_index) is not enforced today; collisions are theoretically
+    # impossible because we DELETEd everything in this transaction first.
+    for params in pending_rows:
+        db.execute(text("""
+            INSERT INTO control_checkpoints
+            (id, framework, control_code, checkpoint_index,
+             requirement, keywords, weight)
+            VALUES (:id, :fw, :cc, :idx, :req, :kw, 1.0)
+        """), params)
+    db.commit()
+    total_checkpoints = len(pending_rows)
     print(f"    Generated {total_checkpoints} checkpoints "
           f"for {len(controls)} controls "
-          f"(failed_batches={len(failed_batches)})")
+          f"(atomic, failed_batches=0)")
 
-    # Sync control_library with any new checkpoint control_codes
+    # Sync control_library with any new checkpoint control_codes (safe
+    # post-commit; runs in a separate transaction).
     from backend.checkpoint_seed import ensure_control_library_sync
     ensure_control_library_sync(db)
 

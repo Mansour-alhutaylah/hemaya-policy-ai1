@@ -382,3 +382,149 @@ def test_extract_controls_counts_skipped_conflicts(monkeypatch):
     assert result["controls_inserted"] == 2
     assert result["controls_skipped_conflict"] == 1
     assert result["extraction_complete"] is True  # no window failures
+
+
+def _make_db_with_n_controls(n):
+    """Mock SQLAlchemy session that returns n controls."""
+    db = MagicMock()
+    count_result = MagicMock()
+    count_result.fetchone.return_value = (0,)
+    controls_result = MagicMock()
+    controls_result.fetchall.return_value = [
+        (f"id-{i}", f"C-{i}", f"Title {i}", "[]") for i in range(1, n + 1)
+    ]
+    delete_result = MagicMock()
+    delete_result.rowcount = 0
+    insert_result = MagicMock()
+    insert_result.rowcount = 1
+
+    def execute_side_effect(sql, params=None):
+        sql_str = str(sql).upper()
+        if "DELETE FROM CONTROL_CHECKPOINTS" in sql_str:
+            return delete_result
+        if "COUNT(*)" in sql_str and "CONTROL_CHECKPOINTS" in sql_str:
+            return count_result
+        if "CONTROL_LIBRARY" in sql_str and "FRAMEWORK_ID" in sql_str:
+            return controls_result
+        return insert_result
+
+    db.execute.side_effect = execute_side_effect
+    return db
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 10: Phase 2 atomic semantics — failure mid-run rolls back, no
+# partial INSERTs. The first batch succeeds, the second batch's GPT call
+# fails (HTTP 500). The function must:
+#   - call db.rollback() exactly once
+#   - never execute INSERT INTO control_checkpoints
+#   - return total_checkpoints=0 and failed_batches non-empty
+# ─────────────────────────────────────────────────────────────────────────
+def test_atomic_partial_failure_inserts_nothing_and_rolls_back(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_n_controls(20)  # 2 batches of 10
+
+    # Sequence: batch 1 succeeds with valid checkpoints, batch 2 fails (HTTP 500).
+    success_inner = json.dumps({
+        "checkpoints": [
+            {"control_code": f"C-{i}", "items": [
+                {"index": 1, "requirement": f"Req {i}", "keywords": []},
+            ]}
+            for i in range(1, 11)
+        ]
+    })
+    success_body = json.dumps({"choices": [{"message": {"content": success_inner}}]})
+    success_response = _make_response(status_code=200, raw_body=success_body)
+    failure_response = _make_response(status_code=500, raw_body="upstream error")
+    queue = [success_response, failure_response]
+
+    async def fake_post(*args, **kwargs):
+        return queue.pop(0)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=True, control_window_map={},
+    ))
+
+    # Atomic outcome: zero rows persisted, one rollback, no INSERT executed.
+    assert result["total_checkpoints"] == 0
+    assert len(result["failed_batches"]) == 1
+    assert "HTTP 500" in result["failed_batches"][0]["reason"]
+
+    db.rollback.assert_called_once()
+    assert db.commit.call_count == 0  # no commit on failure path
+
+    # Verify no INSERT INTO control_checkpoints was ever called.
+    insert_call_count = sum(
+        1 for call in db.execute.call_args_list
+        if "INSERT INTO control_checkpoints"
+        in str(call.args[0]).replace("\n", " ").replace("  ", " ")
+    )
+    assert insert_call_count == 0, (
+        "Atomic semantics violated: an INSERT was executed even though "
+        "a later batch failed."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 11: force=True happy path — DELETE staged, all batches succeed,
+# function commits exactly once with all buffered INSERTs.
+# ─────────────────────────────────────────────────────────────────────────
+def test_atomic_happy_path_force_true_commits_once_with_all_inserts(monkeypatch):
+    _patch_sync(monkeypatch)
+    db = _make_db_with_n_controls(15)  # 2 batches: 10 + 5
+
+    success_inner_b1 = json.dumps({
+        "checkpoints": [
+            {"control_code": f"C-{i}", "items": [
+                {"index": 1, "requirement": f"R{i}a", "keywords": []},
+                {"index": 2, "requirement": f"R{i}b", "keywords": []},
+            ]}
+            for i in range(1, 11)
+        ]
+    })
+    success_inner_b2 = json.dumps({
+        "checkpoints": [
+            {"control_code": f"C-{i}", "items": [
+                {"index": 1, "requirement": f"R{i}a", "keywords": []},
+            ]}
+            for i in range(11, 16)
+        ]
+    })
+    queue = [
+        _make_response(200, raw_body=json.dumps({"choices": [{"message": {"content": success_inner_b1}}]})),
+        _make_response(200, raw_body=json.dumps({"choices": [{"message": {"content": success_inner_b2}}]})),
+    ]
+
+    async def fake_post(*args, **kwargs):
+        return queue.pop(0)
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    result = asyncio.run(framework_loader.generate_checkpoints_for_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy", force=True, control_window_map={},
+    ))
+
+    # Batch 1: 10 controls × 2 items = 20. Batch 2: 5 × 1 = 5. Total = 25.
+    assert result["total_checkpoints"] == 25
+    assert result["failed_batches"] == []
+
+    # Exactly one DELETE staged at the start (and not committed separately).
+    delete_calls = sum(
+        1 for call in db.execute.call_args_list
+        if "DELETE FROM CONTROL_CHECKPOINTS" in str(call.args[0]).upper()
+    )
+    assert delete_calls == 1
+
+    # All 25 INSERTs executed (one per checkpoint).
+    insert_calls = sum(
+        1 for call in db.execute.call_args_list
+        if "INSERT INTO control_checkpoints"
+        in str(call.args[0]).replace("\n", " ").replace("  ", " ")
+    )
+    assert insert_calls == 25
+
+    # Exactly one commit (atomic at the end). No rollback.
+    assert db.commit.call_count == 1
+    assert db.rollback.call_count == 0
