@@ -335,12 +335,21 @@ Rules:
           f"(skipped {skipped_dupes} duplicates across windows)")
 
     inserted = 0
+    skipped_conflict = 0
     for ctrl in deduped:
-        db.execute(text("""
+        # ON CONFLICT (framework_id, control_code) DO NOTHING relies on the
+        # uq_control_library_framework_code constraint. Defends against:
+        #   - residual duplicates from interrupted force=true runs
+        #   - concurrent uploads of the same framework
+        #   - the check-then-insert race in ensure_control_library_sync
+        # On conflict, rowcount==0 and we count it as skipped rather than
+        # silently overcount inserted.
+        res = db.execute(text("""
             INSERT INTO control_library
             (id, control_code, title, keywords,
              severity_if_missing, framework_id, created_at)
             VALUES (:id, :cc, :title, :kw, :sev, :fid, :cat)
+            ON CONFLICT (framework_id, control_code) DO NOTHING
         """), {
             "id": str(uuid.uuid4()),
             "cc": (ctrl.get("code") or "").strip(),
@@ -350,16 +359,21 @@ Rules:
             "fid": framework_id,
             "cat": datetime.utcnow(),
         })
-        inserted += 1
+        if res.rowcount == 1:
+            inserted += 1
+        else:
+            skipped_conflict += 1
 
     # Single commit covers both the (optional) delete and all inserts.
     db.commit()
     extraction_complete = (len(failed_windows) == 0)
     print(f"  [fw-extract] inserted {inserted} controls for {framework_name} "
           f"(force={force}, complete={extraction_complete}, "
-          f"failed_windows={len(failed_windows)})")
+          f"failed_windows={len(failed_windows)}, "
+          f"skipped_conflict={skipped_conflict})")
     return {
         "controls_inserted": inserted,
+        "controls_skipped_conflict": skipped_conflict,
         "windows_total": len(windows),
         "windows_failed": failed_windows,
         "extraction_complete": extraction_complete,

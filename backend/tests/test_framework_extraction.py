@@ -305,3 +305,80 @@ def test_load_framework_document_marks_incomplete_on_checkpoint_failure(monkeypa
     assert any("Checkpoint generation incomplete" in w
                for w in result["extraction_warnings"])
     assert result["warning"] is not None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 8: control_library INSERT statement uses ON CONFLICT DO NOTHING.
+# Lock in the contract that protects against duplicates under the
+# uq_control_library_framework_code constraint.
+# ─────────────────────────────────────────────────────────────────────────
+def test_control_library_insert_uses_on_conflict():
+    src = open("backend/framework_loader.py", encoding="utf-8").read()
+    # Single regex over whitespace so newlines/indentation drift won't break it.
+    import re
+    norm = re.sub(r"\s+", " ", src)
+    assert "INSERT INTO control_library" in norm
+    assert "ON CONFLICT (framework_id, control_code) DO NOTHING" in norm, (
+        "framework_loader.py must use ON CONFLICT DO NOTHING for the "
+        "control_library insert to defend against the unique constraint."
+    )
+
+    # Same contract for checkpoint_seed.py (two insert sites).
+    seed_src = open("backend/checkpoint_seed.py", encoding="utf-8").read()
+    seed_norm = re.sub(r"\s+", " ", seed_src)
+    assert seed_norm.count("ON CONFLICT (framework_id, control_code) DO NOTHING") >= 2, (
+        "checkpoint_seed.py must apply ON CONFLICT to both control_library "
+        "insert sites (NCA seed + ensure_control_library_sync)."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 9: extract_controls_from_framework counts skipped conflicts correctly.
+# When the DB raises a conflict (rowcount==0), the row is counted as skipped,
+# not inserted, so controls_inserted stays accurate.
+# ─────────────────────────────────────────────────────────────────────────
+def test_extract_controls_counts_skipped_conflicts(monkeypatch):
+    # Stub OpenAI to return three controls — one will "conflict" in the mock.
+    inner = json.dumps({"controls": [
+        {"code": "X-1", "title": "First", "severity": "High", "keywords": []},
+        {"code": "X-2", "title": "Second", "severity": "High", "keywords": []},
+        {"code": "X-3", "title": "Third", "severity": "High", "keywords": []},
+    ]})
+    raw_body = json.dumps({"choices": [{"message": {"content": inner}}]})
+    response = _make_response(status_code=200, raw_body=raw_body)
+
+    async def fake_post(*args, **kwargs):
+        return response
+    monkeypatch.setattr(framework_loader._openai_client, "post", fake_post)
+
+    # Mock db where the SECOND INSERT returns rowcount=0 (conflict).
+    db = MagicMock()
+    insert_call = {"n": 0}
+
+    def execute_side_effect(sql, params=None):
+        sql_str = str(sql).upper()
+        if "SELECT COUNT(*)" in sql_str and "CONTROL_LIBRARY" in sql_str:
+            r = MagicMock()
+            r.fetchone.return_value = (0,)
+            return r
+        if "INSERT INTO CONTROL_LIBRARY" in sql_str:
+            insert_call["n"] += 1
+            r = MagicMock()
+            # Second insert (X-2) hits a conflict; others succeed.
+            r.rowcount = 0 if insert_call["n"] == 2 else 1
+            return r
+        # DELETE / other
+        r = MagicMock()
+        r.rowcount = 0
+        return r
+
+    db.execute.side_effect = execute_side_effect
+
+    result = asyncio.run(framework_loader.extract_controls_from_framework(
+        db=db, framework_name="TEST", framework_id="fid-1",
+        full_text="dummy text body", force=True,
+    ))
+
+    assert result["controls_inserted"] == 2
+    assert result["controls_skipped_conflict"] == 1
+    assert result["extraction_complete"] is True  # no window failures
