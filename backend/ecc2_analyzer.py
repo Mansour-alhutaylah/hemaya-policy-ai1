@@ -325,16 +325,26 @@ async def _assess_control(
         })
 
     # ── Phase 7 cache lookup ─────────────────────────────────────────────────
-    # Key invariants: control_code | policy_hash | prompt_version | model.
+    # Key invariants: control_code | policy_hash | prompt_version | model |
+    #                 retrieval_min_score.
     # Any of those changing produces a cache miss; old rows become dormant.
     # Cached rows store POST-grounded results, so on hit we skip BOTH the GPT
     # call and the grounding pass. Downstream scoring runs identically.
+    #
+    # Phase 9 added retrieval_min_score to the key. The relevance floor in
+    # _find_relevant_sections changes the focused_text passed to GPT, so a
+    # verdict cached under one floor must not be served on a request using
+    # a different floor. The value is read dynamically (not at import time)
+    # so monkeypatching RAG_MIN_RELEVANCE_SCORE in tests reflects in the key.
     cache_key = None
     results = None  # populated from cache or from GPT
     if db is not None and policy_hash:
+        from backend import checkpoint_analyzer as _ca
+        retrieval_floor = getattr(_ca, "RAG_MIN_RELEVANCE_SCORE", 0.0)
         key_input = (
             f"ECC2|{control_code}|{policy_hash}|"
-            f"{ECC2_PROMPT_VERSION}|{ECC2_MODEL}"
+            f"{ECC2_PROMPT_VERSION}|{ECC2_MODEL}|"
+            f"floor={retrieval_floor:.3f}"
         )
         cache_key = hashlib.sha256(key_input.encode("utf-8")).hexdigest()
         try:
