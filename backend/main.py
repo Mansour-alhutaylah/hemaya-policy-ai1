@@ -58,6 +58,48 @@ def startup_seed():
     except Exception as e:
         print(f"[startup] Migration warning: {e}")
 
+    # Create sacs002_metadata if it doesn't exist yet.
+    # Uses TEXT instead of ENUM types to avoid DO$$ type-creation noise.
+    # The FK to ecc_framework is omitted here to tolerate cold-start ordering
+    # (ecc_framework may be empty on first boot before import runs).
+    try:
+        with database.engine.connect() as _conn:
+            _conn.execute(_ddl("""
+                CREATE TABLE IF NOT EXISTS sacs002_metadata (
+                    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    framework_id            VARCHAR(50)  NOT NULL DEFAULT 'SACS-002',
+                    control_code            VARCHAR(30)  NOT NULL,
+                    section                 TEXT,
+                    nist_function_code      VARCHAR(10),
+                    nist_function_name      TEXT,
+                    nist_category_code      VARCHAR(20),
+                    nist_category_name      TEXT,
+                    applicable_classes      JSONB,
+                    governance_control      BOOLEAN DEFAULT FALSE,
+                    technical_control       BOOLEAN DEFAULT FALSE,
+                    operational_control     BOOLEAN DEFAULT FALSE,
+                    review_required         BOOLEAN DEFAULT FALSE,
+                    approval_required       BOOLEAN DEFAULT FALSE,
+                    testing_required        BOOLEAN DEFAULT FALSE,
+                    monitoring_required     BOOLEAN DEFAULT FALSE,
+                    third_party_assessment  BOOLEAN DEFAULT FALSE,
+                    created_at              TIMESTAMPTZ DEFAULT NOW(),
+                    CONSTRAINT uq_sacs002_meta_control UNIQUE (framework_id, control_code)
+                )
+            """))
+            _conn.execute(_ddl(
+                "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_nist_cat "
+                "ON sacs002_metadata (nist_category_code)"
+            ))
+            _conn.execute(_ddl(
+                "CREATE INDEX IF NOT EXISTS idx_sacs002_meta_section "
+                "ON sacs002_metadata (section)"
+            ))
+            _conn.commit()
+        print("[startup] sacs002_metadata table ensured")
+    except Exception as e:
+        print(f"[startup] sacs002_metadata DDL warning: {e}")
+
     db = database.SessionLocal()
     try:
         seed_checkpoints(db)
@@ -1624,7 +1666,9 @@ def sacs002_status(db: Session = Depends(get_db)):
         "layer2_count": 0,
         "layer3_count": 0,
         "sacs002_metadata_count": 0,
+        "joined_count": 0,
         "orphan_l3_count": 0,
+        "missing_l2_count": 0,
         "errors": [],
         "status": "not_loaded",
     }
@@ -1632,15 +1676,37 @@ def sacs002_status(db: Session = Depends(get_db)):
         result["layer1_count"] = db.execute(_st(
             "SELECT COUNT(*) FROM ecc_framework WHERE framework_id = 'SACS-002'"
         )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_framework: {e}")
+    try:
         result["layer2_count"] = db.execute(_st(
             "SELECT COUNT(*) FROM ecc_compliance_metadata WHERE framework_id = 'SACS-002'"
         )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_compliance_metadata: {e}")
+    try:
         result["layer3_count"] = db.execute(_st(
             "SELECT COUNT(*) FROM ecc_ai_checkpoints WHERE framework_id = 'SACS-002'"
         )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_ai_checkpoints: {e}")
+    try:
         result["sacs002_metadata_count"] = db.execute(_st(
             "SELECT COUNT(*) FROM sacs002_metadata WHERE framework_id = 'SACS-002'"
         )).fetchone()[0]
+    except Exception as e:
+        # Table may not exist yet — created on next server restart
+        result["errors"].append(f"sacs002_metadata (run server restart to create): {e}")
+    try:
+        result["joined_count"] = db.execute(_st("""
+            SELECT COUNT(*) FROM ecc_framework f
+            LEFT JOIN ecc_compliance_metadata m
+                ON f.framework_id = m.framework_id AND f.control_code = m.control_code
+            WHERE f.framework_id = 'SACS-002'
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"joined_count: {e}")
+    try:
         result["orphan_l3_count"] = db.execute(_st("""
             SELECT COUNT(*)
             FROM ecc_ai_checkpoints c
@@ -1648,15 +1714,24 @@ def sacs002_status(db: Session = Depends(get_db)):
                 ON c.framework_id = f.framework_id AND c.control_code = f.control_code
             WHERE c.framework_id = 'SACS-002' AND f.control_code IS NULL
         """)).fetchone()[0]
-        if result["layer1_count"] >= 92 and result["layer3_count"] >= 92:
-            result["status"] = "loaded"
-        elif result["layer1_count"] > 0:
-            result["status"] = "partial"
-        else:
-            result["status"] = "not_loaded"
     except Exception as e:
-        result["errors"].append(str(e))
-        raise HTTPException(status_code=500, detail=f"SACS-002 status check failed: {e}")
+        result["errors"].append(f"orphan check: {e}")
+    try:
+        result["missing_l2_count"] = db.execute(_st("""
+            SELECT COUNT(*)
+            FROM ecc_framework f
+            LEFT JOIN ecc_compliance_metadata m
+                ON f.framework_id = m.framework_id AND f.control_code = m.control_code
+            WHERE f.framework_id = 'SACS-002' AND m.control_code IS NULL
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"missing_l2: {e}")
+    if result["layer1_count"] >= 92 and result["layer3_count"] >= 92:
+        result["status"] = "loaded"
+    elif result["layer1_count"] > 0:
+        result["status"] = "partial"
+    else:
+        result["status"] = "not_loaded"
     return result
 
 
