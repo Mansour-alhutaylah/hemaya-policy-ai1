@@ -20,19 +20,9 @@ import {
 import { api } from '@/api/apiClient';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-const token = () => localStorage.getItem('token');
-
-async function authGet(url) {
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token()}` },
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({ detail: 'Request failed' }));
-    throw new Error(e.detail || 'Request failed');
-  }
-  return res.json();
-}
+// Phase G.1: previously had a hand-rolled authGet helper here. Replaced by
+// api.get from apiClient — same auth header, same 401 handling, plus the
+// FastAPI-shaped error parsing the rest of the app already depends on.
 
 const STATUS_META = {
   compliant: {
@@ -256,7 +246,7 @@ export default function MappingReviewPage() {
   // Frameworks for the selected policy (only those with analysis rows)
   const { data: frameworksWithResults = [] } = useQuery({
     queryKey: ['mappingFrameworks', policyId],
-    queryFn: () => authGet(`/api/mapping-reviews/frameworks?policy_id=${policyId}`),
+    queryFn: () => api.get(`/mapping-reviews/frameworks?policy_id=${policyId}`),
     enabled: !!policyId,
   });
 
@@ -277,7 +267,7 @@ export default function MappingReviewPage() {
     error,
   } = useQuery({
     queryKey: ['mappingReviews', params],
-    queryFn: () => authGet(`/api/mapping-reviews?${params}`),
+    queryFn: () => api.get(`/mapping-reviews?${params}`),
     enabled: !!policyId,
     retry: false,
   });

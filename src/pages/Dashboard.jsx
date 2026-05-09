@@ -54,17 +54,18 @@ function deriveExt(policy) {
   return null;
 }
 
+// Phase G.1: routed through apiClient so 401 handling, FastAPI error
+// parsing, and the Authorization header all live in one place.
 async function fetchDashboardStats(policyId) {
-  const token = localStorage.getItem('token');
-  const url =
+  const path =
     policyId && policyId !== 'all'
-      ? `/api/dashboard/stats?policy_id=${encodeURIComponent(policyId)}`
-      : '/api/dashboard/stats';
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
+      ? `/dashboard/stats?policy_id=${encodeURIComponent(policyId)}`
+      : '/dashboard/stats';
+  try {
+    return await api.get(path);
+  } catch {
+    return null;
+  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

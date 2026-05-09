@@ -192,22 +192,9 @@ export default function GapsRisks() {
   }, {});
 
   const updateGapMutation = useMutation({
-    mutationFn: async ({ id, data }) => {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/gaps/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Update failed' }));
-        throw new Error(err.detail || 'Update failed');
-      }
-      return res.json();
-    },
+    // Phase G.1: routed through apiClient so 401 handling and FastAPI error
+    // parsing match the rest of the app.
+    mutationFn: ({ id, data }) => api.put(`/gaps/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gaps'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
