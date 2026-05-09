@@ -338,7 +338,7 @@ Rules:
 
     deduped = list(seen.values())
     skipped_dupes = len(raw_controls) - len(deduped)
-    print(f"  [fw-extract] raw={len(raw_controls)} → deduped={len(deduped)} "
+    print(f"  [fw-extract] raw={len(raw_controls)} -> deduped={len(deduped)} "
           f"(skipped {skipped_dupes} duplicates across windows)")
 
     inserted = 0

@@ -664,7 +664,7 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
 
     t0 = time.time()
     print(f"\n{'='*60}")
-    print(f"ECC-2:2024 STRUCTURED ANALYSIS STARTED — policy={policy_id}")
+    print(f"ECC-2:2024 STRUCTURED ANALYSIS STARTED - policy={policy_id}")
     print(f"{'='*60}")
 
     _report(12, "ECC-2: Checking policy chunks")
@@ -793,18 +793,18 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
     d_grounded = [r for r in results_list if r["_l1_grounded"]]
     d_partial_cands = [r for r in d_grounded if r["_l1_conf"] >= 0.45]
     print(f"\n  [ECC2] === CONFIDENCE DISTRIBUTION ({len(results_list)} controls) ===")
-    print(f"    L1_conf 0.00–0.44 : {len(d_low):3d}  (all → non_compliant)")
-    print(f"    L1_conf 0.45–0.74 : {len(d_mid):3d}  (grounded → partial candidates)")
-    print(f"    L1_conf 0.75–1.00 : {len(d_high):3d}  (grounded → compliant/partial by action_cov)")
+    print(f"    L1_conf 0.00-0.44 : {len(d_low):3d}  (all -> non_compliant)")
+    print(f"    L1_conf 0.45-0.74 : {len(d_mid):3d}  (grounded -> partial candidates)")
+    print(f"    L1_conf 0.75-1.00 : {len(d_high):3d}  (grounded -> compliant/partial by action_cov)")
     print(f"    Grounded evidence  : {len(d_grounded):3d}")
     print(f"    Partial candidates : {len(d_partial_cands):3d}  (grounded + conf >= 0.45)")
     if d_partial_cands:
         cov_vals = [r["_action_cov"] for r in d_partial_cands]
-        print(f"    action_cov range   : {min(cov_vals):.2f} – {max(cov_vals):.2f}  "
+        print(f"    action_cov range   : {min(cov_vals):.2f} - {max(cov_vals):.2f}  "
               f"(mean={sum(cov_vals)/len(cov_vals):.2f})")
         below_half = sum(1 for v in cov_vals if v < 0.50)
-        print(f"    action_cov < 0.50  : {below_half:3d}  (→ partial)")
-        print(f"    action_cov >= 0.50 : {len(cov_vals)-below_half:3d}  (→ compliant if conf >= 0.65)")
+        print(f"    action_cov < 0.50  : {below_half:3d}  (-> partial)")
+        print(f"    action_cov >= 0.50 : {len(cov_vals)-below_half:3d}  (-> compliant if conf >= 0.65)")
     print(f"  [ECC2] =====================================================\n")
 
     # ── Aggregate scores ──────────────────────────────────────────────────

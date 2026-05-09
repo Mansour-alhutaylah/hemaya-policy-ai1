@@ -928,7 +928,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
         # Pause check at the start of each framework (safe boundary).
         if _pause_requested():
             _mark_paused()
-            print(f"  Pause requested before {fw} — stopping gracefully.")
+            print(f"  Pause requested before {fw} - stopping gracefully.")
             return {"paused": True, "results": all_results}
 
         # Resume mode: skip frameworks that already have a result row.
@@ -941,7 +941,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
                 ), {"pid": policy_id, "fw": fw}).fetchone()
                 if existing:
                     fw_index += 1
-                    print(f"  [resume] {fw} already complete — skipping")
+                    print(f"  [resume] {fw} already complete - skipping")
                     _report(int(25 + fw_budget * fw_index), f"{fw} (resumed, already done)")
                     continue
             except Exception:
