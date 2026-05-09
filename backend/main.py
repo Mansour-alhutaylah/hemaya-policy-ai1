@@ -39,11 +39,13 @@ from backend.vector_store import get_embeddings, store_chunks_with_embeddings, d
 from backend.chunker import chunk_text
 from backend.routers.remediation import router as remediation_router
 from backend.routers.reports_export import router as export_router
+from backend.routers.explainability import router as explainability_router
 
 
 app = FastAPI()
 app.include_router(remediation_router)
 app.include_router(export_router)
+app.include_router(explainability_router)
 
 
 @app.on_event("startup")
