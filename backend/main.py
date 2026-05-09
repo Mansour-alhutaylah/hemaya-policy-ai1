@@ -32,6 +32,7 @@ from backend.text_extractor import extract_text, extract_text_segments
 from backend.checkpoint_analyzer import (
     run_checkpoint_analysis, chat_with_context, chat_with_user_context,
     run_simulation, generate_insights, explain_mapping,
+    build_suggested_questions,
 )
 from backend.ecc2_analyzer import run_ecc2_analysis, verify_ecc2_loaded
 from backend.sacs002_analyzer import run_sacs002_analysis
@@ -2386,6 +2387,33 @@ async def chat_assistant(
         "response": result.get("answer") or "",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/api/assistant/suggested-questions")
+def assistant_suggested_questions(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Phase UI-6: per-policy suggested chat prompts.
+
+    Pure DB read (no GPT) — uses the same compliance snapshot the
+    chat endpoint loads on every fast-path answer. Owner-scoped: a
+    user can't pull suggestions for someone else's policy.
+    """
+    # Owner check before we touch the snapshot.
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found.")
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Policy not found.")
+    try:
+        questions = build_suggested_questions(db, policy_id)
+    except Exception as e:
+        # Non-fatal — frontend just falls back to its hardcoded list.
+        print(f"[/api/assistant/suggested-questions] failed: {e}")
+        questions = []
+    return {"policy_id": policy_id, "questions": questions}
 
 
 @app.get("/api/functions/db_health")

@@ -1847,6 +1847,48 @@ def _gap_sources(gaps, limit=10):
     return out
 
 
+def build_suggested_questions(db, policy_id: str, limit: int = 6) -> list[str]:
+    """Phase UI-6: returns short prompts for the AI Assistant, seeded from
+    the policy's actual gaps + scores. Pure DB read — NO GPT call — so
+    calling on every chat-page mount is cheap. Always returns at least
+    a couple of universal fallbacks so a brand-new analysis still has
+    chips to click.
+    """
+    snapshot = _load_compliance_snapshot(db, [policy_id])
+    scores = snapshot.get("scores") or []
+    gaps = snapshot.get("gaps") or []
+
+    qs: list[str] = []
+    seen: set[str] = set()
+
+    def _push(q: str) -> None:
+        if q and q not in seen:
+            seen.add(q)
+            qs.append(q)
+
+    # 1. Concrete prompts seeded from the top open gaps.
+    for g in gaps[:3]:
+        ctrl = (g[2] or g[3] or "").strip()
+        sev = g[4] or "Medium"
+        if ctrl:
+            _push(f"Why is {ctrl} flagged as {sev.lower()}?")
+            _push(f"What evidence supports {ctrl}?")
+            _push(f"What should I add to be compliant on {ctrl}?")
+
+    # 2. Framework-level prompt, biased to the weakest one.
+    if scores:
+        weakest = min(scores, key=lambda r: r[2] or 100)
+        if (weakest[2] or 100) < 100 and weakest[1]:
+            _push(f"How can I improve my {weakest[1]} score?")
+
+    # 3. Universal fallbacks — always available.
+    _push("What are the top risks in this policy?")
+    _push("Summarise the compliance status of this policy.")
+    _push("What should I fix first?")
+
+    return qs[:limit]
+
+
 # ── Canned & structured answers (no LLM) ─────────────────────────────────────
 
 def _answer_help(lang, has_policies=True):  # noqa: ARG001 — kept for callers

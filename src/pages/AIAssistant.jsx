@@ -50,7 +50,11 @@ const INITIAL_MESSAGE = {
   type: 'greeting',
 };
 
-const SUGGESTED_QUESTIONS = [
+// Phase UI-6: portfolio-wide fallbacks shown when "All my policies" is the
+// selected scope, or when a per-policy suggestions fetch fails. Per-policy
+// chips come from /api/assistant/suggested-questions and are seeded from
+// that policy's actual gaps.
+const PORTFOLIO_SUGGESTED_QUESTIONS = [
   'What is my current compliance status?',
   'What are my top compliance gaps?',
   'Which controls should I fix first?',
@@ -219,6 +223,25 @@ export default function AIAssistant() {
     queryKey: ['policies'],
     queryFn: () => api.entities.Policy.list('-created_at', 50),
   });
+
+  // Phase UI-6: per-policy suggested chat prompts. The endpoint reads the
+  // policy's gaps + scores (no GPT) so this query is cheap and re-fetches
+  // when the user picks a different policy. Falls back to the static list
+  // when the user is in portfolio mode or the fetch fails.
+  const { data: suggestionsResp } = useQuery({
+    queryKey: ['suggestedQuestions', policyScope],
+    queryFn: () =>
+      api.get(`/assistant/suggested-questions?policy_id=${encodeURIComponent(policyScope)}`),
+    enabled: policyScope && policyScope !== 'all',
+    staleTime: 5 * 60 * 1000,  // gaps change rarely between chats
+    retry: false,
+  });
+  const suggestedQuestions =
+    (policyScope !== 'all' && Array.isArray(suggestionsResp?.questions) && suggestionsResp.questions.length > 0)
+      ? suggestionsResp.questions
+      : PORTFOLIO_SUGGESTED_QUESTIONS;
+  const selectedPolicy =
+    policyScope !== 'all' ? policies.find(p => p.id === policyScope) : null;
 
   // If the user identity arrives after first paint (auth hydration race),
   // re-hydrate once we have a key. We compare lengths to avoid clobbering an
@@ -440,6 +463,24 @@ export default function AIAssistant() {
       }
     >
       <div className="max-w-4xl mx-auto">
+        {/* Phase UI-6: scope confirmation banner — makes it visually obvious
+            whether the assistant is answering about a single policy or the
+            whole portfolio. */}
+        <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <Database className="w-3.5 h-3.5" />
+          {selectedPolicy ? (
+            <span>
+              Answering about{' '}
+              <span className="font-medium text-foreground">
+                {selectedPolicy.file_name || 'the selected policy'}
+              </span>
+              {' '}only. Switch the picker to ask about another.
+            </span>
+          ) : (
+            <span>Answering across <span className="font-medium text-foreground">all your policies</span>. Pick one to scope answers and unlock per-policy citations.</span>
+          )}
+        </div>
+
         {contextSummary && <ContextStrip summary={contextSummary} />}
 
         <Card className="shadow-sm overflow-hidden">
@@ -457,11 +498,19 @@ export default function AIAssistant() {
                       <Bot className="w-4 h-4 text-white" />
                     </AvatarFallback>
                   </Avatar>
+                  {/* Phase UI-6: bouncing-dots typing indicator. Reads as
+                      "thinking" instead of a generic loading spinner. */}
                   <div className="bg-muted text-muted-foreground rounded-2xl px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                    <div className="flex items-center gap-2" aria-label="Assistant is thinking">
+                      <span className="flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
                       <span className="text-sm">
-                        Reading your compliance data…
+                        {selectedPolicy
+                          ? `Reading "${(selectedPolicy.file_name || '').slice(0, 40)}…"`
+                          : 'Reading your compliance data…'}
                       </span>
                     </div>
                   </div>
@@ -470,14 +519,16 @@ export default function AIAssistant() {
             </div>
           </ScrollArea>
 
-          {/* Suggested Questions */}
+          {/* Suggested Questions — per-policy when scoped, portfolio otherwise. */}
           {showSuggestions && (
             <div className="px-6 py-3 border-t border-border bg-muted/40">
               <p className="text-xs font-medium text-muted-foreground mb-2">
-                Try one of these:
+                {selectedPolicy
+                  ? `Suggested questions for "${selectedPolicy.file_name || 'this policy'}":`
+                  : 'Try one of these:'}
               </p>
               <div className="flex flex-wrap gap-2">
-                {SUGGESTED_QUESTIONS.map((q) => (
+                {suggestedQuestions.map((q) => (
                   <Button
                     key={q}
                     variant="outline"
@@ -545,6 +596,11 @@ export default function AIAssistant() {
 function MessageBubble({ message }) {
   const isUser = message.role === 'user';
   const isError = message.type === 'error';
+  // Phase UI-6: when the backend reports has_data=false on a policy-scoped
+  // chat, we show an amber-tinted bubble + a small "Evidence not found"
+  // pill so the user knows the assistant couldn't ground its answer in
+  // the selected policy's chunks.
+  const isNoData = message.type === 'no-data';
   const sources = Array.isArray(message.sources) ? message.sources : [];
 
   return (
@@ -563,6 +619,8 @@ function MessageBubble({ message }) {
             ? 'bg-emerald-600 text-white dark:bg-emerald-500'
             : isError
             ? 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30'
+            : isNoData
+            ? 'bg-amber-50 text-amber-900 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:border-amber-500/30'
             : 'bg-muted text-foreground'
         }`}
       >
@@ -570,6 +628,12 @@ function MessageBubble({ message }) {
           <div className="flex items-center gap-1.5 mb-1.5 text-xs font-medium">
             <AlertTriangle className="w-3.5 h-3.5" />
             Error
+          </div>
+        )}
+        {!isUser && isNoData && (
+          <div className="flex items-center gap-1.5 mb-1.5 text-xs font-medium">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Evidence not found in this policy
           </div>
         )}
         <div
