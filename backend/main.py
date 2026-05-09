@@ -2290,6 +2290,11 @@ async def chat_assistant(
             status_code=400,
             detail="Message is too long (max 4000 characters).",
         )
+    # Phase F: optional policy scope. When provided, the assistant answers
+    # only about this policy; otherwise it falls back to the user's portfolio.
+    selected_policy_id = (payload.get("policy_id") or None) or None
+    if selected_policy_id and not isinstance(selected_policy_id, str):
+        selected_policy_id = str(selected_policy_id)
 
     if not os.environ.get("OPENAI_API_KEY"):
         # Catch this before we burn a request on the LLM.
@@ -2310,7 +2315,11 @@ async def chat_assistant(
 
     try:
         result = await _asyncio.wait_for(
-            chat_with_user_context(db, message, current_user, is_admin=_is_admin),
+            chat_with_user_context(
+                db, message, current_user,
+                is_admin=_is_admin,
+                policy_id=selected_policy_id,
+            ),
             timeout=50.0,
         )
     except _asyncio.TimeoutError:

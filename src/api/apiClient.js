@@ -96,8 +96,15 @@ export const api = {
     invoke: (name, args, opts) => request("POST", `/functions/${name}`, args, opts),
   },
   assistant: {
-    chat: (message, opts) =>
-      request("POST", "/assistant/chat", { message }, opts),
+    // Phase F: optional policy_id scopes the chatbot to a single policy.
+    // When omitted, the assistant falls back to the user's full portfolio.
+    chat: (message, { policy_id, ...opts } = {}) =>
+      request(
+        "POST",
+        "/assistant/chat",
+        policy_id ? { message, policy_id } : { message },
+        opts,
+      ),
   },
   integrations: {
     Core: {

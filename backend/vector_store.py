@@ -85,9 +85,12 @@ def store_chunks_with_embeddings(db, policy_id, chunks, embeddings, policy_versi
 def search_similar_chunks(db, query_embedding, policy_id=None, top_k=10):
     emb_str = json.dumps(query_embedding)
 
+    # Phase F: also return Phase 11 source-attribution columns so chatbot
+    # answers can cite [Page N · ¶M] inline.
     sql = """
         SELECT chunk_text, chunk_index, policy_id,
-               1 - (embedding <=> cast(:emb as vector)) AS similarity
+               1 - (embedding <=> cast(:emb as vector)) AS similarity,
+               page_number, paragraph_index
         FROM policy_chunks
         WHERE embedding IS NOT NULL
     """
@@ -100,8 +103,14 @@ def search_similar_chunks(db, query_embedding, policy_id=None, top_k=10):
     sql += " ORDER BY embedding <=> cast(:emb as vector) LIMIT :top_k"
 
     results = db.execute(text(sql), params).fetchall()
-    return [{"text": r[0], "chunk_index": r[1],
-             "policy_id": r[2], "similarity": float(r[3])} for r in results]
+    return [{
+        "text": r[0],
+        "chunk_index": r[1],
+        "policy_id": r[2],
+        "similarity": float(r[3]),
+        "page_number": r[4],
+        "paragraph_index": r[5],
+    } for r in results]
 
 
 def delete_policy_chunks(db, policy_id, policy_version_id=None):

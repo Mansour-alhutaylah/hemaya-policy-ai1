@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, Children } from 'react';
 import { api } from '@/api/apiClient';
 import { useAuth } from '@/lib/AuthContext';
 import { ASSISTANT_CHAT_PREFIX, purgeLegacyAssistantSessions } from '@/lib/utils';
@@ -19,7 +19,17 @@ import {
   Loader2,
   RefreshCw,
   Database,
+  FileText,
+  StopCircle,
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useQuery } from '@tanstack/react-query';
 
 // Hard ceiling for any single chat call. Slightly above the backend's 50s
 // asyncio.wait_for so a server-side timeout surfaces as a 504 first; this
@@ -141,6 +151,38 @@ function clearPersistedMessages(key) {
   }
 }
 
+// Phase F: render `[Page N]` and `[Page N · ¶M]` patterns inside an answer
+// as inline emerald pill chips. Walks the children of any text-bearing
+// markdown renderer (paragraph, list item, strong) so citations work
+// regardless of where they appear in the answer.
+const CITATION_RE = /(\[Page\s*\d+(?:\s*·\s*¶?\s*\d+)?\])/g;
+function withCitations(children) {
+  return Children.map(children, (child, idx) => {
+    if (typeof child !== 'string') return child;
+    if (!CITATION_RE.test(child)) {
+      CITATION_RE.lastIndex = 0;
+      return child;
+    }
+    CITATION_RE.lastIndex = 0;
+    const parts = child.split(CITATION_RE);
+    return parts.map((part, i) => {
+      if (CITATION_RE.test(part)) {
+        CITATION_RE.lastIndex = 0;
+        const label = part.replace(/^\[|\]$/g, '');
+        return (
+          <span
+            key={`${idx}-${i}`}
+            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded text-[10.5px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 align-middle whitespace-nowrap"
+          >
+            {label}
+          </span>
+        );
+      }
+      return part;
+    });
+  });
+}
+
 export default function AIAssistant() {
   const { user } = useAuth();
   const storageKey = useMemo(() => userScopeKey(user), [user]);
@@ -157,6 +199,26 @@ export default function AIAssistant() {
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
+
+  // Phase F: per-tab policy scope. "all" means the assistant answers across
+  // the user's whole portfolio; a policy id scopes it to one document.
+  // Persisted in sessionStorage (per-user) so navigating away and back keeps
+  // the same scope.
+  const policyScopeKey = storageKey ? `${storageKey}:scope` : null;
+  const [policyScope, setPolicyScope] = useState(() => {
+    if (!policyScopeKey || typeof window === 'undefined') return 'all';
+    try { return sessionStorage.getItem(policyScopeKey) || 'all'; }
+    catch { return 'all'; }
+  });
+  useEffect(() => {
+    if (!policyScopeKey || typeof window === 'undefined') return;
+    try { sessionStorage.setItem(policyScopeKey, policyScope); } catch {}
+  }, [policyScopeKey, policyScope]);
+
+  const { data: policies = [] } = useQuery({
+    queryKey: ['policies'],
+    queryFn: () => api.entities.Policy.list('-created_at', 50),
+  });
 
   // If the user identity arrives after first paint (auth hydration race),
   // re-hydrate once we have a key. We compare lengths to avoid clobbering an
@@ -248,6 +310,7 @@ export default function AIAssistant() {
       try {
         const result = await api.assistant.chat(trimmed, {
           signal: controller.signal,
+          policy_id: policyScope !== 'all' ? policyScope : undefined,
         });
 
         const answer =
@@ -309,7 +372,7 @@ export default function AIAssistant() {
         inputRef.current?.focus();
       }
     },
-    [isTyping]
+    [isTyping, policyScope]
   );
 
   const handleSend = () => sendMessage(inputValue);
@@ -341,7 +404,24 @@ export default function AIAssistant() {
       title="AI Assistant"
       subtitle="Ask about your compliance status, gaps, and remediation — grounded in your real data"
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Phase F: policy scope picker. Defaults to "All my policies"; pick
+              one to scope the chatbot to a single document for tighter answers
+              with [Page N · ¶M] citations. */}
+          <Select value={policyScope} onValueChange={setPolicyScope}>
+            <SelectTrigger className="w-[220px]" disabled={isTyping}>
+              <FileText className="w-4 h-4 mr-1 shrink-0" />
+              <SelectValue placeholder="All my policies" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All my policies</SelectItem>
+              {policies.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.file_name || p.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30 gap-1">
             <Sparkles className="w-3 h-3" />
             AI Powered
@@ -426,18 +506,30 @@ export default function AIAssistant() {
                 className="flex-1"
                 aria-label="Message"
               />
-              <Button
-                onClick={handleSend}
-                disabled={!inputValue.trim() || isTyping}
-                className="bg-emerald-600 hover:bg-emerald-700"
-                aria-label="Send message"
-              >
-                {isTyping ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
+              {/* Phase F: while a request is in flight, swap Send for Stop.
+                  Aborting hits the AbortController, which the existing catch
+                  block handles as a friendly "took too long" message. */}
+              {isTyping ? (
+                <Button
+                  onClick={() => abortRef.current?.abort()}
+                  variant="outline"
+                  className="border-red-500/40 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                  aria-label="Stop generating"
+                  title="Stop generating"
+                >
+                  <StopCircle className="w-4 h-4 mr-1.5" />
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSend}
+                  disabled={!inputValue.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  aria-label="Send message"
+                >
                   <Send className="w-4 h-4" />
-                )}
-              </Button>
+                </Button>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-2 text-center">
               Answers are based on your stored policies and analyses. For
@@ -487,16 +579,18 @@ function MessageBubble({ message }) {
         >
           <ReactMarkdown
             components={{
-              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              // Phase F: any text-bearing slot runs through withCitations so
+              // [Page N] tags become emerald pill chips wherever they appear.
+              p: ({ children }) => <p className="mb-2 last:mb-0">{withCitations(children)}</p>,
               ul: ({ children }) => (
                 <ul className="my-2 ml-4 list-disc">{children}</ul>
               ),
               ol: ({ children }) => (
                 <ol className="my-2 ml-4 list-decimal">{children}</ol>
               ),
-              li: ({ children }) => <li className="mb-1">{children}</li>,
+              li: ({ children }) => <li className="mb-1">{withCitations(children)}</li>,
               strong: ({ children }) => (
-                <strong className="font-semibold">{children}</strong>
+                <strong className="font-semibold">{withCitations(children)}</strong>
               ),
               code: ({ children }) => (
                 <code className="rounded bg-background/40 px-1 py-0.5 text-[0.85em]">
