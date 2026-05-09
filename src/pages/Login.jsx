@@ -5,6 +5,8 @@ import { useAuth } from "../lib/AuthContext";
 import ThemeToggle from "@/components/ThemeToggle";
 import StatusAlert from "@/components/ui/StatusAlert";
 
+const API = import.meta.env.VITE_API_URL || "/api";
+
 export default function Login() {
   const nav = useNavigate();
   const { login } = useAuth();
@@ -54,7 +56,7 @@ export default function Login() {
     const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(`${API}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -77,7 +79,7 @@ export default function Login() {
 
       if (!user) {
         localStorage.setItem("token", token);
-        const meRes = await fetch("/api/auth/me", {
+        const meRes = await fetch(`${API}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(8000),
         });

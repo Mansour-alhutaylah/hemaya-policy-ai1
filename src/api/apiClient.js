@@ -1,6 +1,8 @@
 import { clearAssistantSessions } from "@/lib/utils";
 
-const API_BASE = "/api";
+// In production, VITE_API_URL = "https://hemaya-policy-ai1.onrender.com/api"
+// In local dev, fall back to "/api" (Vite proxy handles it).
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 async function request(method, url, data, opts = {}) {
   const token = localStorage.getItem("token");

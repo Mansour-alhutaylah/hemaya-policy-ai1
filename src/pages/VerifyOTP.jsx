@@ -9,6 +9,8 @@ import {
 import StatusAlert from "@/components/ui/StatusAlert";
 import ThemeToggle from "@/components/ThemeToggle";
 
+const API = import.meta.env.VITE_API_URL || "/api";
+
 export default function VerifyOTP() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
@@ -33,7 +35,7 @@ export default function VerifyOTP() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-otp", {
+      const res = await fetch(`${API}/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
@@ -55,7 +57,7 @@ export default function VerifyOTP() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/resend-otp", {
+      const res = await fetch(`${API}/auth/resend-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

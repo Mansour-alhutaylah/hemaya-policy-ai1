@@ -5,6 +5,8 @@ import StatusAlert from "@/components/ui/StatusAlert";
 import PasswordStrengthChecker from "@/components/ui/PasswordStrengthChecker";
 import ThemeToggle from "@/components/ThemeToggle";
 
+const API = import.meta.env.VITE_API_URL || "/api";
+
 export default function Signup() {
   const nav = useNavigate();
 
@@ -41,7 +43,7 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      const r1 = await fetch("/api/auth/register", {
+      const r1 = await fetch(`${API}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ first_name, last_name, phone, email, password }),

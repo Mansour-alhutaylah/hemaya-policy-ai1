@@ -10,6 +10,8 @@ import StatusAlert from "@/components/ui/StatusAlert";
 import PasswordStrengthChecker from "@/components/ui/PasswordStrengthChecker";
 import ThemeToggle from "@/components/ThemeToggle";
 
+const API = import.meta.env.VITE_API_URL || "/api";
+
 const inputClass =
   "mt-1 w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground/70 px-3 py-2 outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-colors";
 
@@ -24,7 +26,7 @@ function StepEmail({ onSuccess }) {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch(`${API}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -91,7 +93,7 @@ function StepOTP({ email, onSuccess }) {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-reset-otp", {
+      const res = await fetch(`${API}/auth/verify-reset-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
@@ -112,7 +114,7 @@ function StepOTP({ email, onSuccess }) {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch(`${API}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -195,7 +197,7 @@ function StepNewPassword({ resetToken }) {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch(`${API}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reset_token: resetToken, new_password: password }),
