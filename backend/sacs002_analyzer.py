@@ -16,10 +16,12 @@ import json
 import re
 import time
 import uuid
+import hashlib
 import asyncio
 from datetime import datetime, timezone
 from sqlalchemy import text as sql_text
 
+import backend.checkpoint_analyzer as _ca
 from backend.checkpoint_analyzer import (
     call_llm,
     _find_grounded_evidence,
@@ -29,6 +31,14 @@ from backend.vector_store import get_embeddings, search_similar_chunks
 
 FRAMEWORK_ID = "SACS-002"
 FRAMEWORK_DISPLAY = "Saudi Aramco Third Party Cybersecurity Standard (SACS-002)"
+
+# Phase G.2 verification cache — cache_key invariants.
+# Bump SACS002_PROMPT_VERSION whenever the verifier prompt, the action
+# coverage logic, the L3 ratio thresholds, or any other scoring rule
+# in this module changes. Bumping invalidates every cached row, so the
+# next analysis re-runs through GPT and writes fresh entries.
+SACS002_PROMPT_VERSION = "v1"
+SACS002_MODEL = "gpt-4o-mini"
 
 SACS002_VERIFIER_PROMPT = """You assess whether a policy document complies with SACS-002 (Saudi Aramco Third Party Cybersecurity Standard, Feb 2022).
 
@@ -363,11 +373,17 @@ async def _assess_control(
     policy_text: str,
     bm25_index=None,
     diag: bool = False,
+    db=None,
+    policy_hash: str | None = None,
 ) -> dict:
     """
     bm25_index: pre-built BM25Okapi over policy_chunks — caller should build
                 once and pass in to avoid rebuilding the index 92× per run.
     diag:       when True, log focused_text preview and raw GPT response.
+    db, policy_hash: when both provided, read/write the
+                sacs002_verification_cache. Cache key bundles the prompt
+                version, model, retrieval floor, and grounding invariants
+                so any change to those automatically invalidates entries.
     """
     from backend.checkpoint_analyzer import _find_relevant_sections
     from rank_bm25 import BM25Okapi
@@ -376,6 +392,30 @@ async def _assess_control(
     control_text = control["control_text"]
     audit_qs = control["audit_questions"]
     keywords = control["keywords"]
+
+    # ── Phase G.2: cache lookup ──────────────────────────────────────────
+    cache_key = None
+    if db is not None and policy_hash:
+        retrieval_min_score = getattr(_ca, "RAG_MIN_RELEVANCE_SCORE", 0.10)
+        grounding_version = getattr(_ca, "GROUNDING_VERSION", "v1")
+        grounding_sim = getattr(_ca, "GROUNDING_MIN_SIMILARITY", 0.75)
+        key_input = (
+            f"SACS002|{control_code}|{policy_hash}|"
+            f"{SACS002_PROMPT_VERSION}|{SACS002_MODEL}|"
+            f"{retrieval_min_score}|{grounding_version}|{grounding_sim}"
+        )
+        cache_key = hashlib.sha256(key_input.encode("utf-8")).hexdigest()
+        try:
+            row = db.execute(sql_text(
+                "SELECT result FROM sacs002_verification_cache WHERE cache_key = :ck"
+            ), {"ck": cache_key}).fetchone()
+            if row and row[0]:
+                cached = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                print(f"    [SACS002][{control_code}] cache HIT")
+                return cached
+        except Exception as e:
+            # Non-fatal — fall through to fresh GPT call.
+            print(f"    [SACS002][{control_code}] cache lookup skipped: {type(e).__name__}: {e}")
 
     # Build BM25 only if the caller did not provide a pre-built index
     if bm25_index is None and policy_chunks:
@@ -425,6 +465,7 @@ async def _assess_control(
         f"POLICY TEXT EVIDENCE:\n{focused_text[:12000]}"
     )
 
+    is_gpt_error_fallback = False
     try:
         raw = await call_llm(SACS002_VERIFIER_PROMPT, user_msg)
         if diag:
@@ -433,6 +474,7 @@ async def _assess_control(
         results = gpt_data.get("checkpoints", [])
     except Exception as e:
         print(f"    [SACS002][{control_code}] GPT error: {e}")
+        is_gpt_error_fallback = True
         results = [
             {
                 "index": cp["checkpoint_index"],
@@ -560,7 +602,7 @@ async def _assess_control(
         f"quality={retrieval_quality:.2f} -> {status}"
     )
 
-    return {
+    result = {
         "control_code": control_code,
         "control_type": control["control_type"],
         "control_text": control_text,
@@ -594,6 +636,34 @@ async def _assess_control(
             for cp in checkpoints
         ],
     }
+
+    # ── Phase G.2: cache write ───────────────────────────────────────────
+    # Don't cache GPT-error fallbacks — those should re-run on the next
+    # analysis once the upstream issue clears. Mirrors ECC-2's invariant.
+    if db is not None and cache_key is not None and not is_gpt_error_fallback:
+        try:
+            db.execute(sql_text("""
+                INSERT INTO sacs002_verification_cache
+                  (cache_key, control_code, policy_hash, prompt_version, model, result)
+                VALUES
+                  (:ck, :cc, :ph, :pv, :md, CAST(:r AS JSONB))
+                ON CONFLICT (cache_key) DO NOTHING
+            """), {
+                "ck": cache_key,
+                "cc": control_code,
+                "ph": policy_hash,
+                "pv": SACS002_PROMPT_VERSION,
+                "md": SACS002_MODEL,
+                "r":  json.dumps(result, default=str),
+            })
+            db.commit()
+        except Exception as e:
+            # Non-fatal — analysis succeeded; only the cache write didn't.
+            print(f"    [SACS002][{control_code}] cache write skipped: {type(e).__name__}: {e}")
+            try: db.rollback()
+            except Exception: pass
+
+    return result
 
 
 def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: str):
@@ -824,8 +894,11 @@ async def run_sacs002_analysis(
             ]
 
     policy_text = "\n\n".join(c["text"] for c in policy_chunks)
+    # Phase G.2: hash once per run, reuse across all controls' cache lookups.
+    # Truncated to 16 hex chars to match ECC-2's convention.
+    policy_hash = hashlib.sha256(policy_text.encode("utf-8")).hexdigest()[:16]
     print(f"  [SACS002] Loaded {len(policy_chunks)} chunks "
-          f"({len(policy_text)} chars total policy text)")
+          f"({len(policy_text)} chars total policy text, hash={policy_hash})")
 
     # Build BM25 index ONCE over the policy corpus.
     # Previously rebuilt inside _assess_control for every control (92×).
@@ -848,6 +921,8 @@ async def run_sacs002_analysis(
                 ctrl, policy_chunks, policy_text,
                 bm25_index=global_bm25,
                 diag=(ctrl_idx < 3),  # detailed logs for first 3 controls only
+                db=db,
+                policy_hash=policy_hash,
             )
 
     total_ctrl = len(controls)

@@ -230,6 +230,33 @@ def startup_seed():
             print("[startup] sacs002_metadata table ensured")
         except Exception as e:
             print(f"[startup] sacs002_metadata DDL warning: {e}")
+
+        # Phase G.2: SACS-002 verification cache — mirrors ecc2_verification_cache.
+        # Keyed on (control_code, policy_hash, prompt_version, model, retrieval
+        # floor, grounding version, grounding similarity) so the cache is
+        # invalidated whenever any of those invariants change. Result column
+        # is the post-grounding control assessment dict.
+        try:
+            with database.engine.connect() as _conn:
+                _conn.execute(_ddl("""
+                    CREATE TABLE IF NOT EXISTS sacs002_verification_cache (
+                        cache_key       TEXT PRIMARY KEY,
+                        control_code    TEXT,
+                        policy_hash     TEXT,
+                        prompt_version  TEXT,
+                        model           TEXT,
+                        result          JSONB,
+                        created_at      TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
+                _conn.execute(_ddl(
+                    "CREATE INDEX IF NOT EXISTS idx_sacs002_cache_policy_hash "
+                    "ON sacs002_verification_cache (policy_hash)"
+                ))
+                _conn.commit()
+            print("[startup] sacs002_verification_cache table ensured")
+        except Exception as e:
+            print(f"[startup] sacs002_verification_cache DDL warning: {e}")
     else:
         print("[startup] DDL migrations skipped (set RUN_STARTUP_MIGRATIONS=true to run)")
 
