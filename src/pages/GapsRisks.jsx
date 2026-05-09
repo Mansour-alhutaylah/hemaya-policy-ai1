@@ -36,8 +36,11 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   Minus,
-  FileText
+  FileText,
+  ArrowUpDown,
+  Flame,
 } from 'lucide-react';
+import { SEVERITY_COLORS, getSeverityColor } from '@/components/charts/severityColors';
 import {
   PieChart,
   Pie,
@@ -55,43 +58,61 @@ const Gap = api.entities.Gap;
 const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
 
-// Severity tints — same translucent dark-mode style used by StatusBadge,
-// AIAssistant context strip, and the MappingReview low-confidence banner so
-// chips read consistently in both modes.
+// Severity tints — text/border tints stay here (badge styling); chart and
+// accent colours come from the shared token module so the dashboard, gaps
+// page, and any future chart pages all agree on the palette.
 const severityConfig = {
   Critical: {
     color:
       'bg-red-100 text-red-700 border-red-200 ' +
       'dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30',
-    chartColor: '#ef4444',
-    accent: '#ef4444',
+    chartColor: SEVERITY_COLORS.Critical,
+    accent:     SEVERITY_COLORS.Critical,
     icon: ArrowUpCircle,
   },
   High: {
     color:
       'bg-orange-100 text-orange-700 border-orange-200 ' +
       'dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
-    chartColor: '#f97316',
-    accent: '#f97316',
+    chartColor: SEVERITY_COLORS.High,
+    accent:     SEVERITY_COLORS.High,
     icon: ArrowUpCircle,
   },
   Medium: {
     color:
       'bg-amber-100 text-amber-700 border-amber-200 ' +
       'dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
-    chartColor: '#f59e0b',
-    accent: '#f59e0b',
+    chartColor: SEVERITY_COLORS.Medium,
+    accent:     SEVERITY_COLORS.Medium,
     icon: Minus,
   },
   Low: {
     color:
       'bg-green-100 text-green-700 border-green-200 ' +
       'dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
-    chartColor: '#22c55e',
-    accent: '#22c55e',
+    chartColor: SEVERITY_COLORS.Low,
+    accent:     SEVERITY_COLORS.Low,
     icon: ArrowDownCircle,
   },
 };
+
+// Phase E.2: priority score = severity weight × age factor.
+// Severity weights mirror the dashboard's top-risky-controls SQL
+// (Critical=4 / High=3 / Medium=2 / Low=1). Age factor grows from
+// 1 (new gap) to a cap of 3 (90+ days old) so a long-open Medium can
+// still outrank a fresh Low. Returns an integer 0-100ish for display.
+const SEVERITY_WEIGHT = { Critical: 4, High: 3, Medium: 2, Low: 1 };
+function computePriority(gap) {
+  const sev = SEVERITY_WEIGHT[gap.severity] || 1;
+  let ageFactor = 1;
+  if (gap.created_at) {
+    const days = Math.max(0, (Date.now() - new Date(gap.created_at).getTime()) / 86400000);
+    ageFactor = Math.min(3, 1 + days / 30);
+  }
+  // Closed gaps get a baseline so they sort to the bottom by default.
+  if (gap.status && gap.status !== 'Open') return 0;
+  return Math.round(sev * ageFactor * 8); // tuned to land in ~0-100 range
+}
 
 // KPI card matching the Executive Dashboard pattern: dark card surface with
 // a thin left accent stripe, a tinted icon container, and theme-token text.
@@ -134,6 +155,7 @@ export default function GapsRisks() {
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('priority'); // priority | severity | recent
   const [selectedGap, setSelectedGap] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -195,15 +217,27 @@ export default function GapsRisks() {
     onError: (err) => toast({ title: 'Update failed', description: err.message, variant: 'destructive' }),
   });
 
-  const filteredGaps = gaps.filter(gap => {
-    const matchesSearch = gap.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      gap.control_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      gap.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesSeverity = severityFilter === 'all' || gap.severity === severityFilter;
-    const matchesStatus = statusFilter === 'all' || gap.status === statusFilter;
-    const matchesPolicyId = !policyIdFilter || gap.policy_id === policyIdFilter;
-    return matchesSearch && matchesSeverity && matchesStatus && matchesPolicyId;
-  });
+  const filteredGaps = gaps
+    .filter(gap => {
+      const matchesSearch = gap.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        gap.control_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        gap.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSeverity = severityFilter === 'all' || gap.severity === severityFilter;
+      const matchesStatus = statusFilter === 'all' || gap.status === statusFilter;
+      const matchesPolicyId = !policyIdFilter || gap.policy_id === policyIdFilter;
+      return matchesSearch && matchesSeverity && matchesStatus && matchesPolicyId;
+    })
+    .map(g => ({ ...g, _priority: computePriority(g) }))
+    .sort((a, b) => {
+      if (sortBy === 'priority') return b._priority - a._priority;
+      if (sortBy === 'severity') {
+        return (SEVERITY_WEIGHT[b.severity] || 0) - (SEVERITY_WEIGHT[a.severity] || 0);
+      }
+      // recent
+      const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bt - at;
+    });
 
   // Calculate stats
   const criticalCount = gaps.filter(g => g.severity === 'Critical' && g.status === 'Open').length;
@@ -258,7 +292,26 @@ export default function GapsRisks() {
     );
   };
 
+  const PriorityBadge = ({ score }) => {
+    const tone =
+      score >= 60 ? 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30' :
+      score >= 30 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' :
+      score > 0   ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' :
+                    'bg-muted text-muted-foreground border-border/60';
+    return (
+      <Badge className={`${tone} border gap-1 tabular-nums`}>
+        <Flame className="w-3 h-3" />
+        {score}
+      </Badge>
+    );
+  };
+
   const columns = [
+    {
+      header: 'Priority',
+      accessor: '_priority',
+      cell: (row) => <PriorityBadge score={row._priority} />,
+    },
     {
       header: 'Control',
       accessor: 'control_id',
@@ -472,6 +525,17 @@ export default function GapsRisks() {
             <SelectItem value="In Progress">In Progress</SelectItem>
             <SelectItem value="Resolved">Resolved</SelectItem>
             <SelectItem value="Deferred">Deferred</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="w-44">
+            <ArrowUpDown className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="priority">Sort: Priority</SelectItem>
+            <SelectItem value="severity">Sort: Severity</SelectItem>
+            <SelectItem value="recent">Sort: Most recent</SelectItem>
           </SelectContent>
         </Select>
       </div>
