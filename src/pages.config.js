@@ -47,21 +47,30 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import AIAssistant from './pages/AIAssistant';
-import AIInsights from './pages/AIInsights';
-import Analyses from './pages/Analyses';
-import Dashboard from './pages/Dashboard';
-import Explainability from './pages/Explainability';
-import Frameworks from './pages/Frameworks';
-import GapsRisks from './pages/GapsRisks';
-import Home from './pages/Home';
-import MappingReview from './pages/MappingReview';
-import PolicyVersions from './pages/PolicyVersions';
-import Policies from './pages/Policies';
-import Reports from './pages/Reports';
-import Settings from './pages/Settings';
-import Simulation from './pages/Simulation';
+// Phase 14: lazy-load every page so each becomes its own Vite chunk.
+// Heavy libs (recharts, framer-motion, jspdf via lib/policyReport,
+// html2canvas, etc.) are pulled in only when their consuming page is
+// first navigated to. Suspense fallback lives in App.jsx.
+//
+// Layout is NOT lazy-loaded — it wraps every route and is part of the
+// initial shell.
+import { lazy } from 'react';
 import __Layout from './Layout.jsx';
+
+const AIAssistant    = lazy(() => import('./pages/AIAssistant'));
+const AIInsights     = lazy(() => import('./pages/AIInsights'));
+const Analyses       = lazy(() => import('./pages/Analyses'));
+const Dashboard      = lazy(() => import('./pages/Dashboard'));
+const Explainability = lazy(() => import('./pages/Explainability'));
+const Frameworks     = lazy(() => import('./pages/Frameworks'));
+const GapsRisks      = lazy(() => import('./pages/GapsRisks'));
+const Home           = lazy(() => import('./pages/Home'));
+const MappingReview  = lazy(() => import('./pages/MappingReview'));
+const PolicyVersions = lazy(() => import('./pages/PolicyVersions'));
+const Policies       = lazy(() => import('./pages/Policies'));
+const Reports        = lazy(() => import('./pages/Reports'));
+const Settings       = lazy(() => import('./pages/Settings'));
+const Simulation     = lazy(() => import('./pages/Simulation'));
 
 
 export const PAGES = {
