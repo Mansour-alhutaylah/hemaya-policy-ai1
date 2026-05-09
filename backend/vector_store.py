@@ -50,17 +50,24 @@ def store_chunks_with_embeddings(db, policy_id, chunks, embeddings):
             continue
         emb_str = json.dumps(emb)  # ~6x faster than ",".join(str(x) for x in emb)
         classification = classify_sentence(chunk["text"])
+        # Phase 11: write source attribution columns when the chunk dict
+        # carries them. Pre-Phase-11 chunk dicts (no page_number /
+        # paragraph_index keys) -> NULL, matching the column default.
         db.execute(text("""
             INSERT INTO policy_chunks
             (id, policy_id, chunk_index, chunk_text, embedding,
-             char_start, char_end, classification, created_at)
+             char_start, char_end, classification,
+             page_number, paragraph_index, created_at)
             VALUES (:id, :pid, :idx, :txt, cast(:emb as vector),
-                    :cs, :ce, :cls, :cat)
+                    :cs, :ce, :cls,
+                    :pgnum, :paridx, :cat)
         """), {
             "id": str(uuid.uuid4()), "pid": policy_id,
             "idx": chunk.get("chunk_index", 0), "txt": chunk["text"],
             "emb": emb_str, "cs": chunk.get("char_start", 0),
             "ce": chunk.get("char_end", 0), "cls": classification,
+            "pgnum":  chunk.get("page_number"),
+            "paridx": chunk.get("paragraph_index"),
             "cat": datetime.utcnow(),
         })
     db.commit()

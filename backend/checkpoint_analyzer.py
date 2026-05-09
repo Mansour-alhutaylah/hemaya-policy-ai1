@@ -430,18 +430,145 @@ async def _auto_embed(db, policy_id):
     return len(chunks)
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 11: opt-in source-attribution backfill for legacy policies.
+#
+# Called from run_ecc2_analysis / run_sacs002_analysis when the policy's
+# existing policy_chunks rows have all-NULL source attribution. Re-extracts
+# the original file with extract_text_segments, re-chunks with
+# chunk_text_segments, re-embeds, and atomically swaps the rows inside a
+# single short transaction. Prepare-then-swap: if any preparatory step
+# fails, existing chunks are untouched.
+#
+# Idempotent: the analyzer's pre-check ensures this fires only when ALL
+# chunks lack source attribution. New uploads after Phase 11 ships skip
+# this path entirely because they're already source-aware.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class RechunkError(Exception):
+    """Prepare-stage failure — DB state untouched. Safe to retry."""
+
+
+def policy_needs_source_attribution_backfill(db, policy_id) -> bool:
+    """Return True iff EVERY chunk for this policy has NULL source
+    attribution (page_number AND paragraph_index). False if any chunk has
+    one set, or if the policy has no chunks at all (auto-embed handles
+    that case)."""
+    try:
+        row = db.execute(sql_text(
+            "SELECT COUNT(*) AS total, "
+            "       COUNT(*) FILTER ("
+            "         WHERE page_number IS NULL AND paragraph_index IS NULL"
+            "       ) AS unsourced "
+            "FROM policy_chunks WHERE policy_id = :pid"
+        ), {"pid": policy_id}).fetchone()
+    except Exception:
+        # Columns missing (older schema) → treat as needing backfill;
+        # the rechunk transaction will fail at INSERT time, which the
+        # caller handles by leaving chunks unchanged.
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return True
+    if not row or row.total == 0:
+        return False
+    return row.total == row.unsourced
+
+
+async def rechunk_for_source_attribution(db, policy_id) -> int:
+    """Backfill page_number / paragraph_index for an existing policy.
+
+    Prepare-then-swap pattern:
+      Step 1: extract segments       (file IO; no DB write)
+      Step 2: chunk into memory list (pure compute; no DB write)
+      Step 3: compute embeddings     (network IO; no DB write)
+      Step 4: atomic swap            (DELETE + INSERT in single transaction)
+
+    Raises RechunkError if any preparatory step fails — caller catches
+    and leaves existing chunks untouched. Returns the new chunk count.
+    """
+    from backend.text_extractor import extract_text_segments
+    from backend.chunker import chunk_text_segments
+
+    policy = db.execute(sql_text(
+        "SELECT file_name, content_preview FROM policies WHERE id = :pid"
+    ), {"pid": policy_id}).fetchone()
+    if not policy:
+        raise RechunkError(f"policy {policy_id} not found")
+
+    # Resolve the uploaded file path (mirrors _auto_embed's logic).
+    upload_dir = "backend/uploads"
+    fp = os.path.join(upload_dir, policy[0])
+    if not os.path.exists(fp):
+        matches = glob.glob(os.path.join(upload_dir, f"*{policy[0]}"))
+        if matches:
+            fp = matches[0]
+
+    if not os.path.exists(fp):
+        raise RechunkError(
+            f"policy {policy_id} file missing at {fp}; cannot re-extract"
+        )
+
+    # Step 1 — extraction.
+    ext = os.path.splitext(fp)[1].lower()
+    try:
+        segments = extract_text_segments(fp, ext)
+    except Exception as e:
+        raise RechunkError(f"extract_text_segments failed: {e}") from e
+    if not segments:
+        raise RechunkError("extraction returned no segments")
+
+    # Step 2 — chunking.
+    new_chunks = chunk_text_segments(segments)
+    if not new_chunks:
+        raise RechunkError("chunker produced zero chunks")
+
+    # Step 3 — embeddings (raises on transport errors; caller will
+    # surface the failure but the existing chunks are still intact).
+    new_embeddings = await get_embeddings([c["text"] for c in new_chunks])
+
+    # Step 4 — atomic swap inside a single short transaction.
+    try:
+        db.execute(sql_text(
+            "DELETE FROM policy_chunks WHERE policy_id = :pid"
+        ), {"pid": policy_id})
+        store_chunks_with_embeddings(db, policy_id, new_chunks, new_embeddings)
+        # store_chunks_with_embeddings already commits; explicit commit
+        # below is a safety belt for partial-writes in edge cases.
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise RechunkError(f"atomic swap failed: {e}") from e
+
+    return len(new_chunks)
+
+
 # ── Find relevant sections for a checkpoint ─────────────────────────────────
 
-def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
+def _find_relevant_sections(
+    chunks, requirement, keywords, bm25=None, offset=0, return_selected=False
+):
     """Score each chunk using keyword matching + BM25 + classification bonus.
 
-    chunks: list of {"text": str, "classification": str} or plain strings.
+    chunks: list of {"text": str, "classification": str, ...} or plain strings.
+            Phase 11: chunk dicts may also carry "page_number" /
+            "paragraph_index" for source attribution; these pass through
+            untouched when return_selected=True.
     bm25:   pre-built BM25Okapi index over the same chunks.  Pass it in from
             _analyze_control (built once per control) to avoid rebuilding the
             index on every checkpoint call.  When None, the index is built
             here for backward compatibility with any direct callers.
     offset: skip top N chunks (used for second-pass retrieval).
-    Returns (joined_text, quality_score).
+    return_selected:
+            When False (default): returns (joined_text, quality_score) —
+            the legacy 2-tuple. Every pre-Phase-11 caller is unchanged.
+            When True: returns (joined_text, quality_score, selected_chunks)
+            where selected_chunks is the list of original chunk dicts (with
+            page_number / paragraph_index, if present) in selection order.
+            Used by ECC-2 / SACS-002 to attribute grounded evidence back
+            to a source chunk after _find_grounded_evidence succeeds.
     """
     from rank_bm25 import BM25Okapi
 
@@ -476,13 +603,15 @@ def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
     max_kw = max(kw_scores) or 1
     max_bm25 = max(bm25_scores) or 1
 
+    # Carry the chunk dict alongside the score so Phase 11 callers can
+    # recover page_number / paragraph_index. Pre-Phase-11 callers ignore it.
     combined = []
-    for i, txt in enumerate(texts):
+    for i, ch in enumerate(chunks):
         combined_score = (
             0.5 * kw_scores[i] / max_kw +
             0.5 * bm25_scores[i] / max_bm25
         )
-        combined.append((combined_score, txt))
+        combined.append((combined_score, ch))
 
     combined.sort(key=lambda x: x[0], reverse=True)
 
@@ -500,7 +629,8 @@ def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
     if RAG_MIN_RELEVANCE_SCORE > 0.0:
         selected = [s for s in selected if s[0] >= RAG_MIN_RELEVANCE_SCORE]
 
-    top = [c[1] for c in selected]
+    selected_chunks = [c[1] for c in selected]
+    top = [ch["text"] for ch in selected_chunks]
 
     # Retrieval quality = best combined score (0.0 to 1.0)
     quality = selected[0][0] if selected else 0.0
@@ -510,8 +640,69 @@ def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
     # result intentionally signals weak retrieval to the analyzer instead
     # of flooding GPT with potentially irrelevant chunks.
     if RAG_MIN_RELEVANCE_SCORE == 0.0 and len(top) < 3:
-        return "\n---\n".join(texts), quality
-    return "\n---\n".join(top), quality
+        joined = "\n---\n".join(texts)
+        if return_selected:
+            return joined, quality, list(chunks)
+        return joined, quality
+
+    joined = "\n---\n".join(top)
+    if return_selected:
+        return joined, quality, selected_chunks
+    return joined, quality
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 11: post-hoc attribution of grounded evidence to a source chunk.
+# Runs in the analyzer caller (ECC-2 / SACS-002) AFTER _find_grounded_evidence
+# returns (grounded=True, actual_text, sim). Independent of the grounding
+# algorithm — does not change Stage 1 / Stage 2 of _find_grounded_evidence.
+# ──────────────────────────────────────────────────────────────────────────
+def _attribute_evidence_to_chunk(actual_text, candidate_chunks):
+    """Return the chunk dict whose text is the source of the grounded
+    evidence, or None if no plausible source can be identified.
+
+    Pass 1 — exact normalized substring containment. Almost always wins
+    because Stage 1 of _find_grounded_evidence returns verbatim claim text
+    (sim=1.0), and Stage 2 returns the best matching policy window which
+    is itself a substring of the joined policy text.
+
+    Pass 2 — fuzzy fallback for the rare case where v2's adjacent-pair
+    grounding lands on a window that straddles a chunk boundary. We pick
+    the chunk with the highest SequenceMatcher.ratio() against the claim,
+    accepting any chunk above a generous 0.5 threshold (we already know
+    grounding succeeded against the full policy).
+
+    Returns None if neither pass finds a plausible source — caller stores
+    NULL source attribution on the assessment row.
+    """
+    if not actual_text or not candidate_chunks:
+        return None
+    norm_actual = _normalize_text(actual_text)
+    if not norm_actual:
+        return None
+
+    # Pass 1: exact normalized substring containment
+    for ch in candidate_chunks:
+        ch_text = ch.get("text") if isinstance(ch, dict) else None
+        if ch_text and norm_actual in _normalize_text(ch_text):
+            return ch
+
+    # Pass 2: fuzzy fallback for cross-chunk-boundary evidence
+    best = None
+    best_ratio = 0.0
+    for ch in candidate_chunks:
+        ch_text = ch.get("text") if isinstance(ch, dict) else None
+        if not ch_text:
+            continue
+        ratio = SequenceMatcher(
+            None, norm_actual, _normalize_text(ch_text)
+        ).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best = ch
+    if best_ratio >= 0.5:
+        return best
+    return None
 
 
 # ── Analyze one control (all its checkpoints) ────────────────────────────────

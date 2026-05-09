@@ -133,3 +133,90 @@ def prepare_chunks_for_storage(policy_id: str, chunks: List[dict]) -> List[dict]
         enriched["chunk_id"] = f"{policy_id}_chunk_{chunk['chunk_index']}"
         result.append(enriched)
     return result
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 11: source-aware chunking. New entry point — chunk_text() above is
+# preserved verbatim for every existing caller.
+# ──────────────────────────────────────────────────────────────────────────
+def chunk_text_segments(
+    segments: List[dict],
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP,
+) -> List[dict]:
+    """
+    Source-aware chunking. Same algorithm as chunk_text(), but each output
+    chunk additionally carries `page_number` / `paragraph_index` from the
+    segment it originated in.
+
+    Input shape (from text_extractor.extract_text_segments):
+        [
+            {"text": str, "page_number": int|None, "paragraph_index": int|None},
+            ...
+        ]
+
+    Output shape:
+        [
+            {
+                "chunk_index":     int,         # global, sequential across all segments
+                "text":            str,
+                "char_start":      int,         # offset in the JOINED text
+                "char_end":        int,
+                "page_number":     int|None,    # from the first segment the chunk falls in
+                "paragraph_index": int|None,
+            },
+            ...
+        ]
+
+    Joining strategy: segments are concatenated with "\n" (matches the old
+    extract_text() join, so policy_hash stays identical for deterministic
+    rechunks). This means char offsets in the output are stable relative
+    to the joined text the analyzer sees as `policy_text`.
+
+    Cross-segment chunk policy: if a single chunk spans multiple segments
+    (rare for PDF since pages > chunk_size; common for short DOCX
+    paragraphs that fit in one chunk), the chunk inherits the FIRST
+    segment's source attribution. Document this explicitly so future
+    readers don't think it's a bug.
+    """
+    if not segments:
+        return []
+
+    # Build joined text + a parallel index that maps each character offset
+    # back to its source segment. We don't store the full per-char index;
+    # instead, store segment boundaries (cumulative end offsets) and binary-
+    # search at chunk time. O(N log S) where S = #segments, N = #chunks.
+    pieces = []
+    boundaries = []  # cumulative end offset of each segment in the joined text
+    cursor = 0
+    for i, seg in enumerate(segments):
+        text = seg.get("text") or ""
+        if i > 0:
+            pieces.append("\n")
+            cursor += 1
+        pieces.append(text)
+        cursor += len(text)
+        boundaries.append(cursor)
+    joined = "".join(pieces)
+
+    # Standard chunking on the joined text.
+    raw_chunks = chunk_text(joined, chunk_size=chunk_size, overlap=overlap)
+
+    # Attach source attribution: for each chunk, find the segment whose
+    # range contains the chunk's char_start.
+    import bisect
+    enriched = []
+    for c in raw_chunks:
+        cs = c.get("char_start", 0)
+        # bisect_right(boundaries, cs) gives the index of the first segment
+        # whose cumulative end > cs — i.e., the segment cs falls inside.
+        seg_idx = bisect.bisect_right(boundaries, cs)
+        if seg_idx >= len(segments):
+            seg_idx = len(segments) - 1
+        seg = segments[seg_idx]
+        enriched.append({
+            **c,
+            "page_number":     seg.get("page_number"),
+            "paragraph_index": seg.get("paragraph_index"),
+        })
+    return enriched

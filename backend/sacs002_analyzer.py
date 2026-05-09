@@ -20,7 +20,11 @@ import asyncio
 from datetime import datetime, timezone
 from sqlalchemy import text as sql_text
 
-from backend.checkpoint_analyzer import call_llm, _find_grounded_evidence
+from backend.checkpoint_analyzer import (
+    call_llm,
+    _find_grounded_evidence,
+    _attribute_evidence_to_chunk,
+)
 from backend.vector_store import get_embeddings, search_similar_chunks
 
 FRAMEWORK_ID = "SACS-002"
@@ -378,8 +382,10 @@ async def _assess_control(
         tokenized = [c["text"].lower().split() for c in policy_chunks]
         bm25_index = BM25Okapi(tokenized)
 
-    focused_text, retrieval_quality = _find_relevant_sections(
-        policy_chunks, control_text, keywords, bm25=bm25_index, offset=0
+    # Phase 11: capture selected_chunks for post-hoc source attribution.
+    focused_text, retrieval_quality, selected_chunks = _find_relevant_sections(
+        policy_chunks, control_text, keywords, bm25=bm25_index, offset=0,
+        return_selected=True,
     )
 
     if diag:
@@ -491,6 +497,16 @@ async def _assess_control(
                     best_evidence = ev
                     break
 
+    # Phase 11: post-hoc source attribution. SACS-002 has no verification
+    # cache, so attribution always runs against fresh GPT results, but the
+    # mechanic is identical to ECC-2.
+    src_chunk = None
+    if best_evidence:
+        src_chunk = _attribute_evidence_to_chunk(best_evidence, selected_chunks)
+    src_chunk_id     = src_chunk.get("chunk_id") if src_chunk else None
+    src_page_number  = src_chunk.get("page_number") if src_chunk else None
+    src_paragraph_ix = src_chunk.get("paragraph_index") if src_chunk else None
+
     required_actions = _extract_required_actions(control_text)
     if l1_has_grounded_evidence and required_actions:
         action_coverage, covered_actions, missing_actions = _compute_action_coverage(
@@ -560,6 +576,10 @@ async def _assess_control(
         "l2_loaded": control["l2_loaded"],
         "l3_loaded": control["l3_loaded"],
         "source_tables": "ecc_framework + sacs002_metadata + ecc_ai_checkpoints",
+        # Phase 11: source attribution.
+        "evidence_chunk_id":     src_chunk_id,
+        "evidence_page_number":  src_page_number,
+        "evidence_paragraph_index": src_paragraph_ix,
         "_l1_conf": l1_conf,
         "_l1_grounded": l1_has_grounded_evidence,
         "_action_cov": round(action_coverage, 2),
@@ -577,19 +597,30 @@ async def _assess_control(
 
 
 def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: str):
+    """Write one SACS-002 control result. Phase 11 adds chunk_id /
+    page_number / paragraph_index source-attribution columns (all nullable;
+    NULL when attribution couldn't pin evidence to a specific chunk).
+    """
     db.execute(sql_text("""
         INSERT INTO policy_ecc_assessments
             (id, policy_id, framework_id, control_code, compliance_status,
-             evidence_text, gap_description, confidence_score, assessed_by, assessed_at)
+             evidence_text, gap_description, confidence_score,
+             chunk_id, page_number, paragraph_index,
+             assessed_by, assessed_at)
         VALUES
             (:id, CAST(:pid AS uuid), :fwid, :cc, CAST(:cs AS compliance_status_enum),
-             :ev, :gap, :conf, CAST('AI' AS assessed_by_enum), :at)
+             :ev, :gap, :conf,
+             :ckid, :pgnum, :paridx,
+             CAST('AI' AS assessed_by_enum), :at)
         ON CONFLICT (policy_id, control_code)
         DO UPDATE SET
             compliance_status = EXCLUDED.compliance_status,
             evidence_text     = EXCLUDED.evidence_text,
             gap_description   = EXCLUDED.gap_description,
             confidence_score  = EXCLUDED.confidence_score,
+            chunk_id          = EXCLUDED.chunk_id,
+            page_number       = EXCLUDED.page_number,
+            paragraph_index   = EXCLUDED.paragraph_index,
             assessed_at       = EXCLUDED.assessed_at
     """), {
         "id": str(uuid.uuid4()),
@@ -600,6 +631,9 @@ def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: 
         "ev": (result.get("evidence_text") or "")[:4000],
         "gap": (result.get("gap_description") or "")[:2000],
         "conf": result["confidence_score"],
+        "ckid":   result.get("evidence_chunk_id"),
+        "pgnum":  result.get("evidence_page_number"),
+        "paridx": result.get("evidence_paragraph_index"),
         "at": datetime.now(timezone.utc),
     })
 
@@ -636,6 +670,23 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
         if embedded == 0:
             return {FRAMEWORK_ID: {"error": "No text found in policy. Re-upload the document."}}
         n_chunks = embedded
+
+    # Phase 11: opt-in source-attribution backfill. Mirrors ECC-2.
+    from backend.checkpoint_analyzer import (
+        policy_needs_source_attribution_backfill,
+        rechunk_for_source_attribution,
+        RechunkError,
+    )
+    if policy_needs_source_attribution_backfill(db, policy_id):
+        print("  [SACS002] Policy chunks lack source attribution -> backfill rechunk")
+        _report(16, "SACS-002: Rechunking for source attribution")
+        try:
+            new_count = await rechunk_for_source_attribution(db, policy_id)
+            n_chunks = new_count
+            print(f"  [SACS002] Source-attribution backfill complete: "
+                  f"{new_count} chunks")
+        except RechunkError as e:
+            print(f"  [SACS002] Backfill skipped (existing chunks intact): {e}")
 
     print(f"  [SACS002] Policy has {n_chunks} embedded chunks")
     _report(18, "SACS-002: Loading structured controls")
@@ -698,19 +749,50 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
 
     try:
         chunk_rows = db.execute(sql_text(
-            "SELECT chunk_text, COALESCE(classification, 'descriptive') "
+            "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
+            "       chunk_index, page_number, paragraph_index "
             "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
         ), {"pid": policy_id}).fetchall()
-        policy_chunks = [{"text": r[0], "classification": r[1]}
-                         for r in chunk_rows if r[0]]
+        policy_chunks = [
+            {
+                "text": r[0], "classification": r[1],
+                "chunk_index": r[2], "page_number": r[3],
+                "paragraph_index": r[4],
+                "chunk_id": f"{policy_id}_chunk_{r[2]}",
+            }
+            for r in chunk_rows if r[0]
+        ]
     except Exception:
+        # Fallback for older schemas missing the Phase-11 columns.
         db.rollback()
-        chunk_rows = db.execute(sql_text(
-            "SELECT chunk_text FROM policy_chunks "
-            "WHERE policy_id = :pid ORDER BY chunk_index"
-        ), {"pid": policy_id}).fetchall()
-        policy_chunks = [{"text": r[0], "classification": "descriptive"}
-                         for r in chunk_rows if r[0]]
+        try:
+            chunk_rows = db.execute(sql_text(
+                "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
+                "       chunk_index "
+                "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
+            ), {"pid": policy_id}).fetchall()
+            policy_chunks = [
+                {
+                    "text": r[0], "classification": r[1],
+                    "chunk_index": r[2], "page_number": None,
+                    "paragraph_index": None,
+                    "chunk_id": f"{policy_id}_chunk_{r[2]}",
+                }
+                for r in chunk_rows if r[0]
+            ]
+        except Exception:
+            db.rollback()
+            chunk_rows = db.execute(sql_text(
+                "SELECT chunk_text FROM policy_chunks "
+                "WHERE policy_id = :pid ORDER BY chunk_index"
+            ), {"pid": policy_id}).fetchall()
+            policy_chunks = [
+                {"text": r[0], "classification": "descriptive",
+                 "chunk_index": i, "page_number": None,
+                 "paragraph_index": None,
+                 "chunk_id": f"{policy_id}_chunk_{i}"}
+                for i, r in enumerate(chunk_rows) if r[0]
+            ]
 
     policy_text = "\n\n".join(c["text"] for c in policy_chunks)
     print(f"  [SACS002] Loaded {len(policy_chunks)} chunks "

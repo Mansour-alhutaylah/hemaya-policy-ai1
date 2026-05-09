@@ -23,7 +23,11 @@ import asyncio
 from datetime import datetime, timezone
 from sqlalchemy import text as sql_text
 
-from backend.checkpoint_analyzer import call_llm, _find_grounded_evidence
+from backend.checkpoint_analyzer import (
+    call_llm,
+    _find_grounded_evidence,
+    _attribute_evidence_to_chunk,
+)
 from backend.vector_store import get_embeddings, search_similar_chunks
 
 FRAMEWORK_ID = "ECC-2:2024"
@@ -292,9 +296,12 @@ async def _assess_control(
         tokenized = [c["text"].lower().split() for c in policy_chunks]
         bm25_index = BM25Okapi(tokenized)
 
-    # Find relevant policy sections using L1 text + L3 keywords
-    focused_text, retrieval_quality = _find_relevant_sections(
-        policy_chunks, control_text, keywords, bm25=bm25_index, offset=0
+    # Find relevant policy sections using L1 text + L3 keywords.
+    # Phase 11: capture selected_chunks so we can attribute grounded
+    # evidence back to a source chunk (page_number / paragraph_index).
+    focused_text, retrieval_quality, selected_chunks = _find_relevant_sections(
+        policy_chunks, control_text, keywords, bm25=bm25_index, offset=0,
+        return_selected=True,
     )
 
     if diag:
@@ -502,6 +509,19 @@ async def _assess_control(
                     best_evidence = ev
                     break
 
+    # Phase 11: post-hoc source attribution. Runs on every assessment
+    # write, regardless of cache hit or miss — the cached evidence_text is
+    # already a verbatim/near-verbatim substring of the joined policy text,
+    # so attribution against the current request's selected_chunks works
+    # without re-calling GPT. Result is None when grounding produced no
+    # usable evidence, in which case the assessment row gets NULL source.
+    src_chunk = None
+    if best_evidence:
+        src_chunk = _attribute_evidence_to_chunk(best_evidence, selected_chunks)
+    src_chunk_id     = src_chunk.get("chunk_id") if src_chunk else None
+    src_page_number  = src_chunk.get("page_number") if src_chunk else None
+    src_paragraph_ix = src_chunk.get("paragraph_index") if src_chunk else None
+
     # ── Action-verb coverage on L1 evidence ──────────────────────────────────
     # Extract which action categories the L1 control REQUIRES, then check
     # how many of those appear in the grounded evidence quote.
@@ -602,6 +622,12 @@ async def _assess_control(
         "l2_loaded": control["l2_loaded"],
         "l3_loaded": control["l3_loaded"],
         "source_tables": "ecc_framework + ecc_compliance_metadata + ecc_ai_checkpoints",
+        # Phase 11: source attribution. NULL when no plausible source
+        # chunk can be matched (rare; usually means evidence was empty
+        # or grounding fell back to "No evidence found").
+        "evidence_chunk_id":     src_chunk_id,
+        "evidence_page_number":  src_page_number,
+        "evidence_paragraph_index": src_paragraph_ix,
         # Diagnostic fields (used for distribution stats in run_ecc2_analysis)
         "_l1_conf": l1_conf,
         "_l1_grounded": l1_has_grounded_evidence,
@@ -620,20 +646,33 @@ async def _assess_control(
 
 
 def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: str):
-    """Write one control result to policy_ecc_assessments."""
+    """Write one control result to policy_ecc_assessments.
+
+    Phase 11: writes source-attribution columns (chunk_id, page_number,
+    paragraph_index). All nullable; NULL when attribution couldn't pin
+    the evidence to a specific chunk. UPSERT updates them on every run
+    so the latest analysis's source pointer wins.
+    """
     db.execute(sql_text("""
         INSERT INTO policy_ecc_assessments
             (id, policy_id, framework_id, control_code, compliance_status,
-             evidence_text, gap_description, confidence_score, assessed_by, assessed_at)
+             evidence_text, gap_description, confidence_score,
+             chunk_id, page_number, paragraph_index,
+             assessed_by, assessed_at)
         VALUES
             (:id, CAST(:pid AS uuid), :fwid, :cc, CAST(:cs AS compliance_status_enum),
-             :ev, :gap, :conf, CAST('AI' AS assessed_by_enum), :at)
+             :ev, :gap, :conf,
+             :ckid, :pgnum, :paridx,
+             CAST('AI' AS assessed_by_enum), :at)
         ON CONFLICT (policy_id, control_code)
         DO UPDATE SET
             compliance_status = EXCLUDED.compliance_status,
             evidence_text     = EXCLUDED.evidence_text,
             gap_description   = EXCLUDED.gap_description,
             confidence_score  = EXCLUDED.confidence_score,
+            chunk_id          = EXCLUDED.chunk_id,
+            page_number       = EXCLUDED.page_number,
+            paragraph_index   = EXCLUDED.paragraph_index,
             assessed_at       = EXCLUDED.assessed_at
     """), {
         "id": str(uuid.uuid4()),
@@ -644,6 +683,9 @@ def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: 
         "ev": (result.get("evidence_text") or "")[:4000],
         "gap": (result.get("gap_description") or "")[:2000],
         "conf": result["confidence_score"],
+        "ckid":   result.get("evidence_chunk_id"),
+        "pgnum":  result.get("evidence_page_number"),
+        "paridx": result.get("evidence_paragraph_index"),
         "at": datetime.now(timezone.utc),
     })
 
@@ -686,6 +728,27 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
             }
         n_chunks = embedded
 
+    # Phase 11: opt-in source-attribution backfill. If every chunk for
+    # this policy lacks page_number AND paragraph_index, the policy was
+    # uploaded before Phase 11 — re-extract + re-chunk + re-embed once
+    # so future evidence can be attributed to a source. Atomic swap;
+    # any prepare-stage failure leaves existing chunks untouched.
+    from backend.checkpoint_analyzer import (
+        policy_needs_source_attribution_backfill,
+        rechunk_for_source_attribution,
+        RechunkError,
+    )
+    if policy_needs_source_attribution_backfill(db, policy_id):
+        print("  [ECC2] Policy chunks lack source attribution -> backfill rechunk")
+        _report(16, "ECC-2: Rechunking for source attribution")
+        try:
+            new_count = await rechunk_for_source_attribution(db, policy_id)
+            n_chunks = new_count
+            print(f"  [ECC2] Source-attribution backfill complete: "
+                  f"{new_count} chunks")
+        except RechunkError as e:
+            print(f"  [ECC2] Backfill skipped (existing chunks intact): {e}")
+
     print(f"  [ECC2] Policy has {n_chunks} embedded chunks")
     _report(18, "ECC-2: Loading structured controls")
 
@@ -718,21 +781,61 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
     _report(22, f"ECC-2: Analysing {len(active_controls)} controls")
 
     # ── Load policy chunks for BM25 retrieval ────────────────────────────
+    # Phase 11: include chunk_index, page_number, paragraph_index so
+    # _attribute_evidence_to_chunk can pin grounded evidence to a source
+    # chunk. The "chunk_id" we attach mirrors prepare_chunks_for_storage's
+    # convention ("<policy_id>_chunk_<idx>") for downstream entity lookup.
     try:
         chunk_rows = db.execute(sql_text(
-            "SELECT chunk_text, COALESCE(classification, 'descriptive') "
+            "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
+            "       chunk_index, page_number, paragraph_index "
             "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
         ), {"pid": policy_id}).fetchall()
-        policy_chunks = [{"text": r[0], "classification": r[1]}
-                         for r in chunk_rows if r[0]]
+        policy_chunks = [
+            {
+                "text": r[0],
+                "classification": r[1],
+                "chunk_index": r[2],
+                "page_number": r[3],
+                "paragraph_index": r[4],
+                "chunk_id": f"{policy_id}_chunk_{r[2]}",
+            }
+            for r in chunk_rows if r[0]
+        ]
     except Exception:
+        # Fallback for older schemas missing the Phase-11 columns. Source
+        # attribution will be NULL on every assessment row from this run;
+        # the next analysis after a startup that adds the columns will
+        # populate them via opt-in rechunk.
         db.rollback()
-        chunk_rows = db.execute(sql_text(
-            "SELECT chunk_text FROM policy_chunks "
-            "WHERE policy_id = :pid ORDER BY chunk_index"
-        ), {"pid": policy_id}).fetchall()
-        policy_chunks = [{"text": r[0], "classification": "descriptive"}
-                         for r in chunk_rows if r[0]]
+        try:
+            chunk_rows = db.execute(sql_text(
+                "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
+                "       chunk_index "
+                "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
+            ), {"pid": policy_id}).fetchall()
+            policy_chunks = [
+                {
+                    "text": r[0], "classification": r[1],
+                    "chunk_index": r[2], "page_number": None,
+                    "paragraph_index": None,
+                    "chunk_id": f"{policy_id}_chunk_{r[2]}",
+                }
+                for r in chunk_rows if r[0]
+            ]
+        except Exception:
+            db.rollback()
+            chunk_rows = db.execute(sql_text(
+                "SELECT chunk_text FROM policy_chunks "
+                "WHERE policy_id = :pid ORDER BY chunk_index"
+            ), {"pid": policy_id}).fetchall()
+            policy_chunks = [
+                {"text": r[0], "classification": "descriptive",
+                 "chunk_index": i, "page_number": None,
+                 "paragraph_index": None,
+                 "chunk_id": f"{policy_id}_chunk_{i}"}
+                for i, r in enumerate(chunk_rows) if r[0]
+            ]
 
     policy_text = "\n\n".join(c["text"] for c in policy_chunks)
     # Phase 7 cache key invariant: hash the joined policy text once per run.
