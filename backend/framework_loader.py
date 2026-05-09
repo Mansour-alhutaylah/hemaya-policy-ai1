@@ -91,33 +91,54 @@ async def load_framework_document(db, file_path, framework_name, source_document
     if not chunks:
         return {"error": "No chunks created"}
 
-    # Clear old chunks for this framework
-    db.execute(text("DELETE FROM framework_chunks WHERE framework_id = :fwid"),
-               {"fwid": framework_id})
-    db.commit()
-
-    # Embed all chunks in one batch call
+    # Phase 12: prepare-then-swap. Compute embeddings BEFORE deleting any
+    # existing framework_chunks rows. If get_embeddings raises (transport
+    # error, rate limit, etc.) the existing chunks remain intact and the
+    # framework keeps serving analysis. Replacement happens atomically
+    # inside a single transaction so a partial commit can't leave the
+    # framework with a mix of old and new chunks.
     chunk_texts = [c["text"] for c in chunks]
     all_embs = await get_embeddings(chunk_texts)
+    if not all_embs or len(all_embs) != len(chunks):
+        return {
+            "error": (
+                f"embedding API returned {len(all_embs or [])} vectors "
+                f"for {len(chunks)} chunks; old framework_chunks preserved"
+            )
+        }
 
     stored = 0
-    for chunk, emb in zip(chunks, all_embs):
-        if emb is None:
-            continue
-        emb_str = json.dumps(emb)
-        db.execute(text("""
-            INSERT INTO framework_chunks
-            (id, framework_id, chunk_text, embedding, chunk_index,
-             source_document, created_at)
-            VALUES (:id, :fwid, :txt, cast(:emb as vector), :idx, :doc, :cat)
-        """), {
-            "id": str(uuid.uuid4()), "fwid": framework_id,
-            "txt": chunk["text"], "emb": emb_str,
-            "idx": chunk.get("chunk_index", 0),
-            "doc": source_document, "cat": datetime.utcnow(),
-        })
-        stored += 1
-    db.commit()
+    try:
+        # Atomic swap: DELETE + INSERT in one transaction. If any INSERT
+        # raises, rollback returns the framework to its pre-upload state.
+        db.execute(text("DELETE FROM framework_chunks WHERE framework_id = :fwid"),
+                   {"fwid": framework_id})
+        for chunk, emb in zip(chunks, all_embs):
+            if emb is None:
+                continue
+            emb_str = json.dumps(emb)
+            db.execute(text("""
+                INSERT INTO framework_chunks
+                (id, framework_id, chunk_text, embedding, chunk_index,
+                 source_document, created_at)
+                VALUES (:id, :fwid, :txt, cast(:emb as vector), :idx, :doc, :cat)
+            """), {
+                "id": str(uuid.uuid4()), "fwid": framework_id,
+                "txt": chunk["text"], "emb": emb_str,
+                "idx": chunk.get("chunk_index", 0),
+                "doc": source_document, "cat": datetime.utcnow(),
+            })
+            stored += 1
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {
+            "error": (
+                f"framework_chunks atomic swap failed: "
+                f"{type(e).__name__}: {str(e)[:200]}; "
+                f"old framework_chunks preserved by rollback"
+            )
+        }
     print(f"Framework {framework_name}: {stored} chunks stored")
 
     result = {"framework": framework_name, "chunks_created": stored,
