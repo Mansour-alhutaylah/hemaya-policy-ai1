@@ -753,6 +753,41 @@ def update_me(settings: Dict[str, Any], current_user: models.User = Depends(get_
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".xlsx", ".xls"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
+def _rollback_failed_policy_upload(db, policy_id, file_path):
+    """Phase 12: best-effort cleanup after a policy-upload failure.
+
+    Deletes any chunks already inserted under the policy_id, deletes
+    the policies row (the "reservation" inserted at the start of the
+    route), and removes the saved file from disk. All steps swallow
+    their own errors so the original exception is the one that
+    propagates to the client.
+    """
+    from sqlalchemy import text as _sql
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    try:
+        db.execute(_sql("DELETE FROM policy_chunks WHERE policy_id = :pid"),
+                   {"pid": policy_id})
+        db.execute(_sql("DELETE FROM policies WHERE id = :pid"),
+                   {"pid": policy_id})
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    try:
+        if file_path is not None:
+            from pathlib import Path as _Path
+            p = _Path(str(file_path))
+            if p.exists():
+                p.unlink()
+    except OSError:
+        pass
+
+
 # Policy upload — creates policy row, embeds chunks, returns policy id
 @app.post("/api/integrations/upload")
 async def upload_policy(
@@ -820,62 +855,100 @@ async def upload_policy(
     })
     db.commit()
 
-    # Extract text — Phase 11 uses the segmented extractor so each chunk
-    # carries page_number (PDF) or paragraph_index (DOCX). For TXT/XLSX
-    # both source fields stay NULL. content_preview keeps the joined text
-    # for keyword search and downstream callers that expect a string.
-    set_policy_progress(db, policy_id, 15, "Extracting text")
-    segments = []
-    try:
-        segments = extract_text_segments(str(dest), ext)
-    except Exception as e:
-        print(f"  [upload] segmented extraction failed: {e}; "
-              f"falling back to plain extract_text")
-        segments = []
-    if not segments:
-        # Final fallback: legacy extractor produces plain text but no
-        # source attribution. Wrap in a single segment so downstream
-        # chunking still works.
-        try:
-            content = extract_text(str(dest), ext)
-        except TypeError:
-            content = extract_text(str(dest))
-        if content and not content.startswith("[Extraction error"):
-            segments = [{"text": content, "page_number": None,
-                         "paragraph_index": None}]
-    content = "\n".join(s["text"] for s in segments) if segments else ""
-    set_policy_progress(db, policy_id, 30, "Text extracted")
-
-    # Save full content for keyword search during analysis
-    if content:
-        db.execute(_sql(
-            "UPDATE policies SET content_preview = :content WHERE id = :pid"
-        ), {"content": content, "pid": policy_id})
-        db.commit()
-
-    # Chunk and embed the full text — Phase 11 uses the source-aware
-    # chunker so each chunk carries page_number / paragraph_index.
+    # Phase 12: prepare-then-commit. Extraction, chunking, and embedding
+    # all happen BEFORE we mark the policy "uploaded". A failure at any
+    # stage rolls back the policies row, deletes any saved file, and
+    # raises a structured error to the client. This replaces the legacy
+    # behavior where errors were swallowed and the policy was marked
+    # "Ready" with zero chunks — a "fake-ready" state.
     chunks_count = 0
-    if segments:
+    content = ""
+    try:
+        # ── PREPARE: extract → chunk → embed (no DB writes besides progress) ──
+        set_policy_progress(db, policy_id, 15, "Extracting text")
+        segments = []
         try:
-            set_policy_progress(db, policy_id, 45, "Chunking document")
-            chunks = chunk_text_segments(segments)
-            if chunks:
-                set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
-                embeddings = await get_embeddings([c["text"] for c in chunks])
-                set_policy_progress(db, policy_id, 85, "Storing embeddings")
-                store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
-                chunks_count = len(chunks)
-                print(f"  Embedded {chunks_count} chunks for {original_name}")
+            segments = extract_text_segments(str(dest), ext)
         except Exception as e:
-            print(f"  Embedding error (will auto-embed during analysis): {e}")
+            print(f"  [upload] segmented extraction failed: {e}; "
+                  f"falling back to plain extract_text")
+            segments = []
+        if not segments:
+            # Final fallback: legacy extractor produces plain text but no
+            # source attribution. Wrap in a single segment so downstream
+            # chunking still works.
+            try:
+                content = extract_text(str(dest), ext)
+            except TypeError:
+                content = extract_text(str(dest))
+            if content and not content.startswith("[Extraction error"):
+                segments = [{"text": content, "page_number": None,
+                             "paragraph_index": None}]
+        content = "\n".join(s["text"] for s in segments) if segments else ""
+        if not segments or not content.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="extraction produced no text; cannot chunk or embed",
+            )
+        set_policy_progress(db, policy_id, 30, "Text extracted")
 
-    # Mark as uploaded (100%, ready for analysis)
-    db.execute(_sql(
-        "UPDATE policies SET status='uploaded', progress=100, progress_stage='Ready' WHERE id=:pid"
-    ), {"pid": policy_id})
-    db.commit()
-    print(f"Policy saved: {original_name}")
+        set_policy_progress(db, policy_id, 45, "Chunking document")
+        chunks = chunk_text_segments(segments)
+        if not chunks:
+            raise HTTPException(
+                status_code=422,
+                detail="chunker produced zero chunks from extracted text",
+            )
+
+        set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
+        embeddings = await get_embeddings([c["text"] for c in chunks])
+        if not embeddings or len(embeddings) != len(chunks):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"embedding API returned {len(embeddings or [])} vectors "
+                    f"for {len(chunks)} chunks"
+                ),
+            )
+
+        # ── COMMIT: write content_preview + chunks + mark Ready in one tx ──
+        # store_chunks_with_embeddings commits internally on success.
+        # If it raises, the except block below rolls back everything.
+        set_policy_progress(db, policy_id, 85, "Storing embeddings")
+        if content:
+            db.execute(_sql(
+                "UPDATE policies SET content_preview = :content WHERE id = :pid"
+            ), {"content": content, "pid": policy_id})
+        store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
+        chunks_count = len(chunks)
+        print(f"  Embedded {chunks_count} chunks for {original_name}")
+
+        # Mark as uploaded ONLY after chunks are persisted. If this UPDATE
+        # raises (DB transient), the rollback below removes the policy
+        # row + chunks so the user can cleanly retry.
+        db.execute(_sql(
+            "UPDATE policies SET status='uploaded', progress=100, "
+            "progress_stage='Ready' WHERE id=:pid"
+        ), {"pid": policy_id})
+        db.commit()
+        print(f"Policy saved: {original_name}")
+
+    except HTTPException as http_exc:
+        _rollback_failed_policy_upload(db, policy_id, dest)
+        print(f"  [upload] FAILED - rolled back policy {policy_id}: "
+              f"{http_exc.detail}")
+        raise
+    except Exception as exc:
+        _rollback_failed_policy_upload(db, policy_id, dest)
+        print(f"  [upload] FAILED - rolled back policy {policy_id}: "
+              f"{type(exc).__name__}: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"upload failed during {type(exc).__name__}: "
+                f"{str(exc)[:200]}"
+            ),
+        ) from exc
 
     # Audit log
     try:
