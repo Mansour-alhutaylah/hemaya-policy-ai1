@@ -42,8 +42,16 @@ import {
   ArrowUpDown,
   Flame,
   CheckCircle2,
+  Wrench,
+  Loader2,
 } from 'lucide-react';
 import { SEVERITY_COLORS, getSeverityColor } from '@/components/charts/severityColors';
+import {
+  Tooltip as UiTooltip,
+  TooltipTrigger as UiTooltipTrigger,
+  TooltipContent as UiTooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import {
   PieChart,
   Pie,
@@ -189,10 +197,12 @@ export default function GapsRisks() {
     queryFn: () => Policy.list(),
   });
 
-  const policyMap = policies.reduce((acc, p) => {
-    acc[p.id] = p;
-    return acc;
-  }, {});
+  // Phase UI-4: memoised so the map only rebuilds when the policies array
+  // changes, not on every parent re-render (filter typing, etc.).
+  const policyMap = useMemo(
+    () => policies.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}),
+    [policies],
+  );
 
   const updateGapMutation = useMutation({
     // Phase G.1: routed through apiClient so 401 handling and FastAPI error
@@ -206,6 +216,39 @@ export default function GapsRisks() {
     },
     onError: (err) => toast({ title: 'Update failed', description: err.message, variant: 'destructive' }),
   });
+
+  // Phase UI-4: inline "Generate draft" — calls the existing
+  // /api/remediation/generate (which expects mapping_review_id +
+  // policy_id). The gap row carries mapping_id as a soft reference to
+  // mapping_reviews.id, so we pass it through. Disabled in the UI when
+  // mapping_id is missing (legacy gaps from before Phase 6 indexing).
+  const generateDraftMutation = useMutation({
+    mutationFn: ({ mapping_review_id, policy_id }) =>
+      api.post('/remediation/generate', { mapping_review_id, policy_id }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['gaps'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      toast({
+        title: 'Draft generated',
+        description:
+          `Saved as draft for ${data?.control_code || 'this control'}. ` +
+          `Improvement: ${data?.improvement_pct ?? 0}%.`,
+      });
+    },
+    onError: (err) => toast({
+      title: 'Could not generate draft',
+      description: err.message || 'Try again in a moment.',
+      variant: 'destructive',
+    }),
+  });
+
+  const handleGenerateDraft = (gap) => {
+    if (!gap?.mapping_id || !gap?.policy_id) return;
+    generateDraftMutation.mutate({
+      mapping_review_id: gap.mapping_id,
+      policy_id: gap.policy_id,
+    });
+  };
 
   const filteredGaps = gaps
     .filter(gap => {
@@ -300,7 +343,21 @@ export default function GapsRisks() {
     {
       header: 'Priority',
       accessor: '_priority',
-      cell: (row) => <PriorityBadge score={row._priority} />,
+      // Phase UI-4: tooltip explains the formula so reviewers don't have to
+      // guess what the number means.
+      cell: (row) => (
+        <UiTooltip>
+          <UiTooltipTrigger asChild>
+            <span><PriorityBadge score={row._priority} /></span>
+          </UiTooltipTrigger>
+          <UiTooltipContent className="bg-popover text-popover-foreground border border-border max-w-xs text-xs">
+            Priority = severity weight × age factor.<br />
+            Critical = 4, High = 3, Medium = 2, Low = 1.
+            Age grows from 1× (new) to 3× (90+ days open).
+            Closed gaps score 0.
+          </UiTooltipContent>
+        </UiTooltip>
+      ),
     },
     {
       header: 'Control',
@@ -351,12 +408,48 @@ export default function GapsRisks() {
     {
       header: '',
       accessor: 'actions',
-      cell: (row) => (
-        <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
-          <Edit className="w-4 h-4 mr-1" />
-          Manage gap
-        </Button>
-      ),
+      // Phase UI-4: inline "Generate draft" sits next to "Manage gap". Disabled
+      // for legacy gaps with no mapping_id link, with a tooltip explaining
+      // why. Pending state shows a spinner so the user knows it's working.
+      cell: (row) => {
+        const canGenerate =
+          !!row.mapping_id &&
+          (row.status === 'Open' || row.status === 'In Progress');
+        const isGenerating =
+          generateDraftMutation.isPending &&
+          generateDraftMutation.variables?.mapping_review_id === row.mapping_id;
+        const draftBtn = (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!canGenerate || isGenerating}
+            onClick={() => handleGenerateDraft(row)}
+          >
+            {isGenerating
+              ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              : <Wrench className="w-4 h-4 mr-1" />}
+            Generate draft
+          </Button>
+        );
+        return (
+          <div className="flex items-center gap-1">
+            {canGenerate ? draftBtn : (
+              <UiTooltip>
+                <UiTooltipTrigger asChild><span>{draftBtn}</span></UiTooltipTrigger>
+                <UiTooltipContent className="bg-popover text-popover-foreground border border-border text-xs max-w-xs">
+                  {row.status !== 'Open' && row.status !== 'In Progress'
+                    ? `Drafts can only be generated for open gaps (this one is ${row.status}).`
+                    : 'No mapping link on this gap — re-run the analysis to enable drafts.'}
+                </UiTooltipContent>
+              </UiTooltip>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
+              <Edit className="w-4 h-4 mr-1" />
+              Manage gap
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -408,6 +501,10 @@ export default function GapsRisks() {
   }, [isLoading, gaps]);
 
   return (
+    // Phase UI-4: Tooltips on the Priority chip + the disabled-Generate-draft
+    // button rely on a Radix provider. Scoped to this page to avoid touching
+    // the app shell.
+    <TooltipProvider delayDuration={150}>
     <PageContainer
       title="Gaps & Risks"
       subtitle="Track and manage compliance gaps and risk remediation"
@@ -691,5 +788,6 @@ export default function GapsRisks() {
         </DialogContent>
       </Dialog>
     </PageContainer>
+    </TooltipProvider>
   );
 }
