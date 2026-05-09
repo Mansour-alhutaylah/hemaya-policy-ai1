@@ -326,7 +326,7 @@ async def _assess_control(
 
     # ── Phase 7 cache lookup ─────────────────────────────────────────────────
     # Key invariants: control_code | policy_hash | prompt_version | model |
-    #                 retrieval_min_score.
+    #                 retrieval_min_score | grounding_version.
     # Any of those changing produces a cache miss; old rows become dormant.
     # Cached rows store POST-grounded results, so on hit we skip BOTH the GPT
     # call and the grounding pass. Downstream scoring runs identically.
@@ -336,15 +336,25 @@ async def _assess_control(
     # verdict cached under one floor must not be served on a request using
     # a different floor. The value is read dynamically (not at import time)
     # so monkeypatching RAG_MIN_RELEVANCE_SCORE in tests reflects in the key.
+    #
+    # Phase 10 added grounding_version (literal tag like "v2"). The grounding
+    # algorithm body in _find_grounded_evidence changed (sentence-bounded
+    # windows replaced 1.3×-claim-length character slices), so verdicts
+    # produced under v1 must not be served on a v2 request.
     cache_key = None
     results = None  # populated from cache or from GPT
     if db is not None and policy_hash:
         from backend import checkpoint_analyzer as _ca
         retrieval_floor = getattr(_ca, "RAG_MIN_RELEVANCE_SCORE", 0.0)
+        # Phase 10: cache key segregates by grounding algorithm version.
+        # v1 (pre-Phase-10) rows have no `grounding=` field, so their SHA-256
+        # cannot collide with v2 rows. No DML required to invalidate them.
+        grounding_version = getattr(_ca, "GROUNDING_VERSION", "v1")
         key_input = (
             f"ECC2|{control_code}|{policy_hash}|"
             f"{ECC2_PROMPT_VERSION}|{ECC2_MODEL}|"
-            f"floor={retrieval_floor:.3f}"
+            f"floor={retrieval_floor:.3f}|"
+            f"grounding={grounding_version}"
         )
         cache_key = hashlib.sha256(key_input.encode("utf-8")).hexdigest()
         try:
