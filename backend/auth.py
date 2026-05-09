@@ -6,7 +6,12 @@ from typing import Optional
 import bcrypt
 from jose import jwt
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "hemaya-super-secret-key-change-this-in-production-2024")
+# Phase 13: SECRET_KEY is required. The previous default fallback string
+# meant a misconfigured deploy silently used a known constant, making
+# every issued JWT forgeable. Now we hard-fail at import time if the
+# env var is missing, so a misconfigured deploy refuses to start
+# instead of degrading to a known-insecure state.
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 3000
 

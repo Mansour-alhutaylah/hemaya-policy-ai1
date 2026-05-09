@@ -34,18 +34,18 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from backend import auth, models
-from backend.database import get_db
+from backend.database import get_db, set_user_context
 from backend.pdf_export import build_policy_version_pdf
 from backend.remediation_engine import (
     _next_version_number,
     generate_remediation_draft,
 )
+from backend.security import is_admin
 
 
 router = APIRouter(tags=["explainability"])
 
 _oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-ADMIN_EMAIL = "himayaadmin@gmail.com"
 
 
 def _get_current_user(
@@ -67,6 +67,10 @@ def _get_current_user(
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise exc
+    # Phase 13: activate per-request RLS context. The other authenticated
+    # entry points (main.get_current_user, remediation, reports_export)
+    # already do this; explainability was the gap.
+    set_user_context(db, user.id)
     return user
 
 
@@ -173,7 +177,7 @@ def _check_policy_access(
     policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found.")
-    if user.email != ADMIN_EMAIL and str(policy.owner_id) != str(user.id):
+    if not is_admin(user) and str(policy.owner_id) != str(user.id):
         raise HTTPException(status_code=404, detail="Policy not found.")
     return policy
 
