@@ -6,6 +6,7 @@ import NextAction from '@/components/layout/NextAction';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -85,6 +86,9 @@ export default function Policies() {
     version: '1.0',
     framework: '',
   });
+  // Phase UI-2: replaces the window.confirm prompt on row delete with a
+  // proper Dialog matching the rest of the app (Reports got this in Phase H).
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -611,11 +615,7 @@ export default function Policies() {
               Generate Report
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => {
-                if (window.confirm(`Delete "${row.file_name}"? This removes it permanently along with its analyses.`)) {
-                  deletePolicyMutation.mutate(row.id);
-                }
-              }}
+              onClick={() => setDeleteTarget(row)}
               className="text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -1066,6 +1066,24 @@ export default function Policies() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Phase UI-2: Delete-policy confirm Dialog (replaces window.confirm). */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete policy?"
+        description={
+          deleteTarget
+            ? `This permanently removes "${deleteTarget.file_name}" along with its analyses, gaps, and reports. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete policy"
+        onConfirm={() => {
+          if (deleteTarget) deletePolicyMutation.mutate(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        pending={deletePolicyMutation.isPending}
+      />
     </PageContainer>
   );
 }

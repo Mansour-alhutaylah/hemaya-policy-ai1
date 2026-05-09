@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import NextAction from '@/components/layout/NextAction';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { createPageUrl } from '@/utils';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -623,31 +624,24 @@ export default function Reports() {
         </DialogContent>
       </Dialog>
 
-      {/* Phase H: Delete-report confirm Dialog (replaces window.confirm). */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <Trash2 className="w-5 h-5" />
-              Delete report?
-            </DialogTitle>
-            <DialogDescription>
-              This will permanently remove the {deleteTarget?.format || 'report'}
-              {' '}for "{policyMap[deleteTarget?.policy_id]?.file_name || 'this policy'}",
-              including the stored file. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-              <Trash2 className="w-4 h-4 mr-1.5" />
-              Delete report
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Phase UI-2: Delete-report confirm — migrated from inline Dialog to
+          the shared ConfirmDialog so the destructive-action UX is consistent
+          across Reports + Policies + (future) other destructive flows. */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete report?"
+        description={
+          deleteTarget
+            ? `This permanently removes the ${deleteTarget.format || 'report'} for "${
+                policyMap[deleteTarget.policy_id]?.file_name || 'this policy'
+              }", including the stored file. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete report"
+        onConfirm={confirmDelete}
+        pending={deleteReportMutation.isPending}
+      />
     </PageContainer>
   );
 }

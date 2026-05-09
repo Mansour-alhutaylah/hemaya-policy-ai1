@@ -41,6 +41,7 @@ import {
   FileText,
   ArrowUpDown,
   Flame,
+  CheckCircle2,
 } from 'lucide-react';
 import { SEVERITY_COLORS, getSeverityColor } from '@/components/charts/severityColors';
 import {
@@ -592,9 +593,10 @@ export default function GapsRisks() {
         isLoading={isLoading}
         emptyState={
           <EmptyState
-            icon={AlertTriangle}
-            title="No gaps found"
-            description="Run a compliance analysis to identify gaps in your policies"
+            icon={CheckCircle2}
+            urgency="success"
+            title="No open gaps"
+            description="Either no analysis has run yet, or all controls are covered. Run a compliance analysis to verify, or generate a report to share with stakeholders."
           />
         }
       />
