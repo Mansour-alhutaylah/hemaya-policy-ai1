@@ -502,3 +502,212 @@ def test_rechunk_failure_preserves_existing_chunks(monkeypatch, tmp_path):
     assert not store_called, "store_chunks_with_embeddings must NOT run when embeddings fail"
     delete_calls = [s for s in executed if "DELETE FROM policy_chunks" in s]
     assert not delete_calls, "DELETE must not run before embeddings succeed"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 18. rechunk_downloads_from_file_url_when_local_file_missing
+#     File not on disk + absolute file_url -> rechunk downloads via httpx
+#     to a tempfile, extracts source-aware chunks, atomically swaps.
+# ─────────────────────────────────────────────────────────────────────────
+def test_rechunk_downloads_from_file_url_when_local_file_missing(monkeypatch, tmp_path):
+    """Local upload dir is empty; file_url is an absolute https URL.
+    rechunk must fetch via httpx into a tempfile and proceed."""
+    import asyncio
+    from backend import checkpoint_analyzer as ca
+
+    # Empty local upload dir under tmp_path so resolution must fall to step 4.
+    (tmp_path / "backend" / "uploads").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    # DB returns: file_name = "policy.docx", file_url = absolute URL
+    db = MagicMock()
+    db.execute.return_value.fetchone.return_value = (
+        "policy.docx",
+        "https://example.com/storage/policy.docx",
+    )
+
+    # Mock httpx.AsyncClient: pretend the URL returned a tiny DOCX-shaped blob.
+    # Tag the mock blob with a marker so the test can confirm the file we
+    # extract was the one we downloaded.
+    class FakeResp:
+        status_code = 200
+        content = b"FAKE_DOCX_BYTES_FROM_DOWNLOAD"
+        def raise_for_status(self):
+            pass
+
+    class FakeClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url):
+            FakeClient.last_url = url
+            return FakeResp()
+
+    monkeypatch.setattr(ca.httpx, "AsyncClient", FakeClient)
+
+    # Stub extract_text_segments to read the tempfile and confirm the bytes
+    # we wrote are the ones being parsed; return a 2-page synthetic shape.
+    seen_paths = []
+    def fake_extract(fp, ext):
+        with open(fp, "rb") as fh:
+            data = fh.read()
+        seen_paths.append((fp, data))
+        # Return synthetic PDF-style segments (page_number populated)
+        return [
+            {"text": "Page one body.", "page_number": 1, "paragraph_index": None},
+            {"text": "Page two body.", "page_number": 2, "paragraph_index": None},
+        ]
+    import backend.text_extractor as _te
+    monkeypatch.setattr(_te, "extract_text_segments", fake_extract)
+
+    # Stub embeddings so we don't need OpenAI
+    async def fake_embed(texts):
+        return [[0.1] * 1536 for _ in texts]
+    monkeypatch.setattr(ca, "get_embeddings", fake_embed)
+
+    # Capture chunks passed to store_chunks_with_embeddings
+    captured = {}
+    def fake_store(db, pid, chunks, embs):
+        captured["chunks"] = chunks
+    monkeypatch.setattr(ca, "store_chunks_with_embeddings", fake_store)
+
+    n = asyncio.run(ca.rechunk_for_source_attribution(db, "policy-xyz"))
+    assert n >= 1
+    # The download URL was hit
+    assert FakeClient.last_url == "https://example.com/storage/policy.docx"
+    # The bytes we "downloaded" are the bytes that reached extract
+    assert seen_paths and seen_paths[0][1] == b"FAKE_DOCX_BYTES_FROM_DOWNLOAD"
+    # Chunks have page_number from the downloaded segments
+    assert captured["chunks"], "chunks must have been passed to store"
+    pages = {c["page_number"] for c in captured["chunks"]}
+    assert pages & {1, 2}, f"expected pages 1 or 2 in chunks; got {pages}"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 19. rechunk_failure_preserves_existing_chunks_when_storage_download_fails
+#     Download fails (network error / 5xx) -> RechunkError; no DELETE,
+#     no INSERT, tempfile cleaned up.
+# ─────────────────────────────────────────────────────────────────────────
+def test_rechunk_failure_preserves_existing_chunks_when_storage_download_fails(monkeypatch, tmp_path):
+    """httpx raises on .get -> rechunk must surface RechunkError and
+    never issue DELETE or INSERT. Tempfile must be cleaned up."""
+    import asyncio
+    import os
+    from backend import checkpoint_analyzer as ca
+
+    (tmp_path / "backend" / "uploads").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    db = MagicMock()
+    executed = []
+    def exec_side(stmt, params=None):
+        executed.append(str(stmt))
+        r = MagicMock()
+        r.fetchone.return_value = (
+            "policy.docx",
+            "https://example.com/storage/policy.docx",
+        )
+        return r
+    db.execute.side_effect = exec_side
+
+    # Force httpx download to fail
+    class FailingClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url):
+            raise RuntimeError("storage 503")
+    monkeypatch.setattr(ca.httpx, "AsyncClient", FailingClient)
+
+    # Spy on store_chunks_with_embeddings; must NOT be called
+    store_called = []
+    monkeypatch.setattr(
+        ca, "store_chunks_with_embeddings",
+        lambda *a, **kw: store_called.append(True),
+    )
+
+    # Snapshot tempdir to confirm no tempfile leak
+    import tempfile
+    tmp_glob_before = set(os.listdir(tempfile.gettempdir()))
+
+    with pytest.raises(ca.RechunkError):
+        asyncio.run(ca.rechunk_for_source_attribution(db, "policy-xyz"))
+
+    assert not store_called, "store must NOT run when download fails"
+    delete_calls = [s for s in executed if "DELETE FROM policy_chunks" in s]
+    assert not delete_calls, "DELETE must not run when download fails"
+
+    # Tempfile cleanup: any phase11_rechunk_* file the resolver created
+    # must be gone after the failure path.
+    tmp_glob_after = set(os.listdir(tempfile.gettempdir()))
+    leaked = [f for f in (tmp_glob_after - tmp_glob_before)
+              if f.startswith("phase11_rechunk_")]
+    assert not leaked, f"download-failure path leaked tempfiles: {leaked}"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 20. rechunk_populates_page_number_from_downloaded_pdf
+#     End-to-end-ish: real PyMuPDF on a tiny generated PDF whose bytes
+#     come from the "download" path. Confirms page_number flows from
+#     the downloaded file all the way to the chunk dicts.
+# ─────────────────────────────────────────────────────────────────────────
+def test_rechunk_populates_page_number_from_downloaded_pdf(monkeypatch, tmp_path):
+    """Make a real two-page PDF in memory, serve it via the fake httpx
+    client, and confirm chunks have page_number from PyMuPDF."""
+    import asyncio
+    import os
+    from backend import checkpoint_analyzer as ca
+
+    # Build a tiny two-page PDF using PyMuPDF
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        pytest.skip("PyMuPDF not available")
+    doc = fitz.open()
+    p1 = doc.new_page()
+    p1.insert_text((72, 72), "First page sentence one. First page sentence two.")
+    p2 = doc.new_page()
+    p2.insert_text((72, 72), "Second page sentence one. Second page sentence two.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    (tmp_path / "backend" / "uploads").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    db = MagicMock()
+    db.execute.return_value.fetchone.return_value = (
+        "policy.pdf",
+        "https://example.com/storage/policy.pdf",
+    )
+
+    class FakeResp:
+        status_code = 200
+        content = pdf_bytes
+        def raise_for_status(self): pass
+
+    class FakeClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url):
+            return FakeResp()
+    monkeypatch.setattr(ca.httpx, "AsyncClient", FakeClient)
+
+    # Stub embeddings; real PyMuPDF still runs.
+    async def fake_embed(texts):
+        return [[0.1] * 1536 for _ in texts]
+    monkeypatch.setattr(ca, "get_embeddings", fake_embed)
+
+    captured = {}
+    def fake_store(db, pid, chunks, embs):
+        captured["chunks"] = chunks
+    monkeypatch.setattr(ca, "store_chunks_with_embeddings", fake_store)
+
+    n = asyncio.run(ca.rechunk_for_source_attribution(db, "policy-xyz"))
+    assert n >= 1
+    chunks = captured["chunks"]
+    # Each chunk has page_number populated; pages observed should include
+    # both 1 and 2 (or at least one, depending on chunk-size vs page-size).
+    pages = {c["page_number"] for c in chunks}
+    assert pages, "no page_number on any chunk"
+    assert pages.issubset({1, 2}), f"unexpected page numbers {pages}"
