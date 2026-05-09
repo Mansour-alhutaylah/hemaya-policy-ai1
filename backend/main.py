@@ -304,14 +304,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
 
 # ─── Admin authorisation ────────────────────────────────────────────────────
-# Defined here (above all routes) so any endpoint can depend on it. The
-# admin-only sections lower in this file reuse the same constant + helper.
-ADMIN_EMAIL = "himayaadmin@gmail.com"
+# Phase 13: ADMIN_EMAIL + the admin check moved to backend.security.
+# Two paths to admin (either is sufficient):
+#   1. user.email == ADMIN_EMAIL env var
+#   2. user.role == "admin"
+# Operators can promote/demote admins via DB without a code deploy.
+from backend.security import ADMIN_EMAIL, is_admin
 
 
 def require_admin(current_user: models.User = Depends(get_current_user)):
-    """Dependency: raises 403 if the caller is not the admin account."""
-    if current_user.email != ADMIN_EMAIL:
+    """Dependency: raises 403 if the caller is not an admin."""
+    if not is_admin(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -1014,14 +1017,14 @@ def dashboard_stats(
 ):
     from sqlalchemy import text as _t
 
-    is_admin = current_user.email == ADMIN_EMAIL
+    _is_admin = is_admin(current_user)
 
     # Build WHERE fragments — scope by specific policy and/or current user.
     # Admin sees all; regular users only see their own policies.
     policy_filter_cr  = "AND cr.policy_id = :pid" if policy_id else ""
     policy_filter_gap = "AND g.policy_id = :pid"  if policy_id else ""
-    user_filter_cr    = "" if is_admin else "AND p.owner_id = :uid"
-    user_filter_gap   = "" if is_admin else (
+    user_filter_cr    = "" if _is_admin else "AND p.owner_id = :uid"
+    user_filter_gap   = "" if _is_admin else (
         "AND g.policy_id IN (SELECT id FROM policies WHERE owner_id = :uid)"
     )
     bind = {"pid": policy_id, "uid": str(current_user.id)}
@@ -1217,11 +1220,11 @@ def get_policies(
     limit = int(params.get("limit", 100))
     status_filter = params.get("status")
 
-    is_admin = current_user.email == ADMIN_EMAIL
+    _is_admin = is_admin(current_user)
     where_parts = []
     if status_filter:
         where_parts.append("p.status = :st")
-    if not is_admin:
+    if not _is_admin:
         where_parts.append("p.owner_id = :uid")
     where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
@@ -1336,11 +1339,11 @@ def get_compliance_results(
     params = dict(request.query_params)
     limit = int(params.get("limit", 100))
     policy_id = params.get("policy_id")
-    is_admin = current_user.email == ADMIN_EMAIL
+    _is_admin = is_admin(current_user)
     where_parts = []
     if policy_id:
         where_parts.append("cr.policy_id = :pid")
-    if not is_admin:
+    if not _is_admin:
         where_parts.append("p.owner_id = :uid")
     where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
     rows = db.execute(_t(f"""
@@ -1378,13 +1381,13 @@ def get_gaps(
     limit = int(params.get("limit", 100))
     policy_id = params.get("policy_id")
     status_filter = params.get("status")
-    is_admin = current_user.email == ADMIN_EMAIL
+    _is_admin = is_admin(current_user)
     where_parts = []
     if policy_id:
         where_parts.append("g.policy_id = :pid")
     if status_filter:
         where_parts.append("g.status = :st")
-    if not is_admin:
+    if not _is_admin:
         where_parts.append("p.owner_id = :uid")
     where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
     rows = db.execute(_t(f"""
@@ -1422,11 +1425,11 @@ def get_mapping_reviews(
     params = dict(request.query_params)
     limit = int(params.get("limit", 100))
     policy_id = params.get("policy_id")
-    is_admin = current_user.email == ADMIN_EMAIL
+    _is_admin = is_admin(current_user)
     where_parts = []
     if policy_id:
         where_parts.append("mr.policy_id = :pid")
-    if not is_admin:
+    if not _is_admin:
         where_parts.append("p.owner_id = :uid")
     where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
     rows = db.execute(_t(f"""
@@ -1636,7 +1639,7 @@ def create_or_update_entity(entity: str, payload: Dict[str, Any], db: Session = 
     model = ENTITY_MAP.get(entity)
     if not model:
         raise HTTPException(status_code=404, detail="Entity not found")
-    if entity in ADMIN_ONLY_ENTITIES and current_user.email != ADMIN_EMAIL:
+    if entity in ADMIN_ONLY_ENTITIES and not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admin access required")
 
     item_id = payload.get("id")
@@ -1701,7 +1704,7 @@ def delete_policy(item_id: str, db: Session = Depends(get_db), current_user: mod
     policy = db.query(models.Policy).filter(models.Policy.id == item_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Not found")
-    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     # Clean children that are not declared as cascade relationships on Policy.
@@ -1739,7 +1742,7 @@ def delete_entity(entity: str, item_id: str, db: Session = Depends(get_db), curr
     model = ENTITY_MAP.get(entity)
     if not model:
         raise HTTPException(status_code=404, detail="Entity not found")
-    if entity in ADMIN_ONLY_ENTITIES and current_user.email != ADMIN_EMAIL:
+    if entity in ADMIN_ONLY_ENTITIES and not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admin access required")
     item = db.query(model).filter(model.id == item_id).first()
     if not item:
@@ -1757,7 +1760,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
     policy = db.query(models.Policy).filter(models.Policy.id == request.policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
-    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorised")
 
     # Phase 4b readiness gate. Refuse to analyze against any framework that
@@ -2001,7 +2004,7 @@ def pause_policy(payload: Dict[str, Any], db: Session = Depends(get_db), current
     policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
-    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorised")
     if policy.status != "processing":
         raise HTTPException(
@@ -2120,7 +2123,7 @@ async def resume_policy(payload: Dict[str, Any], db: Session = Depends(get_db), 
     policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
-    if current_user.email != ADMIN_EMAIL and str(policy.owner_id) != str(current_user.id):
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorised")
     if policy.status != "paused":
         raise HTTPException(
@@ -2240,16 +2243,16 @@ async def chat_assistant(
             ),
         )
 
-    is_admin = current_user.email == ADMIN_EMAIL
+    _is_admin = is_admin(current_user)
     print(
-        f"[/api/assistant/chat] user={current_user.email} admin={is_admin} "
+        f"[/api/assistant/chat] user={current_user.email} admin={_is_admin} "
         f"len={len(message)}",
         flush=True,
     )
 
     try:
         result = await _asyncio.wait_for(
-            chat_with_user_context(db, message, current_user, is_admin=is_admin),
+            chat_with_user_context(db, message, current_user, is_admin=_is_admin),
             timeout=50.0,
         )
     except _asyncio.TimeoutError:
@@ -2733,15 +2736,27 @@ async def explain_mapping_route(
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ADMIN ROUTES — restricted to himayaadmin@gmail.com
-# ADMIN_EMAIL + require_admin are defined near the top of this file so any
-# route can depend on them, including the framework-management endpoints.
+# ADMIN ROUTES — restricted via require_admin (Phase 13).
+# is_admin(user) returns True if user.email == ADMIN_EMAIL (env)
+# OR user.role == "admin" (DB). Either path is sufficient.
+# require_admin is defined near the top of this file so any route can
+# depend on it, including the framework-management endpoints.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 @app.on_event("startup")
 def seed_admin_user():
-    """Ensure the admin account exists in the database on every startup."""
+    """Ensure the admin account exists in the database on every startup.
+
+    Phase 13: skipped when ADMIN_EMAIL is unset. Operators who prefer
+    role-based admin only (UPDATE users SET role='admin' WHERE id=...)
+    can simply leave ADMIN_EMAIL out of the env; the admin check still
+    works via the role path.
+    """
+    if not ADMIN_EMAIL:
+        print("[startup] ADMIN_EMAIL not set; skipping admin seed "
+              "(role-based admin still works via users.role='admin')")
+        return
     db = database.SessionLocal()
     try:
         existing = db.query(models.User).filter(models.User.email == ADMIN_EMAIL).first()
@@ -2815,12 +2830,21 @@ def setup_policy_owner_column():
             "REFERENCES users(id) ON DELETE SET NULL"
         ))
         db.commit()
-        # Back-fill: policies already uploaded without an owner_id get the admin's id
-        db.execute(_t("""
-            UPDATE policies SET owner_id = (
-                SELECT id FROM users WHERE email = :admin LIMIT 1
-            ) WHERE owner_id IS NULL
-        """), {"admin": ADMIN_EMAIL})
+        # Back-fill: policies already uploaded without an owner_id get the admin's id.
+        # Phase 13: prefer the role-based admin if ADMIN_EMAIL is unset; otherwise
+        # use the env-configured email. Both paths converge on the seeded admin.
+        if ADMIN_EMAIL:
+            db.execute(_t("""
+                UPDATE policies SET owner_id = (
+                    SELECT id FROM users WHERE email = :admin LIMIT 1
+                ) WHERE owner_id IS NULL
+            """), {"admin": ADMIN_EMAIL})
+        else:
+            db.execute(_t("""
+                UPDATE policies SET owner_id = (
+                    SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1
+                ) WHERE owner_id IS NULL
+            """))
         db.commit()
         print("[startup] policies.owner_id ensured")
     except Exception as e:
