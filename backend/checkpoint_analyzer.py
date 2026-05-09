@@ -477,72 +477,151 @@ def policy_needs_source_attribution_backfill(db, policy_id) -> bool:
     return row.total == row.unsourced
 
 
-async def rechunk_for_source_attribution(db, policy_id) -> int:
-    """Backfill page_number / paragraph_index for an existing policy.
+async def _resolve_policy_source_file(db, policy_id):
+    """Return (local_path, cleanup_fn) for a policy's source document.
 
-    Prepare-then-swap pattern:
-      Step 1: extract segments       (file IO; no DB write)
-      Step 2: chunk into memory list (pure compute; no DB write)
-      Step 3: compute embeddings     (network IO; no DB write)
-      Step 4: atomic swap            (DELETE + INSERT in single transaction)
+    Resolution order (first match wins):
+      1. backend/uploads/<basename(file_url)>
+         Production stores files under a timestamp-prefixed name. The
+         policies.file_url column carries the actual on-disk filename;
+         policies.file_name carries the original (user-facing) name.
+         Handles every policy uploaded through the standard route.
+      2. backend/uploads/<file_name>
+         Legacy / pre-timestamp uploads where file_name == on-disk name.
+      3. glob fallback in backend/uploads/.
+      4. HTTPS download from file_url (when file_url is absolute).
+         Saved to a NamedTemporaryFile; caller cleans up via cleanup_fn.
+         Covers cloud-stored deployments (Supabase Storage, S3, etc.)
+         where the local upload dir is empty by design.
+      5. RechunkError otherwise.
 
-    Raises RechunkError if any preparatory step fails — caller catches
-    and leaves existing chunks untouched. Returns the new chunk count.
+    cleanup_fn is None for existing local files (nothing to clean).
+    For downloaded tempfiles, cleanup_fn deletes the tempfile (idempotent,
+    swallows OSError so the rechunk's outer try/finally always succeeds).
     """
-    from backend.text_extractor import extract_text_segments
-    from backend.chunker import chunk_text_segments
-
     policy = db.execute(sql_text(
-        "SELECT file_name, content_preview FROM policies WHERE id = :pid"
+        "SELECT file_name, file_url FROM policies WHERE id = :pid"
     ), {"pid": policy_id}).fetchone()
     if not policy:
         raise RechunkError(f"policy {policy_id} not found")
 
-    # Resolve the uploaded file path (mirrors _auto_embed's logic).
+    file_name = policy[0] or ""
+    file_url  = policy[1] or ""
     upload_dir = "backend/uploads"
-    fp = os.path.join(upload_dir, policy[0])
-    if not os.path.exists(fp):
-        matches = glob.glob(os.path.join(upload_dir, f"*{policy[0]}"))
+
+    # 1. Try basename(file_url) — production timestamp-prefixed filename.
+    if file_url:
+        url_basename = file_url.rstrip("/").rsplit("/", 1)[-1]
+        if url_basename:
+            candidate = os.path.join(upload_dir, url_basename)
+            if os.path.exists(candidate):
+                return candidate, None
+
+    # 2. Try plain file_name (legacy).
+    if file_name:
+        candidate = os.path.join(upload_dir, file_name)
+        if os.path.exists(candidate):
+            return candidate, None
+
+    # 3. Glob fallback (handles minor renames / suffixed copies).
+    if file_name:
+        matches = glob.glob(os.path.join(upload_dir, f"*{file_name}"))
         if matches:
-            fp = matches[0]
+            return matches[0], None
 
-    if not os.path.exists(fp):
-        raise RechunkError(
-            f"policy {policy_id} file missing at {fp}; cannot re-extract"
+    # 4. HTTPS download for absolute URLs (cloud-stored deployments).
+    if file_url and file_url.lower().startswith(("http://", "https://")):
+        import tempfile
+        # Pick an extension that matches the URL so extract_text_segments
+        # can route to the right parser. Falls back to ".bin" if missing.
+        ext = os.path.splitext(file_url.split("?")[0])[1] or ".bin"
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=ext, delete=False, prefix="phase11_rechunk_"
         )
+        tmp_path = tmp.name
+        tmp.close()  # close descriptor; we'll write via httpx then re-open
 
-    # Step 1 — extraction.
-    ext = os.path.splitext(fp)[1].lower()
+        def cleanup():
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.get(file_url)
+                resp.raise_for_status()
+                with open(tmp_path, "wb") as fh:
+                    fh.write(resp.content)
+        except Exception as e:
+            cleanup()
+            raise RechunkError(
+                f"download from {file_url} failed: {type(e).__name__}: {e}"
+            ) from e
+
+        return tmp_path, cleanup
+
+    raise RechunkError(
+        f"policy {policy_id} source file unavailable: "
+        f"not in {upload_dir}/ and file_url is not an absolute URL"
+    )
+
+
+async def rechunk_for_source_attribution(db, policy_id) -> int:
+    """Backfill page_number / paragraph_index for an existing policy.
+
+    Prepare-then-swap pattern:
+      Step 1: resolve + extract segments  (file IO; no DB write)
+      Step 2: chunk into memory list      (pure compute; no DB write)
+      Step 3: compute embeddings          (network IO; no DB write)
+      Step 4: atomic swap                 (DELETE + INSERT in single tx)
+
+    Raises RechunkError if any preparatory step fails — caller catches
+    and leaves existing chunks untouched. Returns the new chunk count.
+
+    File resolution order is in _resolve_policy_source_file: local first,
+    then HTTPS download for absolute file_url. Tempfile cleanup runs in
+    a finally block so a download is always cleaned up after the rechunk
+    succeeds OR fails.
+    """
+    from backend.text_extractor import extract_text_segments
+    from backend.chunker import chunk_text_segments
+
+    fp, cleanup = await _resolve_policy_source_file(db, policy_id)
     try:
-        segments = extract_text_segments(fp, ext)
-    except Exception as e:
-        raise RechunkError(f"extract_text_segments failed: {e}") from e
-    if not segments:
-        raise RechunkError("extraction returned no segments")
+        # Step 1 — extraction.
+        ext = os.path.splitext(fp)[1].lower()
+        try:
+            segments = extract_text_segments(fp, ext)
+        except Exception as e:
+            raise RechunkError(f"extract_text_segments failed: {e}") from e
+        if not segments:
+            raise RechunkError("extraction returned no segments")
 
-    # Step 2 — chunking.
-    new_chunks = chunk_text_segments(segments)
-    if not new_chunks:
-        raise RechunkError("chunker produced zero chunks")
+        # Step 2 — chunking.
+        new_chunks = chunk_text_segments(segments)
+        if not new_chunks:
+            raise RechunkError("chunker produced zero chunks")
 
-    # Step 3 — embeddings (raises on transport errors; caller will
-    # surface the failure but the existing chunks are still intact).
-    new_embeddings = await get_embeddings([c["text"] for c in new_chunks])
+        # Step 3 — embeddings (raises on transport errors; existing
+        # chunks remain intact because no DB write has happened yet).
+        new_embeddings = await get_embeddings([c["text"] for c in new_chunks])
 
-    # Step 4 — atomic swap inside a single short transaction.
-    try:
-        db.execute(sql_text(
-            "DELETE FROM policy_chunks WHERE policy_id = :pid"
-        ), {"pid": policy_id})
-        store_chunks_with_embeddings(db, policy_id, new_chunks, new_embeddings)
-        # store_chunks_with_embeddings already commits; explicit commit
-        # below is a safety belt for partial-writes in edge cases.
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise RechunkError(f"atomic swap failed: {e}") from e
+        # Step 4 — atomic swap inside a single short transaction.
+        try:
+            db.execute(sql_text(
+                "DELETE FROM policy_chunks WHERE policy_id = :pid"
+            ), {"pid": policy_id})
+            store_chunks_with_embeddings(db, policy_id, new_chunks, new_embeddings)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise RechunkError(f"atomic swap failed: {e}") from e
 
-    return len(new_chunks)
+        return len(new_chunks)
+    finally:
+        if cleanup is not None:
+            cleanup()
 
 
 # ── Find relevant sections for a checkpoint ─────────────────────────────────
