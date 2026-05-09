@@ -43,6 +43,9 @@ from backend.routers.explainability import router as explainability_router
 
 
 app = FastAPI()
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 # Must be registered before any route / router / exception-handler so Starlette
