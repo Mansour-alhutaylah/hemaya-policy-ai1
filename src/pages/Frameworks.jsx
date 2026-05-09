@@ -580,6 +580,14 @@ export default function Frameworks() {
               {(() => {
                 const stats = getFrameworkStats(selectedFramework.name);
                 if (stats && stats.trendData.length > 1) {
+                  // Phase UI-3: auto-scale the Y-axis around the actual score
+                  // range. A trend that hovers between 70 % and 85 % was
+                  // visually flat against a fixed [0, 100] axis; auto-domain
+                  // makes movement readable while still showing the user
+                  // they're inside the 0–100 envelope via tick labels.
+                  const scores = stats.trendData.map(p => p.score || 0);
+                  const min = Math.max(0, Math.floor(Math.min(...scores) - 5));
+                  const max = Math.min(100, Math.ceil(Math.max(...scores) + 5));
                   return (
                     <div>
                       <h4 className="text-sm font-medium text-foreground mb-2">Compliance Trend</h4>
@@ -588,7 +596,11 @@ export default function Frameworks() {
                           <LineChart data={stats.trendData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                            <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                            <YAxis
+                              domain={[min, max]}
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={v => `${v}%`}
+                            />
                             <Tooltip />
                             <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))' }} />
                           </LineChart>

@@ -195,9 +195,14 @@ function CardIcon({ children, bg }) {
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
+  // Phase UI-3: prefer payload[0].payload.fullName when the chart deliberately
+  // truncated its category labels (Top Risky Controls), so the tooltip always
+  // shows the full text even when the axis tick is shortened with an ellipsis.
+  const row = payload[0]?.payload;
+  const heading = row?.fullName || label;
   return (
-    <div className="bg-popover text-popover-foreground border border-border rounded-xl shadow-lg px-3.5 py-2.5 text-sm">
-      {label && <p className="text-xs font-semibold text-muted-foreground mb-1.5">{label}</p>}
+    <div className="bg-popover text-popover-foreground border border-border rounded-xl shadow-lg px-3.5 py-2.5 text-sm max-w-xs">
+      {heading && <p className="text-xs font-semibold text-muted-foreground mb-1.5 break-words">{heading}</p>}
       {payload.map((p, i) => (
         <p key={i} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color || p.fill }} />
@@ -205,6 +210,11 @@ function CustomTooltip({ active, payload, label }) {
           <span className="font-semibold text-foreground">{p.value}{p.unit || ''}</span>
         </p>
       ))}
+      {row?.gap_count != null && (
+        <p className="text-xs text-muted-foreground mt-1">
+          {row.gap_count} open gap{row.gap_count === 1 ? '' : 's'}
+        </p>
+      )}
     </div>
   );
 }
@@ -217,12 +227,15 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   // ── Policy list (drives the dropdown + "Policies Analyzed" KPI) ───────────
-  // staleTime: 0 so returning from the Policies upload page always shows fresh
-  // data without a manual refresh.
+  // Phase UI-3: removed `staleTime: 0`. The previous override forced a
+  // refetch on every Dashboard visit even when the cache was already fresh,
+  // which made tab-switches feel laggy. The Policies page already calls
+  // `queryClient.invalidateQueries(['policies'])` after upload / pause /
+  // resume / delete, so the cache is always up to date when it matters.
+  // Falls back to the global staleTime (60 s) from query-client.js.
   const { data: policies = [], isLoading: policiesLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at', 100),
-    staleTime: 0,
   });
 
   // ── File dropdown options derived from live policy list ───────────────────
@@ -386,13 +399,16 @@ export default function Dashboard() {
   }, [policiesLoading, policies.length, statsSkeletons, statusOverview, openGaps]);
 
   // ── Recent activity ───────────────────────────────────────────────────────
-  const displayActivity = auditLogs.slice(0, 5).map(log => ({
+  // Phase UI-3: memoised so the slice + map (and the JSON.stringify on the
+  // details payload) only run when auditLogs actually changes — not on every
+  // unrelated re-render of this page (filter changes, hover, etc).
+  const displayActivity = useMemo(() => auditLogs.slice(0, 5).map(log => ({
     id:     log.id,
     action: log.action,
     actor:  log.actor,
     target: typeof log.details === 'object' ? JSON.stringify(log.details) : log.details,
     time:   log.timestamp,
-  }));
+  })), [auditLogs]);
 
   const getActionIcon = (action) => {
     switch (action) {
@@ -525,6 +541,7 @@ export default function Dashboard() {
                     tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
+                    interval={0}
                   />
                   <YAxis
                     domain={[0, 100]}
@@ -532,6 +549,12 @@ export default function Dashboard() {
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={v => `${v}%`}
+                    label={{
+                      value: 'Compliance %',
+                      angle: -90,
+                      position: 'insideLeft',
+                      style: { fontSize: 11, fill: 'currentColor', opacity: 0.6 },
+                    }}
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
                   <Bar dataKey="score" fill="#10b981" radius={[4, 4, 0, 0]} name="Compliance" unit="%" />
@@ -782,11 +805,18 @@ export default function Dashboard() {
                     tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
+                    interval={0}
                   />
                   <YAxis
                     tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
+                    label={{
+                      value: 'Controls',
+                      angle: -90,
+                      position: 'insideLeft',
+                      style: { fontSize: 11, fill: 'currentColor', opacity: 0.6 },
+                    }}
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
                   <Legend
