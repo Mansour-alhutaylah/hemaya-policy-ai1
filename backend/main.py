@@ -43,6 +43,36 @@ from backend.routers.explainability import router as explainability_router
 
 
 app = FastAPI()
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Must be registered before any route / router / exception-handler so Starlette
+# wraps the full ASGI app.  Cannot combine allow_origins=["*"] with
+# allow_credentials=True — Starlette raises ValueError on startup.
+# Local dev origins are included so the frontend works without any env changes.
+_ALLOWED_ORIGINS = [
+    "https://himaya.site",
+    "https://www.himaya.site",
+    # local development
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+
+# Allow additional origins via env var (comma-separated), e.g. on Render:
+#   EXTRA_CORS_ORIGINS=https://staging.himaya.site
+_extra = os.getenv("EXTRA_CORS_ORIGINS", "")
+if _extra:
+    _ALLOWED_ORIGINS.extend(o.strip() for o in _extra.split(",") if o.strip())
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(remediation_router)
 app.include_router(export_router)
 app.include_router(explainability_router)
@@ -215,13 +245,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
     )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
