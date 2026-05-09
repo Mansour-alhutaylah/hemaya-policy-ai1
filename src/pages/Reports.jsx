@@ -105,6 +105,10 @@ export default function Reports() {
   const [packageIncludeText,  setPackageIncludeText]  = useState(true);
   const [generatingPackage,   setGeneratingPackage]   = useState(false);
 
+  // Phase H: replace window.confirm with a proper Dialog so the destructive
+  // confirmation is consistent with the rest of the app's modals.
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -146,11 +150,12 @@ export default function Reports() {
     },
   });
 
-  const handleDelete = (report) => {
-    const policyName = policyMap[report.policy_id]?.file_name || 'this report';
-    if (window.confirm(`Delete this ${report.format || 'report'} for "${policyName}"? The stored file will also be removed.`)) {
-      deleteReportMutation.mutate(report.id);
-    }
+  const handleDelete = (report) => setDeleteTarget(report);
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteReportMutation.mutate(deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   const policyMap = policies.reduce((acc, p) => {
@@ -572,6 +577,32 @@ export default function Reports() {
                   Generate Report
                 </>
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Phase H: Delete-report confirm Dialog (replaces window.confirm). */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <Trash2 className="w-5 h-5" />
+              Delete report?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently remove the {deleteTarget?.format || 'report'}
+              {' '}for "{policyMap[deleteTarget?.policy_id]?.file_name || 'this policy'}",
+              including the stored file. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+              <Trash2 className="w-4 h-4 mr-1.5" />
+              Delete report
             </Button>
           </div>
         </DialogContent>

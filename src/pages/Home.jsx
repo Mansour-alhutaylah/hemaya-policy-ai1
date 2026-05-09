@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Shield,
   FileBarChart,
+  Sparkles,
 } from 'lucide-react';
 
 const Policy = api.entities.Policy;
@@ -53,12 +54,16 @@ const primaryActions = [
 export default function Home() {
   const { user } = useAuth();
 
-  const { data: policies = [] } = useQuery({
+  const { data: policies = [], isLoading: policiesLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at', 5),
   });
 
   const firstName = user?.first_name || (user?.email ? user.email.split('@')[0] : 'there');
+  // Phase H: show a guided cold-start panel only after the policies query
+  // settles — otherwise a brand-new tab flashes the panel for a beat before
+  // the recent-policies card replaces it.
+  const isEmptyAccount = !policiesLoading && policies.length === 0;
 
   return (
     <PageContainer>
@@ -121,6 +126,69 @@ export default function Home() {
           </Link>
         ))}
       </div>
+
+      {/* Phase H: Cold-start panel — shown only when the user has zero
+          policies. Three numbered steps make the next action obvious for
+          a fresh account. Auto-replaced by "Recent policies" below as
+          soon as a policy exists. */}
+      {isEmptyAccount && (
+        <Card className="shadow-sm mb-8 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="px-6 py-5 border-b border-border/60 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-semibold uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Get started
+                </div>
+                <p className="mt-1.5 text-foreground font-semibold text-lg">
+                  Three steps to your first compliance score
+                </p>
+                <p className="text-muted-foreground text-sm mt-0.5">
+                  Himaya needs a policy document to analyse — once that's in,
+                  the rest of the app populates automatically.
+                </p>
+              </div>
+              <Link to={createPageUrl('Policies')} className="shrink-0">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 shadow-sm">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload policy
+                </Button>
+              </Link>
+            </div>
+            <ol className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+              {[
+                {
+                  n: 1,
+                  title: 'Upload a policy',
+                  body: 'A PDF, DOCX, or TXT under 50 MB. Pick the framework you want to assess against.',
+                },
+                {
+                  n: 2,
+                  title: 'Run analysis',
+                  body: 'Himaya extracts evidence, maps controls, and scores each framework deterministically.',
+                },
+                {
+                  n: 3,
+                  title: 'Review gaps',
+                  body: 'Open the Gaps page to see severity-prioritised issues with cited page numbers.',
+                },
+              ].map((step) => (
+                <li key={step.n} className="p-5 flex gap-3 items-start">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center justify-center text-sm font-semibold shrink-0">
+                    {step.n}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-foreground">{step.title}</p>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {step.body}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent policies */}
       {policies.length > 0 && (
