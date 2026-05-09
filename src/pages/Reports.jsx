@@ -324,6 +324,13 @@ export default function Reports() {
             size="sm"
             onClick={() => handleDownload(row)}
             disabled={!row.download_url || row.status === 'Generating'}
+            title={
+              row.status === 'Generating'
+                ? 'Report is still being generated.'
+                : !row.download_url
+                  ? 'Report file is not yet available.'
+                  : 'Download the generated report file.'
+            }
           >
             <Download className="w-4 h-4 mr-1" />
             Download

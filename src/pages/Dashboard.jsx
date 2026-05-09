@@ -88,7 +88,11 @@ function FileExtBadge({ ext }) {
 
 function FilterDropdown({ options, selected, onSelect, icon: Icon, loading }) {
   const [open, setOpen] = useState(false);
+  // Phase UI-8: highlighted index drives keyboard navigation. Defaults to
+  // the currently-selected option each time the menu opens.
+  const [activeIdx, setActiveIdx] = useState(-1);
   const ref = useRef(null);
+  const triggerRef = useRef(null);
   const selectedOption = options.find(o => o.id === selected) || options[0];
 
   useEffect(() => {
@@ -97,11 +101,76 @@ function FilterDropdown({ options, selected, onSelect, icon: Icon, loading }) {
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
+  // Phase UI-8: Esc anywhere closes the menu and returns focus to the
+  // trigger; a separate keydown on the trigger handles arrow / enter / tab.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // Reset highlight to current selection each time the menu opens.
+  useEffect(() => {
+    if (open) {
+      const i = options.findIndex(o => o.id === selected);
+      setActiveIdx(i >= 0 ? i : 0);
+    }
+  }, [open, options, selected]);
+
+  const handleKey = (e) => {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx(i => Math.min(options.length - 1, i + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx(i => Math.max(0, i - 1));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setActiveIdx(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setActiveIdx(options.length - 1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const opt = options[activeIdx];
+      if (opt) {
+        onSelect(opt.id);
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    } else if (e.key === 'Tab') {
+      // Closing on Tab matches the WAI-ARIA combobox pattern — focus
+      // continues to the next interactive element.
+      setOpen(false);
+    }
+  };
+
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={triggerRef}
+        type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Filter dashboard by policy"
+        aria-activedescendant={open && activeIdx >= 0 ? `filter-opt-${options[activeIdx]?.id}` : undefined}
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:border-foreground/20 hover:bg-muted/40 transition-all duration-150 shadow-sm min-w-[176px]"
+        onKeyDown={handleKey}
+        className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:border-foreground/20 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 transition-all duration-150 shadow-sm min-w-[176px]"
       >
         {loading
           ? <Loader2 className="w-4 h-4 text-muted-foreground flex-shrink-0 animate-spin" />
@@ -111,20 +180,35 @@ function FilterDropdown({ options, selected, onSelect, icon: Icon, loading }) {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 w-64 bg-popover text-popover-foreground rounded-xl border border-border shadow-xl z-50 py-1.5 overflow-hidden">
-          {options.map(opt => (
-            <button
-              key={opt.id}
-              onClick={() => { onSelect(opt.id); setOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
-            >
-              <span className="flex-shrink-0 w-8 flex items-center justify-center">
-                <FileExtBadge ext={opt.ext} />
-              </span>
-              <span className="flex-1 text-left truncate">{opt.label}</span>
-              {selected === opt.id && <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
-            </button>
-          ))}
+        <div
+          role="listbox"
+          aria-label="Policy filter options"
+          className="absolute top-full left-0 mt-1.5 w-64 bg-popover text-popover-foreground rounded-xl border border-border shadow-xl z-50 py-1.5 overflow-hidden"
+        >
+          {options.map((opt, idx) => {
+            const isActive = idx === activeIdx;
+            const isSelected = selected === opt.id;
+            return (
+              <button
+                key={opt.id}
+                id={`filter-opt-${opt.id}`}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => { onSelect(opt.id); setOpen(false); triggerRef.current?.focus(); }}
+                onMouseEnter={() => setActiveIdx(idx)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground transition-colors ${
+                  isActive ? 'bg-muted/60' : 'hover:bg-muted/60'
+                }`}
+              >
+                <span className="flex-shrink-0 w-8 flex items-center justify-center">
+                  <FileExtBadge ext={opt.ext} />
+                </span>
+                <span className="flex-1 text-left truncate">{opt.label}</span>
+                {isSelected && <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

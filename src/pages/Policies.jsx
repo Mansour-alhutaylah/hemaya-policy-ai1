@@ -608,7 +608,25 @@ export default function Policies() {
                 View Results
               </DropdownMenuItem>
             </Link>
-            <DropdownMenuItem onClick={() => openReportDialog(row)}>
+            {/* Phase UI-8: disable Generate Report until the policy has been
+                analysed. The dialog won't have anything to render before that
+                point. The title attribute surfaces an explanation on hover. */}
+            <DropdownMenuItem
+              onClick={(e) => {
+                if (row.status !== 'analyzed') {
+                  e.preventDefault();
+                  return;
+                }
+                openReportDialog(row);
+              }}
+              disabled={row.status !== 'analyzed'}
+              title={
+                row.status !== 'analyzed'
+                  ? 'Run a compliance analysis on this policy first.'
+                  : undefined
+              }
+              className={row.status !== 'analyzed' ? 'opacity-50 cursor-not-allowed' : ''}
+            >
               <FileBarChart className="w-4 h-4 mr-2" />
               Generate Report
             </DropdownMenuItem>
