@@ -102,10 +102,23 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10">
+    // Phase UI-9: subtle ambient gradient — emerald glow from the top, low
+    // opacity, behind a transparent layer. Mirrors the warmth of the Home
+    // hero's "from-slate-900 via-emerald-900 to-teal-900" without
+    // overwhelming the form. Pure CSS; no extra DOM weight.
+    <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10 overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-40"
+        style={{
+          background:
+            'radial-gradient(60% 40% at 50% 0%, rgba(16,185,129,0.15), transparent 65%),' +
+            'radial-gradient(45% 35% at 90% 100%, rgba(20,184,166,0.10), transparent 70%)',
+        }}
+      />
       <ThemeToggle />
 
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md relative">
         {/* Back to Home — sits above the card so it never collides with the form */}
         <div className="mb-4">
           <Link

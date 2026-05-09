@@ -71,10 +71,21 @@ export default function Signup() {
     "mt-1 w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground/70 px-3 py-2 outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-colors";
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10">
+    // Phase UI-9: matches Login's ambient gradient — same emerald glow on
+    // both auth pages so the auth flow feels visually continuous.
+    <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10 overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-40"
+        style={{
+          background:
+            'radial-gradient(60% 40% at 50% 0%, rgba(16,185,129,0.15), transparent 65%),' +
+            'radial-gradient(45% 35% at 90% 100%, rgba(20,184,166,0.10), transparent 70%)',
+        }}
+      />
       <ThemeToggle />
 
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md relative">
         <div className="mb-4">
           <Link
             to="/"

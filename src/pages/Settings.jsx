@@ -121,13 +121,17 @@ export default function Settings() {
             <CardDescription>Your account details on file</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Phase UI-9: single explanation banner replaces the per-field
+                "contact support" repeated across multiple captions. Cleaner
+                visually and answers "why are these greyed out?" in one place. */}
+            <p className="text-xs text-muted-foreground bg-muted/40 border border-border/60 rounded-lg px-3 py-2">
+              Your profile is managed by your organisation. Contact your
+              administrator if you need any of these fields changed.
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label>Full Name</Label>
                 <Input value={fullName} disabled className="bg-muted/50" />
-                <p className="text-xs text-muted-foreground">
-                  Contact support to change your name
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -164,9 +168,6 @@ export default function Settings() {
                 <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 capitalize">
                   {user?.role || 'User'}
                 </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Contact your administrator to change your role
-                </span>
               </div>
             </div>
           </CardContent>
