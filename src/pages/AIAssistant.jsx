@@ -434,7 +434,7 @@ export default function AIAssistant() {
             title="Clear conversation"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            Reset
+            Clear conversation
           </Button>
         </div>
       }

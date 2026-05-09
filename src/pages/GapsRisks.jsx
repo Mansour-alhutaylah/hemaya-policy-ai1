@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
+import NextAction from '@/components/layout/NextAction';
+import { createPageUrl } from '@/utils';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -351,17 +353,73 @@ export default function GapsRisks() {
       cell: (row) => (
         <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
           <Edit className="w-4 h-4 mr-1" />
-          Edit
+          Manage gap
         </Button>
       ),
     },
   ];
+
+  // Phase UI-1: recommended next action — drives the banner above the stats.
+  const nextAction = useMemo(() => {
+    if (isLoading) return null;
+    const open = gaps.filter(g => g.status === 'Open');
+    if (open.length === 0) {
+      return {
+        primary: {
+          label: 'Generate compliance report',
+          helper: 'No open gaps right now — package the latest analysis as a PDF or DOCX.',
+          to: createPageUrl('Reports'),
+          icon: FileText,
+        },
+        tone: 'success',
+      };
+    }
+    const unassigned = open.filter(g => !g.owner_name && !g.owner_id);
+    if (unassigned.length > 0) {
+      const top = Math.min(unassigned.length, 5);
+      return {
+        primary: {
+          label: `Assign owners to ${top} top gap${top === 1 ? '' : 's'}`,
+          helper: 'Sorted by priority. Owners can update status and notes from the Manage gap dialog.',
+          icon: User,
+          // No `to` — picks the first unassigned row visually; user clicks Manage gap.
+          onClick: () => {
+            const firstUnassigned = unassigned[0];
+            if (firstUnassigned) handleEdit(firstUnassigned);
+          },
+        },
+        tone: 'warning',
+      };
+    }
+    return {
+      primary: {
+        label: `Review ${open.length} open gap${open.length === 1 ? '' : 's'}`,
+        helper: 'Sorted by priority — severity weighted by how long each gap has been open.',
+        icon: AlertTriangle,
+        onClick: () => {
+          // Scroll to the table; the user is already on this page.
+          const el = document.querySelector('table');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+      },
+      tone: 'warning',
+    };
+  }, [isLoading, gaps]);
 
   return (
     <PageContainer
       title="Gaps & Risks"
       subtitle="Track and manage compliance gaps and risk remediation"
     >
+      {/* Phase UI-1: recommended next step (computed above) */}
+      {nextAction && (
+        <NextAction
+          primary={nextAction.primary}
+          secondary={nextAction.secondary}
+          tone={nextAction.tone}
+        />
+      )}
+
       {/* Stats Cards — match Executive Dashboard KpiCard pattern */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <KpiCard
@@ -620,12 +678,12 @@ export default function GapsRisks() {
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleSubmitEdit}
               disabled={updateGapMutation.isPending}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
-              Save Changes
+              Save gap updates
             </Button>
           </div>
         </DialogContent>

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 
 import PageContainer from '@/components/layout/PageContainer';
+import NextAction from '@/components/layout/NextAction';
+import { createPageUrl } from '@/utils';
 import EmptyState from '@/components/ui/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -307,6 +309,61 @@ export default function MappingReviewPage() {
   const policyName =
     policies.find(p => p.id === policyId)?.file_name || '';
 
+  // Phase UI-1: recommended next action — drives the banner above the picker.
+  const nextAction = useMemo(() => {
+    if (policiesLoading) return null;
+    if (policies.length === 0) {
+      return {
+        primary: {
+          label: 'Upload your first policy',
+          helper: 'Mapping Review surfaces the AI verdict per control once a policy has been analysed.',
+          to: createPageUrl('Policies'),
+          icon: FileText,
+        },
+      };
+    }
+    if (!policyId) {
+      return {
+        primary: {
+          label: 'Select a policy to review',
+          helper: 'Pick one from the dropdown below to see how each control was mapped to its evidence.',
+          icon: GitCompare,
+          onClick: () => {
+            // Soft scroll: the picker is right below.
+            const el = document.querySelector('[role="combobox"]');
+            if (el) el.focus();
+          },
+        },
+      };
+    }
+    if (isLoading) return null;
+    if (items.length === 0) return null;
+    const lowConf = items.filter(it => (it.confidence || 0) < 0.5).length;
+    if (lowConf > 0) {
+      return {
+        primary: {
+          label: `Review ${lowConf} low-confidence mapping${lowConf === 1 ? '' : 's'}`,
+          helper: 'These are the rows the AI is least sure about — most reviewer value lives here.',
+          icon: AlertTriangle,
+          onClick: () => setConfidenceTier('low'),
+        },
+        tone: 'warning',
+      };
+    }
+    if (counts.non_compliant > 0) {
+      return {
+        primary: {
+          label: `Open ${counts.non_compliant} non-compliant control${counts.non_compliant === 1 ? '' : 's'} in Gaps`,
+          helper: 'Each non-compliant control has been recorded as a gap with a priority score.',
+          to: createPageUrl('GapsRisks') + `?policy_id=${policyId}`,
+          icon: AlertTriangle,
+        },
+        tone: 'info',
+      };
+    }
+    return null;
+  }, [policiesLoading, policies.length, policyId, isLoading, items, counts.non_compliant]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -314,6 +371,15 @@ export default function MappingReviewPage() {
       title="Mapping Review"
       subtitle="Per-control explainability — what the framework requires, what the policy says, and how to close the gap."
     >
+      {/* Phase UI-1: recommended next step (computed above) */}
+      {nextAction && (
+        <NextAction
+          primary={nextAction.primary}
+          secondary={nextAction.secondary}
+          tone={nextAction.tone}
+        />
+      )}
+
       {/* Top bar: policy + framework selectors */}
       <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="flex-1 min-w-0">

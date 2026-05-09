@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
+import NextAction from '@/components/layout/NextAction';
+import { createPageUrl } from '@/utils';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -337,6 +339,36 @@ export default function Reports() {
     },
   ];
 
+  // Phase UI-1: recommended next action — drives the banner above the table.
+  const nextAction = useMemo(() => {
+    if (isLoading) return null;
+    if (policies.length === 0) {
+      return {
+        primary: {
+          label: 'Upload a policy first',
+          helper: 'Reports are generated from analysed policies — start there.',
+          to: createPageUrl('Policies'),
+          icon: FileText,
+        },
+      };
+    }
+    const analysedCount = policies.filter(p => p.status === 'analyzed').length;
+    if (reports.length === 0 && analysedCount > 0) {
+      return {
+        primary: {
+          label: 'Generate your first report',
+          helper: 'Per-policy PDF / CSV, or a full DOCX compliance package across everything.',
+          onClick: () => setShowGenerateDialog(true),
+          icon: FileBarChart,
+        },
+        secondary: [
+          { label: 'Compliance package (DOCX)', onClick: () => setShowPackageDialog(true) },
+        ],
+      };
+    }
+    return null;
+  }, [isLoading, policies, reports.length]);
+
   return (
     <PageContainer
       title="Reports"
@@ -364,6 +396,15 @@ export default function Reports() {
         </div>
       }
     >
+      {/* Phase UI-1: recommended next step (computed above) */}
+      {nextAction && (
+        <NextAction
+          primary={nextAction.primary}
+          secondary={nextAction.secondary}
+          tone={nextAction.tone}
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">

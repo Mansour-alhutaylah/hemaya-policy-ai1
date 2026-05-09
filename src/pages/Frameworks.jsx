@@ -409,7 +409,7 @@ export default function Frameworks() {
                     <div className="text-center py-6">
                       <p className="text-sm text-muted-foreground mb-3">No analysis data yet</p>
                       <Link to={createPageUrl('Policies')}>
-                        <Button size="sm" variant="outline">Run Analysis</Button>
+                        <Button size="sm" variant="outline">Start compliance analysis</Button>
                       </Link>
                     </div>
                   )}

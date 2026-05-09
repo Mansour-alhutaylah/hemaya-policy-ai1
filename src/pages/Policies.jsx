@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
+import NextAction from '@/components/layout/NextAction';
 import DataTable from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -34,6 +35,7 @@ import {
   Upload,
   FileText,
   FileBarChart,
+  BarChart3,
   MoreVertical,
   Play,
   Pause,
@@ -591,12 +593,12 @@ export default function Policies() {
             ) : (
               <DropdownMenuItem onClick={() => handleRunAnalysis(row)}>
                 <Play className="w-4 h-4 mr-2" />
-                Run Analysis
+                Start compliance analysis
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={() => handleViewPreview(row)}>
               <Eye className="w-4 h-4 mr-2" />
-              View Details
+              View document details
             </DropdownMenuItem>
             <Link to={createPageUrl(`Analyses?policy_id=${row.id}`)}>
               <DropdownMenuItem>
@@ -625,6 +627,51 @@ export default function Policies() {
     },
   ];
 
+  // Phase UI-1: recommended next action — drives the banner above the table.
+  // Hidden during the initial fetch so the user never sees a CTA flash before
+  // their real data arrives.
+  const nextAction = useMemo(() => {
+    if (isLoading) return null;
+    if (policies.length === 0) {
+      return {
+        primary: {
+          label: 'Upload your first policy',
+          helper: 'PDF, DOCX, or TXT under 50 MB. Pick the framework you want to assess against.',
+          onClick: () => setShowUploadDialog(true),
+          icon: Upload,
+        },
+      };
+    }
+    const pending = policies.filter(p => p.status === 'uploaded' || p.status === 'paused');
+    if (pending.length > 0) {
+      return {
+        primary: {
+          label:
+            pending.length === 1
+              ? 'Start compliance analysis on 1 policy'
+              : `Start compliance analysis on ${pending.length} policies`,
+          helper: 'Runs the AI verifier against the selected framework. About 1–3 min per framework.',
+          to: createPageUrl('Policies'),
+          icon: BarChart3,
+        },
+        tone: 'info',
+      };
+    }
+    // All policies analysed — keep the banner subtle and forward-looking.
+    return {
+      primary: {
+        label: 'Review compliance gaps',
+        helper: 'Open Gaps & Risks to see priority-sorted findings with cited page numbers.',
+        to: createPageUrl('GapsRisks'),
+        icon: AlertTriangle,
+      },
+      secondary: [
+        { label: 'Generate report', to: createPageUrl('Reports') },
+      ],
+      tone: 'success',
+    };
+  }, [isLoading, policies]);
+
   return (
     <PageContainer
       title="Policy Management"
@@ -639,6 +686,15 @@ export default function Policies() {
         </Button>
       }
     >
+      {/* Phase UI-1: recommended next step (computed above) */}
+      {nextAction && (
+        <NextAction
+          primary={nextAction.primary}
+          secondary={nextAction.secondary}
+          tone={nextAction.tone}
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
@@ -803,7 +859,7 @@ export default function Policies() {
                   Uploading... {uploadProgress}%
                 </>
               ) : (
-                'Save Policy'
+                'Upload & start analysis'
               )}
             </Button>
           </div>
@@ -932,7 +988,7 @@ export default function Policies() {
               }}
             >
               <Play className="w-4 h-4 mr-2" />
-              Continue Anyway
+              Analyse without framework doc
             </Button>
           </div>
         </DialogContent>
@@ -1004,7 +1060,7 @@ export default function Policies() {
                 className="bg-emerald-600 hover:bg-emerald-700"
               >
                 <Play className="w-4 h-4 mr-2" />
-                Run Analysis
+                Start compliance analysis
               </Button>
             )}
           </div>

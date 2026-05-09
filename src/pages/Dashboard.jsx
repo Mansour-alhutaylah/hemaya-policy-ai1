@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
+import NextAction from '@/components/layout/NextAction';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -327,6 +328,63 @@ export default function Dashboard() {
   // Whether a subtle "refreshing" indicator is needed (file switch in-flight)
   const statsRefreshing = statsFetching && !statsLoading;
 
+  // ── Phase UI-1: recommended next action ───────────────────────────────────
+  // Computed from already-loaded data — pages-as-state pattern. We hide the
+  // banner while the policies query is still in flight so the user never
+  // sees "upload your first policy" flash for a beat before the real CTA.
+  const nextAction = useMemo(() => {
+    if (policiesLoading) return null;
+    if (policies.length === 0) {
+      return {
+        primary: {
+          label: 'Upload your first policy',
+          helper: 'Pick a PDF, DOCX, or TXT under 50 MB to start your first compliance analysis.',
+          to: createPageUrl('Policies'),
+          icon: Upload,
+        },
+      };
+    }
+    if (statsSkeletons) return null;
+    const totalAssessedLocal =
+      (statusOverview.compliant || 0) +
+      (statusOverview.partial || 0) +
+      (statusOverview.non_compliant || 0);
+    if (totalAssessedLocal === 0) {
+      return {
+        primary: {
+          label: 'Run your first analysis',
+          helper: 'Open Policies and click Start Compliance Analysis on a policy to see it scored.',
+          to: createPageUrl('Policies'),
+          icon: BarChart3,
+        },
+      };
+    }
+    if ((openGaps || 0) > 0) {
+      const top = Math.min(openGaps, 5);
+      return {
+        primary: {
+          label: `Review top ${top} gap${top === 1 ? '' : 's'}`,
+          helper: 'Sorted by priority — severity weighted by how long the gap has been open.',
+          to: createPageUrl('GapsRisks'),
+          icon: AlertTriangle,
+        },
+        secondary: [
+          { label: 'Open Mapping Review', to: createPageUrl('MappingReview') },
+        ],
+        tone: 'warning',
+      };
+    }
+    return {
+      primary: {
+        label: 'Generate compliance report',
+        helper: 'No open gaps — package your latest analysis as a PDF or DOCX.',
+        to: createPageUrl('Reports'),
+        icon: FileText,
+      },
+      tone: 'success',
+    };
+  }, [policiesLoading, policies.length, statsSkeletons, statusOverview, openGaps]);
+
   // ── Recent activity ───────────────────────────────────────────────────────
   const displayActivity = auditLogs.slice(0, 5).map(log => ({
     id:     log.id,
@@ -374,6 +432,15 @@ export default function Dashboard() {
         </div>
       }
     >
+      {/* Phase UI-1: recommended next step (computed above) */}
+      {nextAction && (
+        <NextAction
+          primary={nextAction.primary}
+          secondary={nextAction.secondary}
+          tone={nextAction.tone}
+        />
+      )}
+
       {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
 

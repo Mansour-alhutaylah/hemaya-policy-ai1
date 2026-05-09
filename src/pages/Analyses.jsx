@@ -186,7 +186,7 @@ export default function Analyses() {
       cell: (row) => (
         <Button variant="ghost" size="sm" onClick={() => handleViewDetails(row)}>
           <Eye className="w-4 h-4 mr-1" />
-          Details
+          Open results
         </Button>
       ),
     },
