@@ -127,14 +127,18 @@ def test_cache_miss_calls_gpt_and_writes_cache(monkeypatch):
     assert insert["mdl"] == ecc2_analyzer.ECC2_MODEL
     # cache_key is the SHA256 of the canonical key string. Phase 9 added the
     # retrieval floor to the key so changes to RAG_MIN_RELEVANCE_SCORE produce
-    # a different cache_key (no stale-cache reuse across floors).
+    # a different cache_key (no stale-cache reuse across floors). Phase 10
+    # appended a literal grounding-algorithm version tag (e.g. "v2") so a
+    # change to the body of _find_grounded_evidence also segregates rows.
     from backend import checkpoint_analyzer as ca
     floor = getattr(ca, "RAG_MIN_RELEVANCE_SCORE", 0.0)
+    grounding = getattr(ca, "GROUNDING_VERSION", "v1")
     expected_key = hashlib.sha256(
         (
             f"ECC2|ECC-1-1-1|abc123def456|"
             f"{ecc2_analyzer.ECC2_PROMPT_VERSION}|{ecc2_analyzer.ECC2_MODEL}|"
-            f"floor={floor:.3f}"
+            f"floor={floor:.3f}|"
+            f"grounding={grounding}"
         ).encode()
     ).hexdigest()
     assert insert["ck"] == expected_key
