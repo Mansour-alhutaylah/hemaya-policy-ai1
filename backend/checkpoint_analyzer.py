@@ -1349,6 +1349,15 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
              status, analyzed_at, analysis_duration, details)
             VALUES (:id,:pid,:fwid,:sc,:cov,:par,:mis,
                     'completed',:at,:dur,:det)
+            ON CONFLICT (policy_id, framework_id) DO UPDATE SET
+                compliance_score  = EXCLUDED.compliance_score,
+                controls_covered  = EXCLUDED.controls_covered,
+                controls_partial  = EXCLUDED.controls_partial,
+                controls_missing  = EXCLUDED.controls_missing,
+                status            = EXCLUDED.status,
+                analyzed_at       = EXCLUDED.analyzed_at,
+                analysis_duration = EXCLUDED.analysis_duration,
+                details           = EXCLUDED.details
         """), {
             "id": str(uuid.uuid4()), "pid": policy_id, "fwid": framework_id,
             "sc": round(score, 1), "cov": comp, "par": part, "mis": miss,

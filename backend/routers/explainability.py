@@ -225,7 +225,7 @@ def list_frameworks_with_results(
     rows = db.execute(sql_text("""
         SELECT DISTINCT framework_id
         FROM policy_ecc_assessments
-        WHERE policy_id = CAST(:pid AS uuid)
+        WHERE policy_id = :pid
     """), {"pid": policy_id}).fetchall()
     return [{"framework_id": r[0], "framework_name": r[0]} for r in rows]
 
@@ -250,7 +250,7 @@ def list_mapping_reviews(
     """
     _check_policy_access(db, policy_id, current_user)
 
-    where_parts = ["a.policy_id = CAST(:pid AS uuid)"]
+    where_parts = ["a.policy_id = :pid"]
     params = {"pid": policy_id}
 
     if framework_id:
@@ -558,7 +558,7 @@ async def generate_improved_version(
     # 2. Pull failing controls. JOIN to ecc_framework so we have the
     # canonical requirement text alongside the assessor's gap_description.
     where_parts = [
-        "a.policy_id = CAST(:pid AS uuid)",
+        "a.policy_id = :pid",
         "a.compliance_status::text IN ('partial', 'non_compliant')",
     ]
     params = {"pid": policy.id}
@@ -628,7 +628,7 @@ async def generate_improved_version(
         brows = db.execute(sql_text("""
             SELECT compliance_status::text, COUNT(*)
             FROM policy_ecc_assessments
-            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            WHERE policy_id = :pid AND framework_id = :fw
             GROUP BY compliance_status
         """), {"pid": policy.id, "fw": fw}).fetchall()
         c = {r[0]: int(r[1]) for r in brows}
@@ -745,7 +745,7 @@ async def generate_improved_version(
             if codes:
                 db.execute(sql_text(
                     "DELETE FROM policy_ecc_assessments "
-                    "WHERE policy_id = CAST(:pid AS uuid) "
+                    "WHERE policy_id = :pid "
                     "AND framework_id = :fw "
                     "AND compliance_status IN ('non_compliant', 'partial')"
                 ), {"pid": policy.id, "fw": fw})
@@ -810,7 +810,7 @@ async def generate_improved_version(
         outcome_rows = db.execute(sql_text("""
             SELECT control_code, compliance_status::text
             FROM policy_ecc_assessments
-            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            WHERE policy_id = :pid AND framework_id = :fw
         """), {"pid": policy.id, "fw": fw}).fetchall()
         status_map = {r[0]: r[1] for r in outcome_rows}
 
@@ -849,7 +849,7 @@ async def generate_improved_version(
             outcome_rows = db.execute(sql_text("""
                 SELECT control_code, compliance_status::text
                 FROM policy_ecc_assessments
-                WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+                WHERE policy_id = :pid AND framework_id = :fw
             """), {"pid": policy.id, "fw": fw}).fetchall()
             status_map = {r[0]: r[1] for r in outcome_rows}
             fixed     = sum(1 for cc in codes if status_map.get(cc) == "compliant")
@@ -1029,7 +1029,7 @@ def _frameworks_previously_used(db: Session, policy_id: str) -> list[str]:
     rows = db.execute(sql_text("""
         SELECT DISTINCT framework_id
         FROM policy_ecc_assessments
-        WHERE policy_id = CAST(:pid AS uuid)
+        WHERE policy_id = :pid
     """), {"pid": policy_id}).fetchall()
     return [r[0] for r in rows]
 
@@ -1098,7 +1098,7 @@ async def reanalyze_version(
         rows = db.execute(sql_text("""
             SELECT compliance_status::text, COUNT(*)
             FROM policy_ecc_assessments
-            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            WHERE policy_id = :pid AND framework_id = :fw
             GROUP BY compliance_status
         """), {"pid": policy.id, "fw": fw}).fetchall()
         c = {r[0]: int(r[1]) for r in rows}
@@ -1120,7 +1120,7 @@ async def reanalyze_version(
         rows = db.execute(sql_text("""
             SELECT control_code
             FROM policy_ecc_assessments
-            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            WHERE policy_id = :pid AND framework_id = :fw
               AND compliance_status IN ('non_compliant', 'partial')
         """), {"pid": policy.id, "fw": fw}).fetchall()
         target_codes_by_fw[fw] = {r[0] for r in rows}
@@ -1145,7 +1145,7 @@ async def reanalyze_version(
             if codes:
                 db.execute(sql_text(
                     "DELETE FROM policy_ecc_assessments "
-                    "WHERE policy_id = CAST(:pid AS uuid) "
+                    "WHERE policy_id = :pid "
                     "AND framework_id = :fw "
                     "AND compliance_status IN ('non_compliant', 'partial')"
                 ), {"pid": policy.id, "fw": fw})
@@ -1232,7 +1232,7 @@ async def reanalyze_version(
         all_rows = db.execute(sql_text("""
             SELECT control_code, compliance_status::text
             FROM policy_ecc_assessments
-            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            WHERE policy_id = :pid AND framework_id = :fw
         """), {"pid": policy.id, "fw": fw}).fetchall()
         status_map = {r[0]: r[1] for r in all_rows}
 
