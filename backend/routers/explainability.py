@@ -269,6 +269,9 @@ def list_mapping_reviews(
 
     where_sql = " AND ".join(where_parts)
 
+    # Phase 11 source attribution (chunk_id, page_number, paragraph_index)
+    # is already written to policy_ecc_assessments by the analyzers; we now
+    # surface it on the API so the UI can render "[Page N · Para M]" chips.
     rows = db.execute(sql_text(f"""
         SELECT a.policy_id::text, a.framework_id, a.control_code,
                a.compliance_status::text AS status,
@@ -276,7 +279,8 @@ def list_mapping_reviews(
                a.assessed_at,
                f.control_text, f.control_type,
                f.domain_code, f.domain_name,
-               f.subdomain_code, f.subdomain_name
+               f.subdomain_code, f.subdomain_name,
+               a.chunk_id, a.page_number, a.paragraph_index
         FROM policy_ecc_assessments a
         LEFT JOIN ecc_framework f
           ON  f.framework_id = a.framework_id
@@ -313,9 +317,10 @@ def list_mapping_reviews(
                 r[2], r[8] or "", missing, status_norm,
             ),
             source={
-                "chunk_id": None,
-                "page_number": None,
-                "section_title": section_title,
+                "chunk_id":        r[14],
+                "page_number":     r[15],
+                "paragraph_index": r[16],
+                "section_title":   section_title,
             },
             control_type=r[9],
             domain_code=r[10],
