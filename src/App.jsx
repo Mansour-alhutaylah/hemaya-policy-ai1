@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
@@ -9,13 +10,27 @@ import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import { ThemeProvider } from "@/lib/ThemeContext";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
 
-// ✅ أضف صفحات الدخول
+// Phase 14: protected pages are loaded via React.lazy() in pages.config.js
+// so each page becomes its own Vite chunk. Public auth pages stay
+// eager-imported because (a) they ARE the initial shell on a logged-out
+// visit, and (b) keeping them eager means no Suspense fallback flash on
+// the very first paint. Same reasoning applies to Admin (handled outside
+// the main Layout) and Landing (zero-state route).
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import VerifyOTP from "@/pages/VerifyOTP";
 import ForgotPassword from "@/pages/ForgotPassword";
 import Landing from "@/pages/Landing";
 import Admin from "@/pages/Admin";
+
+// Centered spinner shown by <Suspense> while a lazy-loaded page chunk
+// is being fetched. Mirrors the auth-loading style used above so the
+// transition feels seamless.
+const RouteFallback = () => (
+  <div className="fixed inset-0 flex items-center justify-center bg-background">
+    <div className="w-8 h-8 border-4 border-border border-t-emerald-500 rounded-full animate-spin"></div>
+  </div>
+);
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -74,39 +89,44 @@ const AuthenticatedApp = () => {
   }
 
   // ✅ Render main app (protected)
+  // Phase 14: protected page components are React.lazy(); wrap Routes in
+  // Suspense so the small per-page chunks fetch on demand. The fallback
+  // spinner matches the auth-loading style above for a seamless feel.
   return (
-    <Routes>
-      {/* Admin panel — rendered without the main Layout, handles its own access control */}
-      <Route path="/admin" element={<Admin />} />
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        {/* Admin panel — rendered without the main Layout, handles its own access control */}
+        <Route path="/admin" element={<Admin />} />
 
-      <Route
-        path="/"
-        element={
-          <LayoutWrapper currentPageName={mainPageKey}>
-            <MainPage />
-          </LayoutWrapper>
-        }
-      />
+        <Route
+          path="/"
+          element={
+            <LayoutWrapper currentPageName={mainPageKey}>
+              <MainPage />
+            </LayoutWrapper>
+          }
+        />
 
-      {Object.entries(Pages).map(([path, Page]) => {
-        const element = (
-          <LayoutWrapper currentPageName={path}>
-            <Page />
-          </LayoutWrapper>
-        );
-        return (
-          <Route
-            key={path}
-            path={`/${path}`}
-            element={
-              ADMIN_ONLY_PAGES.has(path) ? <AdminOnly>{element}</AdminOnly> : element
-            }
-          />
-        );
-      })}
+        {Object.entries(Pages).map(([path, Page]) => {
+          const element = (
+            <LayoutWrapper currentPageName={path}>
+              <Page />
+            </LayoutWrapper>
+          );
+          return (
+            <Route
+              key={path}
+              path={`/${path}`}
+              element={
+                ADMIN_ONLY_PAGES.has(path) ? <AdminOnly>{element}</AdminOnly> : element
+              }
+            />
+          );
+        })}
 
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </Suspense>
   );
 };
 
