@@ -90,13 +90,15 @@ export default function Policies() {
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
     queryFn: () => Policy.list('-created_at'),
-    // Poll every 2s while any policy is in 'processing' (or has a pause
-    // request in flight) so live progress + status transitions
-    // (processing → paused, paused → processing on resume) stay in sync.
+    // Phase 14: poll every 3s (eased from 2s) while any policy is in
+    // 'processing' (or has a pause request in flight) so live progress
+    // + status transitions (processing → paused, paused → processing
+    // on resume) stay in sync. Polling stops the moment no policy is
+    // processing — this is conditional, not unconditional.
     refetchInterval: (query) => {
       const data = query?.state?.data;
       if (!Array.isArray(data)) return false;
-      if (data.some(p => p?.status === 'processing' || p?.pause_requested)) return 2000;
+      if (data.some(p => p?.status === 'processing' || p?.pause_requested)) return 3000;
       return false;
     },
     refetchIntervalInBackground: false,
