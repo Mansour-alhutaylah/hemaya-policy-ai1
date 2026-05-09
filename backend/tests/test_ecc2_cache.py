@@ -125,10 +125,21 @@ def test_cache_miss_calls_gpt_and_writes_cache(monkeypatch):
     assert insert["ph"] == "abc123def456"
     assert insert["pv"] == ecc2_analyzer.ECC2_PROMPT_VERSION
     assert insert["mdl"] == ecc2_analyzer.ECC2_MODEL
-    # cache_key is the SHA256 of the canonical key string
+    # cache_key is the SHA256 of the canonical key string. Phase 9 added the
+    # retrieval floor to the key so changes to RAG_MIN_RELEVANCE_SCORE produce
+    # a different cache_key (no stale-cache reuse across floors). Phase 10
+    # appended a literal grounding-algorithm version tag (e.g. "v2") so a
+    # change to the body of _find_grounded_evidence also segregates rows.
+    from backend import checkpoint_analyzer as ca
+    floor = getattr(ca, "RAG_MIN_RELEVANCE_SCORE", 0.0)
+    grounding = getattr(ca, "GROUNDING_VERSION", "v1")
     expected_key = hashlib.sha256(
-        f"ECC2|ECC-1-1-1|abc123def456|"
-        f"{ecc2_analyzer.ECC2_PROMPT_VERSION}|{ecc2_analyzer.ECC2_MODEL}".encode()
+        (
+            f"ECC2|ECC-1-1-1|abc123def456|"
+            f"{ecc2_analyzer.ECC2_PROMPT_VERSION}|{ecc2_analyzer.ECC2_MODEL}|"
+            f"floor={floor:.3f}|"
+            f"grounding={grounding}"
+        ).encode()
     ).hexdigest()
     assert insert["ck"] == expected_key
     # Result was scored (downstream gating ran)
@@ -243,6 +254,73 @@ def test_prompt_version_bump_changes_cache_key(monkeypatch):
     key_v999 = captured_select_keys[-1]
 
     assert key_v1 != key_v999, "Bumping ECC2_PROMPT_VERSION must produce a different cache_key"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Test 4b: Phase 9 — RAG_MIN_RELEVANCE_SCORE is part of the cache key.
+# Changing the floor must produce a different cache_key so verdicts
+# computed under one floor are NOT served on requests using a different
+# floor (focused_text differs → GPT input differs → cached verdict stale).
+# ─────────────────────────────────────────────────────────────────────────
+def test_retrieval_floor_change_produces_different_cache_key(monkeypatch):
+    from backend import checkpoint_analyzer as ca
+
+    captured_select_keys = []
+
+    def execute_side_effect(sql, params=None):
+        sql_str = str(sql)
+        if "SELECT result FROM ecc2_verification_cache" in sql_str:
+            captured_select_keys.append(params["ck"])
+            r = MagicMock()
+            r.fetchone.return_value = None  # always miss → INSERT path runs
+            return r
+        if "INSERT INTO ecc2_verification_cache" in sql_str:
+            return MagicMock()
+        return MagicMock()
+
+    db = MagicMock()
+    db.execute.side_effect = execute_side_effect
+    fake_call_llm = AsyncMock(return_value=_gpt_response())
+    monkeypatch.setattr(ecc2_analyzer, "call_llm", fake_call_llm)
+
+    # Run with floor=0.0
+    monkeypatch.setattr(ca, "RAG_MIN_RELEVANCE_SCORE", 0.0)
+    asyncio.run(ecc2_analyzer._assess_control(
+        control=_control(), policy_chunks=_policy_chunks(),
+        policy_text="\n\n".join(c["text"] for c in _policy_chunks()),
+        bm25_index=None, db=db, policy_hash="abc123",
+    ))
+    key_floor_0 = captured_select_keys[-1]
+
+    # Run with floor=0.10 (Phase 9 default)
+    monkeypatch.setattr(ca, "RAG_MIN_RELEVANCE_SCORE", 0.10)
+    asyncio.run(ecc2_analyzer._assess_control(
+        control=_control(), policy_chunks=_policy_chunks(),
+        policy_text="\n\n".join(c["text"] for c in _policy_chunks()),
+        bm25_index=None, db=db, policy_hash="abc123",
+    ))
+    key_floor_010 = captured_select_keys[-1]
+
+    # Run with floor=0.20
+    monkeypatch.setattr(ca, "RAG_MIN_RELEVANCE_SCORE", 0.20)
+    asyncio.run(ecc2_analyzer._assess_control(
+        control=_control(), policy_chunks=_policy_chunks(),
+        policy_text="\n\n".join(c["text"] for c in _policy_chunks()),
+        bm25_index=None, db=db, policy_hash="abc123",
+    ))
+    key_floor_020 = captured_select_keys[-1]
+
+    assert key_floor_0 != key_floor_010, (
+        "floor=0.0 and floor=0.10 must produce different cache keys; "
+        "otherwise stale cached verdicts will be served when the retrieval "
+        "floor changes."
+    )
+    assert key_floor_010 != key_floor_020, (
+        "floor=0.10 and floor=0.20 must produce different cache keys."
+    )
+    assert key_floor_0 != key_floor_020, (
+        "floor=0.0 and floor=0.20 must produce different cache keys."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────

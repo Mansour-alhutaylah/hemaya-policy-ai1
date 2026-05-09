@@ -7,6 +7,7 @@ Deterministic 3-layer compliance analysis:
 """
 import os
 import re
+import sys
 import json
 import uuid
 import time
@@ -35,6 +36,34 @@ _openai_client = httpx.AsyncClient(
 # Bumping it invalidates all cached verdicts from the old prompt.
 PROMPT_VERSION = "v2"
 
+# Phase 9 retrieval relevance floor.
+# After hybrid (keyword + BM25) scoring in _find_relevant_sections, chunks
+# whose combined per-query score falls below this threshold are dropped
+# before being sent to GPT. The combined score is per-query normalized
+# (top chunk ≈ 1.0), so 0.10 filters only obviously irrelevant chunks
+# (boilerplate / no keyword hit / near-zero BM25). Diagnostic on real
+# data showed ~30% of (chunk × control) score points are filtered at 0.10
+# and every filtered example was clear noise. Set to 0.0 to disable the
+# floor and restore the legacy "always send top-k, fall back to all
+# chunks when fewer than 3 selected" behavior.
+RAG_MIN_RELEVANCE_SCORE = float(os.getenv("RAG_MIN_RELEVANCE_SCORE", "0.10"))
+
+# Phase 10. Algorithm version tag used in ECC-2 cache keys. Bumped only when
+# the body of _find_grounded_evidence changes meaningfully. v1 was character-
+# aligned 1.3×-claim-length sliding windows over the full normalized policy;
+# v2 splits the policy into sentence-bounded segments and matches the claim
+# against each segment plus adjacent-pair fallback. Threshold is tracked
+# separately via GROUNDING_MIN_SIMILARITY.
+GROUNDING_VERSION = "v2"
+
+# Phase 10. Minimum SequenceMatcher.ratio() to accept a fuzzy match. Default
+# 0.75 matches the v1 numeric threshold deliberately — Phase 10 changes the
+# comparison UNIT (sentence-window vs arbitrary 1.3× character slice), not
+# the threshold value, so verdicts stay attributable to a single change.
+# Set 0.0 via env to disable the fuzzy-grounding requirement entirely (any
+# claim grounds; restores audit's "fake compliance" risk — DO NOT in prod).
+GROUNDING_MIN_SIMILARITY = float(os.getenv("GROUNDING_MIN_SIMILARITY", "0.75"))
+
 
 def _normalize_text(s):
     """Lowercase and collapse all whitespace."""
@@ -43,10 +72,34 @@ def _normalize_text(s):
     return re.sub(r'\s+', ' ', s.lower()).strip()
 
 
+# Sentence boundaries: terminal punctuation, semicolons, colons (which often
+# precede compliance lists), and any newline. Matches the boundary itself so
+# the trailing whitespace is consumed.
+_SENT_BOUNDARY = re.compile(r'(?<=[.!?;:])\s+|\n+')
+
+
+def _split_sentences(norm_text):
+    """Split already-normalized policy text into sentence-like segments.
+
+    Returns a list of non-empty trimmed segments. Used as the comparison
+    unit in the v2 grounding algorithm so claims can no longer pick up
+    accidental similarity from unrelated neighboring text.
+    """
+    if not norm_text:
+        return []
+    parts = _SENT_BOUNDARY.split(norm_text)
+    return [p.strip() for p in parts if p and p.strip()]
+
+
 def _find_grounded_evidence(claimed_evidence, policy_text):
     """
     Returns (grounded: bool, actual_text: str, similarity: float).
-    Tries exact substring first, then fuzzy match.
+
+    Stage 1: exact normalized-substring fast path (always returns sim=1.0).
+    Stage 2 (Phase 10 v2): fuzzy match against sentence-bounded windows
+    plus adjacent-sentence pairs. The sentence unit prevents an arbitrary
+    1.3×-claim-length slice from straddling unrelated neighbors and
+    inflating similarity through shared common-word noise.
     """
     if not claimed_evidence or not policy_text:
         return False, "", 0.0
@@ -60,19 +113,38 @@ def _find_grounded_evidence(claimed_evidence, policy_text):
     if norm_evidence in norm_policy:
         return True, claimed_evidence, 1.0
 
-    # Fuzzy match: slide a window of similar size over policy
-    win_size = max(50, int(len(norm_evidence) * 1.3))
+    sentences = _split_sentences(norm_policy)
+    if not sentences:
+        return False, claimed_evidence, 0.0
+
     best_ratio = 0.0
     best_window = ""
-    step = max(20, win_size // 4)
-    for i in range(0, max(1, len(norm_policy) - win_size), step):
-        window = norm_policy[i:i+win_size]
-        ratio = SequenceMatcher(None, norm_evidence, window).ratio()
+    matcher = SequenceMatcher(autojunk=False)
+    matcher.set_seq1(norm_evidence)
+
+    # Single-sentence comparison.
+    for s in sentences:
+        matcher.set_seq2(s)
+        ratio = matcher.ratio()
         if ratio > best_ratio:
             best_ratio = ratio
-            best_window = window
+            best_window = s
 
-    if best_ratio >= 0.75:
+    # Adjacent-pair fallback: recovers verbatim or near-verbatim evidence
+    # that genuinely spans a sentence break. Only consecutive pairs to
+    # avoid re-introducing the long-window leniency.
+    for i in range(len(sentences) - 1):
+        pair = sentences[i] + " " + sentences[i + 1]
+        matcher.set_seq2(pair)
+        ratio = matcher.ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_window = pair
+
+    threshold = getattr(
+        sys.modules[__name__], "GROUNDING_MIN_SIMILARITY", 0.75
+    )
+    if best_ratio >= threshold:
         return True, best_window, best_ratio
     return False, claimed_evidence, best_ratio
 
@@ -416,13 +488,28 @@ def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
 
     # Apply offset for second-pass retrieval
     selected = combined[offset:offset + 8]
+
+    # Phase 9: drop chunks whose combined per-query score is below the
+    # relevance floor. Filters obvious noise (boilerplate / no keyword hit
+    # / near-zero BM25) before sending text to GPT. Empty result is a
+    # legitimate signal of weak retrieval — the downstream verifier will
+    # report "no evidence found" and the grounding check will keep the
+    # status at non_compliant. With RAG_MIN_RELEVANCE_SCORE=0.0 the floor
+    # is disabled and the legacy "fewer than 3 → return all chunks"
+    # fallback below restores the pre-Phase-9 behavior exactly.
+    if RAG_MIN_RELEVANCE_SCORE > 0.0:
+        selected = [s for s in selected if s[0] >= RAG_MIN_RELEVANCE_SCORE]
+
     top = [c[1] for c in selected]
 
     # Retrieval quality = best combined score (0.0 to 1.0)
     quality = selected[0][0] if selected else 0.0
 
-    # Fallback: if fewer than 3 relevant chunks found, return all chunks
-    if len(top) < 3:
+    # Legacy "fewer than 3 → return all chunks" fallback. Only fires when
+    # the relevance floor is disabled. With the floor enabled, an empty
+    # result intentionally signals weak retrieval to the analyzer instead
+    # of flooding GPT with potentially irrelevant chunks.
+    if RAG_MIN_RELEVANCE_SCORE == 0.0 and len(top) < 3:
         return "\n---\n".join(texts), quality
     return "\n---\n".join(top), quality
 
@@ -841,7 +928,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
         # Pause check at the start of each framework (safe boundary).
         if _pause_requested():
             _mark_paused()
-            print(f"  Pause requested before {fw} — stopping gracefully.")
+            print(f"  Pause requested before {fw} - stopping gracefully.")
             return {"paused": True, "results": all_results}
 
         # Resume mode: skip frameworks that already have a result row.
@@ -854,7 +941,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
                 ), {"pid": policy_id, "fw": fw}).fetchone()
                 if existing:
                     fw_index += 1
-                    print(f"  [resume] {fw} already complete — skipping")
+                    print(f"  [resume] {fw} already complete - skipping")
                     _report(int(25 + fw_budget * fw_index), f"{fw} (resumed, already done)")
                     continue
             except Exception:

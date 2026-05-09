@@ -39,6 +39,7 @@ from backend.vector_store import get_embeddings, store_chunks_with_embeddings, d
 from backend.chunker import chunk_text
 from backend.routers.remediation import router as remediation_router
 from backend.routers.reports_export import router as export_router
+from backend.routers.explainability import router as explainability_router
 
 
 app = FastAPI()
@@ -74,6 +75,7 @@ app.add_middleware(
 
 app.include_router(remediation_router)
 app.include_router(export_router)
+app.include_router(explainability_router)
 
 
 @app.on_event("startup")
@@ -1672,7 +1674,7 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
                 "zero_checkpoint_controls": rd["zero_cp_controls"],
             })
     if unready:
-        print(f"[analyze_policy] 409 — unready frameworks: {[u['framework'] for u in unready]}")
+        print(f"[analyze_policy] 409 - unready frameworks: {[u['framework'] for u in unready]}")
         raise HTTPException(status_code=409, detail={
             "error": "frameworks_not_ready",
             "message": ("One or more frameworks are incomplete (some controls "
@@ -2678,7 +2680,7 @@ def setup_framework_file_columns():
                 db.commit()
             except Exception as e:
                 db.rollback()
-                print(f"[startup] Framework column migration warning: {sql} → {e}")
+                print(f"[startup] Framework column migration warning: {sql} -> {e}")
         print("[startup] Framework file columns ensured")
     finally:
         db.close()
@@ -2734,7 +2736,7 @@ def setup_policy_progress_columns():
                 db.commit()
             except Exception as e:
                 db.rollback()
-                print(f"[startup] Policy progress column migration warning: {sql} → {e}")
+                print(f"[startup] Policy progress column migration warning: {sql} -> {e}")
         print("[startup] Policy progress columns ensured")
     finally:
         db.close()

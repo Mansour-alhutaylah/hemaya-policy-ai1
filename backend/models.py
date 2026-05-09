@@ -267,8 +267,11 @@ class Framework(Base):
 # Valid values: "draft" | "under_review" | "approved" | "rejected" | "superseded"
 REMEDIATION_STATUSES = {"draft", "under_review", "approved", "rejected", "superseded"}
 
-# Valid values: "original" | "ai_draft" | "final"
-VERSION_TYPES = {"original", "ai_draft", "final"}
+# Valid values: "original" | "ai_draft" | "ai_remediated" | "final"
+#   ai_draft       — per-control additive draft (one missing checkpoint at a time)
+#   ai_remediated  — full-policy improved version (consolidated, addresses all
+#                    partial / non-compliant controls in the latest analysis)
+VERSION_TYPES = {"original", "ai_draft", "ai_remediated", "final"}
 
 
 class RemediationDraft(Base):

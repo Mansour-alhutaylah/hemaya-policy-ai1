@@ -618,7 +618,7 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
 
     t0 = time.time()
     print(f"\n{'='*60}")
-    print(f"SACS-002 STRUCTURED ANALYSIS STARTED — policy={policy_id}")
+    print(f"SACS-002 STRUCTURED ANALYSIS STARTED - policy={policy_id}")
     print(f"{'='*60}")
 
     _report(12, "SACS-002: Checking policy chunks")
@@ -759,9 +759,9 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
     d_high = [r for r in results_list if r["_l1_conf"] >= 0.75]
     d_grounded = [r for r in results_list if r["_l1_grounded"]]
     print(f"\n  [SACS002] === CONFIDENCE DISTRIBUTION ({len(results_list)} controls) ===")
-    print(f"    L1_conf 0.00–0.44 : {len(d_low):3d}  (→ non_compliant)")
-    print(f"    L1_conf 0.45–0.74 : {len(d_mid):3d}  (grounded → partial candidates)")
-    print(f"    L1_conf 0.75–1.00 : {len(d_high):3d}  (grounded → compliant/partial by action_cov)")
+    print(f"    L1_conf 0.00-0.44 : {len(d_low):3d}  (-> non_compliant)")
+    print(f"    L1_conf 0.45-0.74 : {len(d_mid):3d}  (grounded -> partial candidates)")
+    print(f"    L1_conf 0.75-1.00 : {len(d_high):3d}  (grounded -> compliant/partial by action_cov)")
     print(f"    Grounded evidence  : {len(d_grounded):3d}")
     print(f"  [SACS002] =====================================================\n")
 

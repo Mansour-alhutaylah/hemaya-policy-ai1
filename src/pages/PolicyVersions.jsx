@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-  GitFork, TrendingUp, Clock, CheckCircle2, XCircle, AlertTriangle,
-  ChevronRight, FileText, Eye, ThumbsUp, ThumbsDown, Loader2,
-  ArrowLeft, Layers, Sparkles,
+  GitFork, CheckCircle2, XCircle, AlertTriangle, FileText, Loader2,
+  Sparkles, Wand2, Download, ListChecks, RefreshCw, ArrowLeft,
+  Shield, ScrollText, FileDown, TrendingUp, TrendingDown, ArrowRight,
 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -20,14 +20,13 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import PageContainer from '@/components/layout/PageContainer';
 import EmptyState from '@/components/ui/EmptyState';
-import DiffViewer from '@/components/DiffViewer';
-import RemediationExplainability from '@/components/RemediationExplainability';
+import { api } from '@/api/apiClient';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 const token = () => localStorage.getItem('token');
 
-async function apiFetch(url) {
+async function authFetch(url) {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token()}` } });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ detail: 'Request failed' }));
@@ -36,11 +35,11 @@ async function apiFetch(url) {
   return res.json();
 }
 
-async function apiPatch(url, body) {
+async function authPost(url, body) {
   const res = await fetch(url, {
-    method: 'PATCH',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-    body: JSON.stringify(body),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ detail: 'Request failed' }));
@@ -49,403 +48,407 @@ async function apiPatch(url, body) {
   return res.json();
 }
 
-// ── Status config ─────────────────────────────────────────────────────────────
+/**
+ * Download a binary stream from the API and trigger a browser save dialog.
+ * Resolves on success, throws on a non-2xx so the caller can show an error toast.
+ * The default filename is read from the Content-Disposition header.
+ */
+async function authDownloadPdf(url, fallbackName) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token()}` } });
+  if (!res.ok) {
+    let detail = 'PDF generation failed. Please try again.';
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = typeof j.detail === 'string' ? j.detail : detail;
+    } catch { /* not JSON */ }
+    throw new Error(detail);
+  }
+  const blob = await res.blob();
+  // Parse Content-Disposition: attachment; filename="..."
+  const cd = res.headers.get('Content-Disposition') || '';
+  const m = cd.match(/filename="?([^";]+)"?/i);
+  const filename = (m && m[1]) || fallbackName || 'policy.pdf';
 
-const STATUS = {
-  draft:        { label: 'Draft',        color: 'text-amber-600 dark:text-amber-400  bg-amber-500/10  border-amber-500/30', icon: Clock },
-  under_review: { label: 'Under Review', color: 'text-blue-600  dark:text-blue-400   bg-blue-500/10   border-blue-500/30',  icon: Eye   },
-  approved:     { label: 'Approved',     color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30', icon: CheckCircle2 },
-  rejected:     { label: 'Rejected',     color: 'text-red-600   dark:text-red-400    bg-red-500/10    border-red-500/30',   icon: XCircle },
-  superseded:   { label: 'Superseded',   color: 'text-muted-foreground bg-muted/50 border-border',                          icon: GitFork },
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
+
+// ── Status visual config ──────────────────────────────────────────────────────
+
+const VERSION_TYPE_META = {
+  original: {
+    label: 'Original',
+    icon: ScrollText,
+    chip: 'text-muted-foreground bg-muted/60 border-border',
+  },
+  ai_remediated: {
+    label: 'AI-Remediated',
+    icon: Sparkles,
+    chip: 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 border-emerald-500/30',
+  },
+  ai_draft: {
+    label: 'AI Draft',
+    icon: Wand2,
+    chip: 'text-blue-700 dark:text-blue-300 bg-blue-500/15 border-blue-500/30',
+  },
+  final: {
+    label: 'Final',
+    icon: CheckCircle2,
+    chip: 'text-purple-700 dark:text-purple-300 bg-purple-500/15 border-purple-500/30',
+  },
 };
 
-function StatusChip({ status }) {
-  const cfg = STATUS[status] || STATUS.draft;
-  const Icon = cfg.icon;
+function VersionTypeBadge({ type }) {
+  const meta = VERSION_TYPE_META[type] || VERSION_TYPE_META.original;
+  const Icon = meta.icon;
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${meta.chip}`}>
       <Icon className="w-3 h-3" />
-      {cfg.label}
+      {meta.label}
     </span>
   );
 }
 
-// ── Score bar ─────────────────────────────────────────────────────────────────
+// ── Generation modal ──────────────────────────────────────────────────────────
 
-function ScoreBar({ label, value, color }) {
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-semibold">{value}%</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+const LOADING_STEPS = [
+  'Loading partial and non-compliant controls…',
+  'Building consolidated remediation request…',
+  'Generating new policy sections…',
+  'Persisting AI-remediated version…',
+];
 
-// ── Draft card ────────────────────────────────────────────────────────────────
-
-function DraftCard({ draft, isSelected, onClick }) {
-  const ts = draft.created_at
-    ? format(new Date(draft.created_at), 'MMM d, yyyy • HH:mm')
-    : '—';
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left p-4 rounded-xl border transition-all duration-150 ${
-        isSelected
-          ? 'border-emerald-500/60 bg-emerald-500/5 dark:bg-emerald-500/8 shadow-sm'
-          : 'border-border bg-card hover:border-border/80 hover:bg-muted/30'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-mono text-xs font-semibold text-foreground/80">
-              {draft.control_code || 'Unknown Control'}
-            </span>
-            <StatusChip status={draft.remediation_status} />
-          </div>
-          <p className="text-xs text-muted-foreground truncate">
-            {draft.control_title || draft.framework_name || '—'}
-          </p>
-          {draft.section_headers?.length > 0 && (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 truncate">
-              {draft.section_headers.slice(0, 2).join(' · ')}
-              {draft.section_headers.length > 2 && ` +${draft.section_headers.length - 2} more`}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? 'rotate-90 text-emerald-500' : 'text-muted-foreground'}`} />
-          <span className="text-[10px] text-muted-foreground">{ts}</span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-// ── Review modal ──────────────────────────────────────────────────────────────
-
-function ReviewModal({ draft, onClose, onSuccess }) {
-  const [action, setAction]   = useState(null);  // 'approve' | 'reject'
-  const [notes, setNotes]     = useState('');
-  const [notesErr, setNotesErr] = useState(false);
+function GenerateImprovedDialog({
+  open, onClose, policyId, frameworkId, onSuccess,
+}) {
+  const [step, setStep] = useState('confirm');     // confirm | running | done
+  const [stepIdx, setStepIdx] = useState(0);
+  const [result, setResult] = useState(null);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: ({ status, notes }) =>
-      apiPatch(`/api/remediation/drafts/${draft.id}`, {
-        remediation_status: status,
-        review_notes: notes || null,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['remediationDrafts'] });
-      toast({ title: action === 'approve' ? 'Draft approved.' : 'Draft rejected.' });
-      onSuccess();
+    mutationFn: (body) => authPost('/api/policy-versions/generate', body),
+    onSuccess: (data) => {
+      setResult(data);
+      setStep('done');
+      toast({ title: 'Improved version saved.' });
+      onSuccess?.(data);
     },
-    onError: (e) => toast({ title: 'Action failed', description: e.message, variant: 'destructive' }),
+    onError: (e) => {
+      setStep('confirm');
+      toast({ title: 'Generation failed', description: e.message, variant: 'destructive' });
+    },
   });
 
-  const handleSubmit = () => {
-    if (action === 'reject' && !notes.trim()) {
-      setNotesErr(true);
-      return;
+  useEffect(() => {
+    if (step !== 'running') return;
+    const id = setInterval(() => setStepIdx(i => (i + 1) % LOADING_STEPS.length), 1800);
+    return () => clearInterval(id);
+  }, [step]);
+
+  const handleGenerate = () => {
+    setStep('running');
+    setStepIdx(0);
+    mutation.mutate({
+      policy_id: policyId,
+      framework_id: frameworkId && frameworkId !== 'all' ? frameworkId : null,
+    });
+  };
+
+  const handleClose = () => {
+    setStep('confirm');
+    setStepIdx(0);
+    setResult(null);
+    setPdfDownloading(false);
+    onClose();
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!result?.version_id) return;
+    setPdfDownloading(true);
+    try {
+      await authDownloadPdf(
+        `/api/policies/${policyId}/versions/${result.version_id}/download/pdf`,
+        `ai_remediated_policy_v${result.version_number}.pdf`,
+      );
+      toast({ title: 'PDF downloaded.' });
+    } catch (e) {
+      toast({
+        title: 'PDF generation failed. Please try again.',
+        description: e.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setPdfDownloading(false);
     }
-    mutation.mutate({ status: action === 'approve' ? 'approved' : 'rejected', notes });
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-600" />
-            Review Draft — {draft.control_code}
-          </DialogTitle>
-          <DialogDescription>
-            Approve to promote this draft to your policy. Reject to discard it.
-          </DialogDescription>
-        </DialogHeader>
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-lg">
+        {step === 'confirm' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-emerald-500" />
+                Generate Improved Policy Version
+              </DialogTitle>
+              <DialogDescription>
+                Create a new <span className="font-medium">ai_remediated</span> version of this
+                policy that addresses every partial and non-compliant control found in the
+                latest analysis. The original policy file is never modified.
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="text-sm text-foreground/85 space-y-2 py-2">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                Pulls all partial / non-compliant findings from the most recent analysis.
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                Generates targeted policy sections for the missing requirements only.
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                Saves a new version in <span className="font-mono">policy_versions</span>.
+              </li>
+            </ul>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border/60">
+              <Button variant="outline" onClick={handleClose}>Cancel</Button>
+              <Button onClick={handleGenerate} className="bg-emerald-600 hover:bg-emerald-700 gap-1.5">
+                <Wand2 className="w-4 h-4" />
+                Generate
+              </Button>
+            </div>
+          </>
+        )}
 
-        <div className="space-y-4 py-2">
-          {/* Action selection */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setAction('approve')}
-              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                action === 'approve'
-                  ? 'border-emerald-500 bg-emerald-500/10'
-                  : 'border-border hover:border-emerald-500/50'
-              }`}
-            >
-              <ThumbsUp className={`w-6 h-6 ${action === 'approve' ? 'text-emerald-500' : 'text-muted-foreground'}`} />
-              <span className="text-sm font-medium">Approve</span>
-            </button>
-            <button
-              onClick={() => setAction('reject')}
-              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                action === 'reject'
-                  ? 'border-red-500 bg-red-500/10'
-                  : 'border-border hover:border-red-500/50'
-              }`}
-            >
-              <ThumbsDown className={`w-6 h-6 ${action === 'reject' ? 'text-red-500' : 'text-muted-foreground'}`} />
-              <span className="text-sm font-medium">Reject</span>
-            </button>
-          </div>
+        {step === 'running' && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+                Generating improved version
+              </DialogTitle>
+              <DialogDescription>{LOADING_STEPS[stepIdx]}</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col items-center justify-center py-8 gap-3">
+              <div className="flex gap-1.5">
+                {LOADING_STEPS.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1 rounded-full transition-all duration-500 ${
+                      i <= stepIdx ? 'w-6 bg-emerald-500' : 'w-3 bg-muted'
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This usually takes 30–90 seconds.
+              </p>
+            </div>
+          </>
+        )}
 
-          <div>
-            <label className={`text-xs font-medium mb-1.5 block ${notesErr ? 'text-red-500' : 'text-muted-foreground'}`}>
-              Review Notes {action === 'reject' && <span className="text-red-500">*</span>}
-            </label>
-            <Textarea
-              placeholder="Explain your decision…"
-              value={notes}
-              onChange={(e) => { setNotes(e.target.value); if (e.target.value.trim()) setNotesErr(false); }}
-              rows={3}
-              className={notesErr ? 'border-red-400' : ''}
-            />
-            {notesErr && (
-              <p className="text-xs text-red-500 mt-1">Notes are required when rejecting.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/60">
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>Cancel</Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!action || mutation.isPending}
-            className={
-              action === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' :
-              action === 'reject'  ? 'bg-red-600 hover:bg-red-700' :
-              ''
-            }
-          >
-            {mutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {mutation.isPending ? 'Saving…' : action ? `Confirm ${action === 'approve' ? 'Approval' : 'Rejection'}` : 'Select action'}
-          </Button>
-        </div>
+        {step === 'done' && result && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-emerald-500" />
+                New version saved
+              </DialogTitle>
+              <DialogDescription>
+                A new <span className="font-mono">ai_remediated</span> version is now in the
+                version history below.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/8 p-4">
+                <p className="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
+                  Estimated post-remediation score
+                </p>
+                <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  {result.estimated_improvement}%
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Run analysis on this new version to verify the actual score.
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+                  Controls addressed ({result.addressed_controls.length})
+                </p>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                  {result.addressed_controls.map((c, i) => (
+                    <Badge key={i} variant="outline" className="font-mono text-xs">
+                      {c}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border/60">
+              <Button variant="outline" onClick={handleClose}>Close</Button>
+              <Button
+                onClick={handleDownloadPdf}
+                disabled={pdfDownloading}
+                className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+              >
+                {pdfDownloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileDown className="w-4 h-4" />
+                )}
+                {pdfDownloading ? 'Preparing PDF…' : 'Download PDF'}
+              </Button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ── Detail panel ──────────────────────────────────────────────────────────────
-
-function DraftDetail({ draftId, policyName, onReview }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['draftDetail', draftId],
-    queryFn: () => apiFetch(`/api/remediation/drafts/${draftId}`),
-    enabled: !!draftId,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-          <p className="text-sm">Loading draft…</p>
-        </div>
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64 text-red-500 text-sm">
-        Failed to load draft: {error.message}
-      </div>
-    );
-  }
-  if (!data) return null;
-
-  const mergedText = data.original_policy_text
-    ? `${data.original_policy_text}\n\n${data.suggested_policy_text}`
-    : data.suggested_policy_text;
-
-  const canReview = ['draft', 'under_review'].includes(data.remediation_status);
-
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-sm font-bold">{data.control_code || '—'}</span>
-            <StatusChip status={data.remediation_status} />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {data.framework_name} · {data.control_title}
-          </p>
-        </div>
-        {canReview && (
-          <Button
-            size="sm"
-            onClick={onReview}
-            className="bg-emerald-600 hover:bg-emerald-700"
-          >
-            <CheckCircle2 className="w-4 h-4 mr-1.5" />
-            Review & Decide
-          </Button>
-        )}
-      </div>
-
-      {/* Missing requirements */}
-      {data.missing_requirements?.length > 0 && (
-        <Card className="border-amber-500/20 bg-amber-500/5">
-          <CardHeader className="pb-2 pt-3 px-4">
-            <CardTitle className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Requirements This Draft Addresses ({data.missing_requirements.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <ul className="space-y-1">
-              {data.missing_requirements.map((req, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
-                  <span className="mt-0.5 shrink-0 w-4 h-4 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px] font-bold">
-                    {i + 1}
-                  </span>
-                  {req}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Section headers generated */}
-      {data.section_headers?.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-            New Policy Sections Generated
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {data.section_headers.map((h, i) => (
-              <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 font-medium">
-                {h}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI Rationale */}
-      {data.ai_rationale && (
-        <div className="p-3.5 bg-blue-500/8 border border-blue-500/20 rounded-xl">
-          <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1.5">AI Rationale</p>
-          <p className="text-xs text-blue-800 dark:text-blue-300/90 leading-relaxed">{data.ai_rationale}</p>
-        </div>
-      )}
-
-      {/* Explainability — why this draft was suggested */}
-      <RemediationExplainability data={data} />
-
-      {/* Side-by-side diff */}
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-          <GitFork className="w-3.5 h-3.5" />
-          Policy Diff — Before vs. With Draft Applied
-        </p>
-        <DiffViewer
-          oldText={data.original_policy_text || '(no original text on record)'}
-          newText={mergedText}
-          oldLabel="Original Policy"
-          newLabel="Policy + AI Draft"
-          height={500}
-        />
-      </div>
-
-      {/* Review notes if already decided */}
-      {data.review_notes && (
-        <div className="p-3.5 bg-muted/40 border border-border rounded-xl">
-          <p className="text-xs font-semibold text-muted-foreground mb-1">Review Notes</p>
-          <p className="text-xs text-foreground/80">{data.review_notes}</p>
-        </div>
-      )}
-    </div>
   );
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PolicyVersions() {
-  const [searchParams]    = useSearchParams();
-  const navigate          = useNavigate();
-  const { toast }         = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const urlPolicyId  = searchParams.get('policy_id');
-  const urlDraftId   = searchParams.get('draft_id');
+  const initialPolicyId = searchParams.get('policy_id') || '';
+  const initialFrameworkId = searchParams.get('framework_id') || 'all';
 
-  const [policyId,   setPolicyId]   = useState(urlPolicyId || '');
-  const [selectedId, setSelectedId] = useState(urlDraftId || null);
-  const [showReview, setShowReview] = useState(false);
+  const [policyId, setPolicyId] = useState(initialPolicyId);
+  const [frameworkId, setFrameworkId] = useState(initialFrameworkId);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [openVersionId, setOpenVersionId] = useState(null);
 
-  // Policy list for selector
+  // Sync to URL
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (policyId) next.set('policy_id', policyId); else next.delete('policy_id');
+    if (frameworkId && frameworkId !== 'all') next.set('framework_id', frameworkId);
+    else next.delete('framework_id');
+    setSearchParams(next, { replace: true });
+  }, [policyId, frameworkId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Policies
   const { data: policies = [] } = useQuery({
     queryKey: ['policies'],
-    queryFn: () => apiFetch('/api/entities/Policy?limit=50'),
+    queryFn: () => api.entities.Policy.list(),
   });
 
-  // Draft list for selected policy.
-  // Uses the path-param endpoint /api/remediation/policies/{id}/drafts.
-  // retry:false ensures isLoading flips to false immediately on any error
-  // (including 404) instead of retrying 3× and leaving the spinner alive.
+  // Frameworks with results for this policy
+  const { data: frameworksWithResults = [] } = useQuery({
+    queryKey: ['mappingFrameworks', policyId],
+    queryFn: () => authFetch(`/api/mapping-reviews/frameworks?policy_id=${policyId}`),
+    enabled: !!policyId,
+  });
+
+  // Mapping items for the partial / non-compliant summary (uses the same
+  // explainability endpoint to stay consistent with Mapping Review).
+  const explainParams = useMemo(() => {
+    if (!policyId) return null;
+    const p = new URLSearchParams({ policy_id: policyId });
+    if (frameworkId && frameworkId !== 'all') p.set('framework_id', frameworkId);
+    return p.toString();
+  }, [policyId, frameworkId]);
+
+  const { data: mappingItems = [], isLoading: loadingItems } = useQuery({
+    queryKey: ['mappingReviews', explainParams],
+    queryFn: () => authFetch(`/api/mapping-reviews?${explainParams}`),
+    enabled: !!explainParams,
+    retry: false,
+  });
+
+  // Versions
   const {
-    data: drafts = [],
-    isLoading,
-    isError: draftsError,
+    data: versions = [],
+    isLoading: loadingVersions,
   } = useQuery({
-    queryKey: ['remediationDrafts', policyId],
-    queryFn: () => apiFetch(`/api/remediation/policies/${policyId}/drafts`),
+    queryKey: ['policyVersions', policyId],
+    queryFn: () => authFetch(`/api/policy-versions?policy_id=${policyId}`),
     enabled: !!policyId,
     retry: false,
   });
 
-  const selectedDraft = drafts.find(d => d.id === selectedId) || null;
+  const counts = useMemo(() => {
+    const c = { compliant: 0, partial: 0, non_compliant: 0 };
+    mappingItems.forEach(it => { if (c[it.status] !== undefined) c[it.status] += 1; });
+    return c;
+  }, [mappingItems]);
 
-  const handlePolicyChange = (pid) => {
-    setPolicyId(pid);
-    setSelectedId(null);
+  const total = mappingItems.length;
+  const score =
+    total === 0 ? null : Math.round(((counts.compliant + counts.partial * 0.5) / total) * 100);
+
+  const partialNonCompliant = useMemo(
+    () => mappingItems.filter(it => it.status !== 'compliant'),
+    [mappingItems],
+  );
+
+  const policyName = policies.find(p => p.id === policyId)?.file_name || '';
+
+  const handleGenerationSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['policyVersions', policyId] });
   };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer
       title="Policy Versions"
-      subtitle="Review AI-generated remediation drafts and track policy version history"
+      subtitle="Generate AI-remediated versions of a policy and track its full version history."
     >
       {/* Top bar */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate('/MappingReview')}
-          className="gap-1.5"
+          onClick={() => navigate(`/MappingReview${policyId ? `?policy_id=${policyId}` : ''}`)}
+          className="gap-1.5 self-start"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Mapping Review
+          Mapping Review
         </Button>
 
-        <div className="ml-auto">
-          <Select value={policyId} onValueChange={handlePolicyChange}>
-            <SelectTrigger className="w-64">
+        <div className="flex-1 min-w-0">
+          <Select value={policyId} onValueChange={setPolicyId}>
+            <SelectTrigger className="w-full">
               <FileText className="w-4 h-4 mr-2 shrink-0" />
               <SelectValue placeholder="Select a policy…" />
             </SelectTrigger>
             <SelectContent>
               {policies.map(p => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.file_name || p.id}
+                <SelectItem key={p.id} value={p.id}>{p.file_name || p.id}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="md:w-56">
+          <Select
+            value={frameworkId}
+            onValueChange={setFrameworkId}
+            disabled={!policyId}
+          >
+            <SelectTrigger className="w-full">
+              <Shield className="w-4 h-4 mr-2 shrink-0" />
+              <SelectValue placeholder="All frameworks" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All frameworks</SelectItem>
+              {frameworksWithResults.map(fw => (
+                <SelectItem key={fw.framework_id} value={fw.framework_id}>
+                  {fw.framework_name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -457,80 +460,601 @@ export default function PolicyVersions() {
         <EmptyState
           icon={GitFork}
           title="Select a policy"
-          description="Choose a policy above to view its AI remediation drafts and version history."
+          description="Choose a policy above to view its compliance status, generate an improved version, and browse version history."
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
-          {/* Left: draft list */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-3">
-              Remediation Drafts ({drafts.length})
-            </p>
-
-            {isLoading ? (
-              // isLoading is false as soon as the query settles (data OR error).
-              // retry:false above guarantees this never spins indefinitely.
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-              </div>
-            ) : draftsError ? (
-              <div className="text-center py-12 text-sm text-red-500/80 border border-dashed border-red-500/30 rounded-xl">
-                Could not load drafts for this policy.
-                <br />
-                <span className="text-xs opacity-70">
-                  The policy may not have been analysed yet, or a server error occurred.
-                </span>
-              </div>
-            ) : drafts.length === 0 ? (
-              <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-border rounded-xl">
-                No drafts generated yet for this policy.
-                <br />
-                <span className="text-xs opacity-70">
-                  Go to Mapping Review and click "Accept &amp; Generate Draft".
-                </span>
-              </div>
-            ) : (
-              drafts.map(d => (
-                <DraftCard
-                  key={d.id}
-                  draft={d}
-                  isSelected={d.id === selectedId}
-                  onClick={() => setSelectedId(d.id)}
-                />
-              ))
-            )}
+        <div className="space-y-6">
+          {/* Compliance overview */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs uppercase font-semibold text-muted-foreground mb-1.5">
+                  Latest score
+                </p>
+                <p className="text-3xl font-black tabular-nums">
+                  {score === null ? '—' : `${score}%`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {total > 0 ? `${total} controls assessed` : 'No analysis yet'}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-400 mb-1.5">
+                  Compliant
+                </p>
+                <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  {counts.compliant}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs uppercase font-semibold text-amber-700 dark:text-amber-400 mb-1.5">
+                  Partial
+                </p>
+                <p className="text-3xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                  {counts.partial}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs uppercase font-semibold text-red-700 dark:text-red-400 mb-1.5">
+                  Non-compliant
+                </p>
+                <p className="text-3xl font-black text-red-600 dark:text-red-400 tabular-nums">
+                  {counts.non_compliant}
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Right: detail + diff */}
-          <div>
-            {selectedId ? (
-              <Card className="border-border/60">
-                <CardContent className="p-5">
-                  <DraftDetail
-                    key={selectedId}
-                    draftId={selectedId}
-                    policyName={policies.find(p => p.id === policyId)?.file_name}
-                    onReview={() => setShowReview(true)}
-                  />
+          {total === 0 && !loadingItems ? (
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="p-5 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-800 dark:text-amber-200">
+                    Run analysis first
+                  </p>
+                  <p className="text-sm text-amber-700/90 dark:text-amber-200/80 mb-3">
+                    No analysis results found for this policy. Run an analysis so the
+                    AI remediation has something to work with.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => navigate(`/Analyses?policy_id=${policyId}`)}
+                  >
+                    Go to Analyses
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Generate CTA */}
+              <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-teal-500/5">
+                <CardContent className="p-5 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+                  <div>
+                    <p className="font-semibold text-foreground flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-500" />
+                      Generate an improved version of "{policyName}"
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Builds a new version that targets all {partialNonCompliant.length}{' '}
+                      partial / non-compliant control(s). Original policy stays untouched.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setShowGenerate(true)}
+                    disabled={partialNonCompliant.length === 0}
+                    className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    Generate Improved Policy Version
+                  </Button>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="flex items-center justify-center h-64 border border-dashed border-border rounded-xl text-muted-foreground text-sm">
-                Select a draft on the left to view its diff
-              </div>
-            )}
-          </div>
+
+              {/* Findings to remediate */}
+              {partialNonCompliant.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <ListChecks className="w-4 h-4 text-amber-500" />
+                      What will be remediated ({partialNonCompliant.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="max-h-64 overflow-y-auto pr-1 space-y-1.5">
+                      {partialNonCompliant.map(item => (
+                        <div
+                          key={`${item.framework_id}|${item.control_code}`}
+                          className="flex items-start gap-2.5 text-xs p-2.5 rounded-lg border border-border/60 bg-muted/20"
+                        >
+                          {item.status === 'partial' ? (
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                              <span className="font-mono text-[10px] font-semibold">
+                                {item.framework_name} · {item.control_code}
+                              </span>
+                              <span className="text-[10px] uppercase text-muted-foreground">
+                                {item.status === 'partial' ? 'Partial' : 'Non-Compliant'}
+                              </span>
+                            </div>
+                            <p className="text-foreground/80 line-clamp-2">
+                              {item.framework_requirement}
+                            </p>
+                            {item.missing_requirements?.length > 0 && (
+                              <p className="text-muted-foreground mt-0.5 text-[10px]">
+                                {item.missing_requirements.length} missing requirement(s)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* Version history */}
+          <Card>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <GitFork className="w-4 h-4 text-emerald-500" />
+                Version history
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['policyVersions', policyId] })}
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                Refresh
+              </Button>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {loadingVersions ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+                </div>
+              ) : versions.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-6 text-center">
+                  No versions yet. Generate an improved version above to start the history.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {versions.map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => setOpenVersionId(v.id)}
+                      className="w-full text-left p-3.5 rounded-lg border border-border bg-card hover:border-emerald-500/40 hover:bg-muted/30 transition-all"
+                    >
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-mono text-xs font-semibold">v{v.version_number}</span>
+                        <VersionTypeBadge type={v.version_type} />
+                        {v.compliance_score !== null && v.compliance_score !== undefined && (
+                          <span className="text-xs text-muted-foreground">
+                            est. {Math.round(v.compliance_score)}%
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {v.created_at
+                            ? format(new Date(v.created_at), 'MMM d, yyyy • HH:mm')
+                            : '—'}
+                        </span>
+                      </div>
+                      {v.change_summary && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
+                          {v.change_summary}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
-      {/* Review modal */}
-      {showReview && selectedDraft && (
-        <ReviewModal
-          draft={selectedDraft}
-          onClose={() => setShowReview(false)}
-          onSuccess={() => { setShowReview(false); setSelectedId(null); }}
+      <GenerateImprovedDialog
+        open={showGenerate}
+        onClose={() => setShowGenerate(false)}
+        policyId={policyId}
+        frameworkId={frameworkId}
+        onSuccess={handleGenerationSuccess}
+      />
+
+      {openVersionId && (
+        <VersionDetailDialog
+          versionId={openVersionId}
+          policyId={policyId}
+          onClose={() => setOpenVersionId(null)}
+          onReanalysisDone={() => {
+            queryClient.invalidateQueries({ queryKey: ['policyVersions', policyId] });
+            queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
+            queryClient.invalidateQueries({ queryKey: ['mappingFrameworks', policyId] });
+            queryClient.invalidateQueries({ queryKey: ['policies'] });
+          }}
         />
       )}
     </PageContainer>
+  );
+}
+
+// ── Version detail (view + Download PDF + Re-run analysis) ────────────────────
+
+function VersionDetailDialog({ versionId, policyId, onClose, onReanalysisDone }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [reanalysisResult, setReanalysisResult] = useState(null);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['policyVersion', versionId],
+    queryFn: () => authFetch(`/api/policy-versions/${versionId}`),
+    enabled: !!versionId,
+  });
+
+  const reanalyzeMutation = useMutation({
+    mutationFn: () =>
+      authPost(
+        `/api/policies/${policyId}/versions/${versionId}/reanalyze`,
+        {},
+      ),
+    onSuccess: (res) => {
+      setReanalysisResult(res);
+      // Refresh the version row so its compliance_score updates inline.
+      queryClient.invalidateQueries({ queryKey: ['policyVersion', versionId] });
+      onReanalysisDone?.();
+      toast({ title: `Re-analysis complete · ${res.overall_score}%` });
+    },
+    onError: (e) =>
+      toast({
+        title: 'Re-analysis failed. Please try again.',
+        description: e.message,
+        variant: 'destructive',
+      }),
+  });
+
+  const handleDownloadText = () => {
+    if (!data?.content) return;
+    const blob = new Blob([data.content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `policy-v${data.version_number}-${data.version_type}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!data) return;
+    setPdfDownloading(true);
+    try {
+      const fallback =
+        data.version_type === 'ai_remediated'
+          ? `ai_remediated_policy_v${data.version_number}.pdf`
+          : `policy_v${data.version_number}_${data.version_type}.pdf`;
+      await authDownloadPdf(
+        `/api/policies/${policyId}/versions/${versionId}/download/pdf`,
+        fallback,
+      );
+      toast({ title: 'PDF downloaded.' });
+    } catch (e) {
+      toast({
+        title: 'PDF generation failed. Please try again.',
+        description: e.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (reanalyzeMutation.isPending) return;     // guard close while running
+    setReanalysisResult(null);
+    onClose();
+  };
+
+  const reanalyzing = reanalyzeMutation.isPending;
+
+  return (
+    <>
+      <Dialog open onOpenChange={handleClose}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ScrollText className="w-5 h-5 text-emerald-500" />
+              {data ? `Version ${data.version_number}` : 'Loading…'}
+              {data && <VersionTypeBadge type={data.version_type} />}
+            </DialogTitle>
+            <DialogDescription>
+              {data?.change_summary || 'Version details'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
+            </div>
+          ) : error ? (
+            <div className="text-sm text-red-500 py-4">
+              Failed to load version: {error.message}
+            </div>
+          ) : data ? (
+            <div className="space-y-3">
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border text-xs gap-2 flex-wrap">
+                  <span className="font-medium">
+                    Content ({data.content?.length || 0} chars)
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDownloadText}
+                      disabled={reanalyzing}
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1" />
+                      Download .txt
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDownloadPdf}
+                      disabled={pdfDownloading || reanalyzing}
+                      className="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+                    >
+                      {pdfDownloading ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <FileDown className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      {pdfDownloading ? 'Preparing PDF…' : 'Download PDF'}
+                    </Button>
+                  </div>
+                </div>
+                <pre className="text-xs font-mono text-foreground/85 whitespace-pre-wrap break-words leading-relaxed p-4 max-h-[55vh] overflow-y-auto">
+                  {data.content}
+                </pre>
+              </div>
+
+              {/* Inline re-analysis loading banner */}
+              {reanalyzing && (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/8">
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-500 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                      Re-running analysis on this remediated version…
+                    </p>
+                    <p className="text-emerald-700/80 dark:text-emerald-200/80">
+                      The original policy file is not modified. This typically takes
+                      a few minutes.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border/60">
+                <Button
+                  variant="outline"
+                  onClick={handleClose}
+                  disabled={reanalyzing}
+                >
+                  Close
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadPdf}
+                  disabled={pdfDownloading || reanalyzing}
+                  className="gap-1.5"
+                >
+                  {pdfDownloading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FileDown className="w-4 h-4" />
+                  )}
+                  {pdfDownloading ? 'Preparing PDF…' : 'Download PDF'}
+                </Button>
+                <Button
+                  onClick={() => reanalyzeMutation.mutate()}
+                  disabled={reanalyzing}
+                  className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+                >
+                  {reanalyzing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {reanalyzing ? 'Re-running analysis…' : 'Re-run analysis'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-analysis result modal */}
+      {reanalysisResult && (
+        <ReanalysisResultDialog
+          result={reanalysisResult}
+          policyId={policyId}
+          versionId={versionId}
+          versionNumber={data?.version_number}
+          versionType={data?.version_type}
+          onClose={() => setReanalysisResult(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Re-analysis result modal ──────────────────────────────────────────────────
+
+function ReanalysisResultDialog({
+  result, policyId, versionId, versionNumber, versionType, onClose,
+}) {
+  const { toast } = useToast();
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+
+  const delta = result.delta;
+  const hasDelta = delta !== null && delta !== undefined;
+  const deltaPositive = hasDelta && delta >= 0;
+
+  const handleDownloadPdf = async () => {
+    setPdfDownloading(true);
+    try {
+      const fallback =
+        versionType === 'ai_remediated'
+          ? `ai_remediated_policy_v${versionNumber}.pdf`
+          : `policy_v${versionNumber}_${versionType}.pdf`;
+      await authDownloadPdf(
+        `/api/policies/${policyId}/versions/${versionId}/download/pdf`,
+        fallback,
+      );
+      toast({ title: 'PDF downloaded.' });
+    } catch (e) {
+      toast({
+        title: 'PDF generation failed. Please try again.',
+        description: e.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-emerald-500" />
+            Re-analysis complete
+          </DialogTitle>
+          <DialogDescription>
+            Compliance score, control statuses, gaps, and recommendations have been
+            updated based on the re-analyzed remediated content.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Score banner with before / after / delta */}
+          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/8 to-teal-500/5 p-5">
+            <p className="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300 mb-3 flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5" />
+              New compliance score
+            </p>
+            <div className="flex items-center justify-center gap-6">
+              {result.previous_score !== null && result.previous_score !== undefined && (
+                <>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Before</p>
+                    <p className="text-3xl font-black text-muted-foreground tabular-nums">
+                      {result.previous_score}
+                      <span className="text-xl">%</span>
+                    </p>
+                  </div>
+                  <ArrowRight className="w-6 h-6 text-emerald-500" />
+                </>
+              )}
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">After</p>
+                <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  {result.overall_score}
+                  <span className="text-2xl">%</span>
+                </p>
+              </div>
+              {hasDelta && (
+                <span
+                  className={`text-sm font-bold px-2.5 py-1 rounded-full ${
+                    deltaPositive
+                      ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15'
+                      : 'text-red-700 dark:text-red-300 bg-red-500/15'
+                  } flex items-center gap-1`}
+                >
+                  {deltaPositive ? (
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <TrendingDown className="w-3.5 h-3.5" />
+                  )}
+                  {deltaPositive ? '+' : ''}
+                  {delta}%
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-3">
+              Re-analysis ran in {result.duration_seconds}s.
+            </p>
+          </div>
+
+          {/* Per-framework breakdown */}
+          {result.frameworks?.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Frameworks analyzed
+              </p>
+              {result.frameworks.map((fw) => (
+                <div
+                  key={fw.framework_id}
+                  className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Shield className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="font-mono text-xs font-semibold truncate">
+                      {fw.framework_id}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs tabular-nums">
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      ✓ {fw.compliant}
+                    </span>
+                    <span className="text-amber-600 dark:text-amber-400">
+                      ~ {fw.partial}
+                    </span>
+                    <span className="text-red-600 dark:text-red-400">
+                      ✗ {fw.non_compliant}
+                    </span>
+                    <span className="font-bold text-foreground">
+                      {Math.round(fw.score)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border/60">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button
+            onClick={handleDownloadPdf}
+            disabled={pdfDownloading}
+            className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+          >
+            {pdfDownloading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <FileDown className="w-4 h-4" />
+            )}
+            {pdfDownloading ? 'Preparing PDF…' : 'Download PDF'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
