@@ -270,7 +270,9 @@ export default function Dashboard() {
   const frameworkCount = 3;
   const avgScore      = stats?.security_score || 0;
   const openGaps      = stats?.open_gaps      || 0;
-  const totalControls = stats?.controls_mapped || 0;
+  // Prefer the new `controls_total` field (covered + partial + missing).
+  // Fall back to `controls_mapped` so older backends keep working.
+  const totalControls = stats?.controls_total ?? stats?.controls_mapped ?? 0;
 
   const complianceByFramework = useMemo(() =>
     (stats?.framework_scores || []).map(r => ({

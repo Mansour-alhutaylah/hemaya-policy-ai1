@@ -1033,7 +1033,9 @@ def dashboard_stats(
     )
     bind = {"pid": policy_id, "uid": str(current_user.id)}
 
-    # Latest compliance result per framework (scoped to user's policies)
+    # Latest compliance result per framework (scoped to user's policies).
+    # Tiebreaker on cr.id keeps the result deterministic when two rows
+    # share an analyzed_at timestamp (e.g. fast re-analysis).
     rows = db.execute(_t(f"""
         SELECT DISTINCT ON (f.name)
                f.name, cr.compliance_score,
@@ -1042,7 +1044,7 @@ def dashboard_stats(
         JOIN policies p ON p.id = cr.policy_id
         LEFT JOIN frameworks f ON cr.framework_id = f.id
         WHERE 1=1 {policy_filter_cr} {user_filter_cr}
-        ORDER BY f.name, cr.analyzed_at DESC
+        ORDER BY f.name, cr.analyzed_at DESC, cr.id DESC
     """), bind).fetchall()
 
     framework_scores = [
@@ -1067,14 +1069,21 @@ def dashboard_stats(
     ), bind).fetchall()
     severity_distribution = {r[0]: r[1] for r in sev_rows}
 
-    # Controls mapped
-    controls_mapped = sum(r[2] or 0 for r in rows)
+    # Control counts (latest CR per framework, summed across frameworks).
+    # `controls_total` = every control assessed (covered + partial + missing) —
+    # this is what the "Controls Mapped" KPI on the dashboard wants.
+    # `controls_compliant` = covered only.
+    # `controls_mapped` is kept as an alias of controls_total for one release
+    # for backwards-compatibility with older clients; remove afterwards.
+    controls_compliant = sum(r[2] or 0 for r in rows)
+    controls_partial   = sum(r[3] or 0 for r in rows)
+    controls_missing   = sum(r[4] or 0 for r in rows)
+    controls_total     = controls_compliant + controls_partial + controls_missing
 
-    # Status overview
     status_overview = {
-        "compliant": sum(r[2] or 0 for r in rows),
-        "partial":   sum(r[3] or 0 for r in rows),
-        "non_compliant": sum(r[4] or 0 for r in rows),
+        "compliant": controls_compliant,
+        "partial":   controls_partial,
+        "non_compliant": controls_missing,
     }
 
     return {
@@ -1082,7 +1091,9 @@ def dashboard_stats(
         "framework_scores": framework_scores,
         "open_gaps": open_gaps,
         "severity_distribution": severity_distribution,
-        "controls_mapped": controls_mapped,
+        "controls_total": controls_total,
+        "controls_compliant": controls_compliant,
+        "controls_mapped": controls_total,  # deprecated alias of controls_total
         "status_overview": status_overview,
     }
 
