@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
@@ -75,10 +75,12 @@ export default function Analyses() {
     queryFn: () => Policy.list(),
   });
 
-  const policyMap = policies.reduce((acc, p) => {
-    acc[p.id] = p;
-    return acc;
-  }, {});
+  // Phase UI-7: memoised so the map only rebuilds when policies actually
+  // changes — not on every search/filter keystroke.
+  const policyMap = useMemo(
+    () => policies.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}),
+    [policies],
+  );
 
   const filteredResults = results.filter(result => {
     const policy = policyMap[result.policy_id];

@@ -270,27 +270,19 @@ export default function Policies() {
     }, 300);
 
     try {
-      const token = localStorage.getItem('token');
+      // Phase UI-7: routed through apiClient so 401 + FastAPI error parsing
+      // are consistent with the rest of the app. apiClient.request detects
+      // FormData and skips the JSON Content-Type, so this stays as a
+      // multipart upload.
       const form = new FormData();
       form.append('file', selectedFile);
       form.append('version', newPolicy.version || '1.0');
       form.append('framework', newPolicy.framework);
 
-      const res = await fetch('/api/integrations/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
+      const result = await api.post('/integrations/upload', form);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
-        throw new Error(err.detail || 'Upload failed');
-      }
-
-      const result = await res.json();
 
       // Refresh policy list with the server-returned status
       queryClient.invalidateQueries({ queryKey: ['policies'] });
@@ -374,15 +366,21 @@ export default function Policies() {
     // bundle, which fired the warning even when the policy's real framework
     // was fully loaded.
     try {
-      const token = localStorage.getItem('token');
-      const url = policy.framework_code
-        ? `/api/functions/framework_status?framework=${encodeURIComponent(policy.framework_code)}`
-        : '/api/functions/framework_status';
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const fwStatus = await res.json();
+      // Phase UI-7: routed through apiClient so 401 redirects + FastAPI
+      // error parsing match the rest of the app.
+      const path = policy.framework_code
+        ? `/functions/framework_status?framework=${encodeURIComponent(policy.framework_code)}`
+        : '/functions/framework_status';
+      let fwStatus = null;
+      try {
+        fwStatus = await api.get(path);
+      } catch {
+        // Treat any failure as "ready" so we don't block the analyse flow
+        // on a flaky helper endpoint — the analyzer itself will still
+        // surface a real error if the framework genuinely isn't loaded.
+        fwStatus = null;
+      }
+      if (fwStatus) {
         if (!fwStatus.ready) {
           setPendingAnalysisPolicy({ ...policy, _fwSource: fwStatus.source });
           setShowFrameworkWarning(true);

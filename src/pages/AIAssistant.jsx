@@ -327,8 +327,11 @@ export default function AIAssistant() {
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
       const t0 = Date.now();
-      // eslint-disable-next-line no-console
-      console.log('[assistant ui] sending', { len: trimmed.length });
+      // Phase UI-7: gated behind DEV so production noise stays clean.
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.log('[assistant ui] sending', { len: trimmed.length });
+      }
 
       try {
         const result = await api.assistant.chat(trimmed, {
@@ -357,11 +360,13 @@ export default function AIAssistant() {
             sources: Array.isArray(result?.sources) ? result.sources : [],
           },
         ]);
-        // eslint-disable-next-line no-console
-        console.log('[assistant ui] answered', {
-          ms: Date.now() - t0,
-          has_data: !!result?.has_data,
-        });
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.log('[assistant ui] answered', {
+            ms: Date.now() - t0,
+            has_data: !!result?.has_data,
+          });
+        }
       } catch (error) {
         const isAbort =
           error?.name === 'AbortError' ||
@@ -382,12 +387,14 @@ export default function AIAssistant() {
             type: 'error',
           },
         ]);
-        // eslint-disable-next-line no-console
-        console.log('[assistant ui] error', {
-          ms: Date.now() - t0,
-          aborted: isAbort,
-          msg: raw?.slice?.(0, 120),
-        });
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.log('[assistant ui] error', {
+            ms: Date.now() - t0,
+            aborted: isAbort,
+            msg: raw?.slice?.(0, 120),
+          });
+        }
       } finally {
         clearTimeout(timer);
         if (abortRef.current === controller) abortRef.current = null;

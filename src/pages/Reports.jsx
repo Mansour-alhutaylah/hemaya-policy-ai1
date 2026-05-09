@@ -161,10 +161,12 @@ export default function Reports() {
     setDeleteTarget(null);
   };
 
-  const policyMap = policies.reduce((acc, p) => {
-    acc[p.id] = p;
-    return acc;
-  }, {});
+  // Phase UI-7: memoised so the map only rebuilds when policies actually
+  // changes — not on every search/filter keystroke.
+  const policyMap = useMemo(
+    () => policies.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}),
+    [policies],
+  );
 
   const filteredReports = reports.filter(report => {
     const policy = policyMap[report.policy_id];
