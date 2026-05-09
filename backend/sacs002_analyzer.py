@@ -638,10 +638,18 @@ def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: 
     })
 
 
-async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
+async def run_sacs002_analysis(
+    db,
+    policy_id: str,
+    progress_cb=None,
+    control_codes=None,
+    policy_version_id: str | None = None,
+) -> dict:
     """
-    Main entry point: analyze a policy against all 92 SACS-002 controls.
-    Returns a summary dict keyed by FRAMEWORK_ID.
+    Analyze a policy against SACS-002 controls.
+
+    control_codes:      optional set of control codes to assess (incremental mode).
+    policy_version_id:  when provided, reads ONLY that version's chunks.
     """
     def _report(pct: int, stage: str):
         if progress_cb:
@@ -657,12 +665,24 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
 
     _report(12, "SACS-002: Checking policy chunks")
 
+    if policy_version_id:
+        _chunk_where  = "policy_version_id = :vid AND embedding IS NOT NULL"
+        _chunk_params = {"vid": policy_version_id}
+        print(f"  [SACS002] Version-scoped mode: policy_version_id={policy_version_id}")
+    else:
+        _chunk_where  = "policy_id = :pid AND embedding IS NOT NULL"
+        _chunk_params = {"pid": policy_id}
+
     n_chunks = db.execute(sql_text(
-        "SELECT COUNT(*) FROM policy_chunks "
-        "WHERE policy_id = :pid AND embedding IS NOT NULL"
-    ), {"pid": policy_id}).fetchone()[0]
+        f"SELECT COUNT(*) FROM policy_chunks WHERE {_chunk_where}"
+    ), _chunk_params).fetchone()[0]
 
     if n_chunks == 0:
+        if policy_version_id:
+            return {FRAMEWORK_ID: {"error": (
+                f"No embedded chunks found for version {policy_version_id}. "
+                "The version content was not embedded before analysis."
+            )}}
         print("  [SACS002] Auto-embedding policy chunks...")
         _report(15, "SACS-002: Embedding policy text")
         from backend.checkpoint_analyzer import _auto_embed
@@ -671,22 +691,22 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
             return {FRAMEWORK_ID: {"error": "No text found in policy. Re-upload the document."}}
         n_chunks = embedded
 
-    # Phase 11: opt-in source-attribution backfill. Mirrors ECC-2.
-    from backend.checkpoint_analyzer import (
-        policy_needs_source_attribution_backfill,
-        rechunk_for_source_attribution,
-        RechunkError,
-    )
-    if policy_needs_source_attribution_backfill(db, policy_id):
-        print("  [SACS002] Policy chunks lack source attribution -> backfill rechunk")
-        _report(16, "SACS-002: Rechunking for source attribution")
-        try:
-            new_count = await rechunk_for_source_attribution(db, policy_id)
-            n_chunks = new_count
-            print(f"  [SACS002] Source-attribution backfill complete: "
-                  f"{new_count} chunks")
-        except RechunkError as e:
-            print(f"  [SACS002] Backfill skipped (existing chunks intact): {e}")
+    if not policy_version_id:
+        from backend.checkpoint_analyzer import (
+            policy_needs_source_attribution_backfill,
+            rechunk_for_source_attribution,
+            RechunkError,
+        )
+        if policy_needs_source_attribution_backfill(db, policy_id):
+            print("  [SACS002] Backfill rechunk")
+            _report(16, "SACS-002: Rechunking for source attribution")
+            try:
+                n_chunks = await rechunk_for_source_attribution(db, policy_id)
+            except RechunkError as e:
+                print(f"  [SACS002] Backfill skipped: {e}")
+
+    print(f"  [SACS002] Loaded {n_chunks} chunks "
+          f"(version={policy_version_id or 'original'})")
 
     print(f"  [SACS002] Policy has {n_chunks} embedded chunks")
     _report(18, "SACS-002: Loading structured controls")
@@ -742,17 +762,26 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
     sample = [c["control_code"] for c in controls[:3]]
     l2_loaded = sum(1 for c in controls if c["l2_loaded"])
     l3_loaded = sum(1 for c in controls if c["l3_loaded"])
+    if control_codes is not None:
+        controls = [c for c in controls if c["control_code"] in control_codes]
+        print(f"  [SACS002] Incremental mode: restricted to {len(controls)} targeted controls")
+
+    sample = [c["control_code"] for c in controls[:3]]
+    l2_loaded = sum(1 for c in controls if c["l2_loaded"])
+    l3_loaded = sum(1 for c in controls if c["l3_loaded"])
     print(f"  [SACS002] {len(controls)} controls loaded "
           f"(first 3: {sample}) "
           f"L2={l2_loaded}/{len(controls)} L3={l3_loaded}/{len(controls)}")
     _report(22, f"SACS-002: Analysing {len(controls)} controls")
 
     try:
+        _load_where_s  = "policy_version_id = :vid" if policy_version_id else "policy_id = :pid"
+        _load_params_s = {"vid": policy_version_id} if policy_version_id else {"pid": policy_id}
         chunk_rows = db.execute(sql_text(
             "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
             "       chunk_index, page_number, paragraph_index "
-            "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
-        ), {"pid": policy_id}).fetchall()
+            f"FROM policy_chunks WHERE {_load_where_s} ORDER BY chunk_index"
+        ), _load_params_s).fetchall()
         policy_chunks = [
             {
                 "text": r[0], "classification": r[1],
@@ -769,8 +798,8 @@ async def run_sacs002_analysis(db, policy_id: str, progress_cb=None) -> dict:
             chunk_rows = db.execute(sql_text(
                 "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
                 "       chunk_index "
-                "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
-            ), {"pid": policy_id}).fetchall()
+                f"FROM policy_chunks WHERE {_load_where_s} ORDER BY chunk_index"
+            ), _load_params_s).fetchall()
             policy_chunks = [
                 {
                     "text": r[0], "classification": r[1],

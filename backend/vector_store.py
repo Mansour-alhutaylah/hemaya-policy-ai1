@@ -42,36 +42,44 @@ async def get_embeddings(texts: list) -> list:
     return all_embs
 
 
-def store_chunks_with_embeddings(db, policy_id, chunks, embeddings):
+def store_chunks_with_embeddings(db, policy_id, chunks, embeddings, policy_version_id=None):
+    """
+    Insert chunks with embeddings into policy_chunks.
+
+    policy_version_id: when provided, links each chunk to a specific PolicyVersion
+    so improved-version chunks are isolated from original-policy chunks.
+    """
     from backend.structured_extractor import classify_sentence
 
     for chunk, emb in zip(chunks, embeddings):
         if emb is None:
             continue
-        emb_str = json.dumps(emb)  # ~6x faster than ",".join(str(x) for x in emb)
+        emb_str = json.dumps(emb)
         classification = classify_sentence(chunk["text"])
-        # Phase 11: write source attribution columns when the chunk dict
-        # carries them. Pre-Phase-11 chunk dicts (no page_number /
-        # paragraph_index keys) -> NULL, matching the column default.
         db.execute(text("""
             INSERT INTO policy_chunks
-            (id, policy_id, chunk_index, chunk_text, embedding,
+            (id, policy_id, policy_version_id, chunk_index, chunk_text, embedding,
              char_start, char_end, classification,
              page_number, paragraph_index, created_at)
-            VALUES (:id, :pid, :idx, :txt, cast(:emb as vector),
-                    :cs, :ce, :cls,
-                    :pgnum, :paridx, :cat)
+            VALUES (:id, :pid, :vid, :idx, :txt, cast(:emb as vector),
+                    :cs, :ce, :cls, :pgnum, :paridx, :cat)
         """), {
-            "id": str(uuid.uuid4()), "pid": policy_id,
-            "idx": chunk.get("chunk_index", 0), "txt": chunk["text"],
-            "emb": emb_str, "cs": chunk.get("char_start", 0),
-            "ce": chunk.get("char_end", 0), "cls": classification,
+            "id":     str(uuid.uuid4()),
+            "pid":    policy_id,
+            "vid":    policy_version_id,
+            "idx":    chunk.get("chunk_index", 0),
+            "txt":    chunk["text"],
+            "emb":    emb_str,
+            "cs":     chunk.get("char_start", 0),
+            "ce":     chunk.get("char_end", 0),
+            "cls":    classification,
             "pgnum":  chunk.get("page_number"),
             "paridx": chunk.get("paragraph_index"),
-            "cat": datetime.utcnow(),
+            "cat":    datetime.utcnow(),
         })
     db.commit()
-    print(f"Stored {len(chunks)} chunks for policy {policy_id}")
+    print(f"[CHUNKS] Stored {len(chunks)} chunks "
+          f"policy={policy_id} version={policy_version_id}")
 
 
 def search_similar_chunks(db, query_embedding, policy_id=None, top_k=10):
@@ -96,7 +104,24 @@ def search_similar_chunks(db, query_embedding, policy_id=None, top_k=10):
              "policy_id": r[2], "similarity": float(r[3])} for r in results]
 
 
-def delete_policy_chunks(db, policy_id):
-    db.execute(text("DELETE FROM policy_chunks WHERE policy_id = :pid"),
-               {"pid": policy_id})
+def delete_policy_chunks(db, policy_id, policy_version_id=None):
+    """
+    Delete policy chunks.
+
+    When policy_version_id is provided, deletes ONLY that version's chunks,
+    leaving other versions' chunks untouched.
+    When None, deletes ALL chunks for the policy (original behavior).
+    """
+    if policy_version_id:
+        db.execute(
+            text("DELETE FROM policy_chunks WHERE policy_version_id = :vid"),
+            {"vid": policy_version_id},
+        )
+        print(f"[CHUNKS] Deleted chunks for version={policy_version_id}")
+    else:
+        db.execute(
+            text("DELETE FROM policy_chunks WHERE policy_id = :pid"),
+            {"pid": policy_id},
+        )
+        print(f"[CHUNKS] Deleted all chunks for policy={policy_id}")
     db.commit()

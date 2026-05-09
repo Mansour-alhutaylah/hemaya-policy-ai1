@@ -20,6 +20,63 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 _OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 _MODEL = "gpt-4o-mini"
 
+# ── ECC-specific async prompt (used by generate_improved_version) ─────────────
+#
+# The ECC-2 3-layer analyzer explicitly rejects generic language. CHECKPOINT 1
+# requires mandatory language with WHO/WHAT/WHEN/HOW. This prompt is designed
+# to produce text that passes the verifier's confidence thresholds (≥0.75).
+_ECC_SYSTEM_PROMPT = """\
+You are an expert ECC-2:2024 cybersecurity compliance policy writer for Saudi Arabian organizations.
+
+Your task: Write additional policy sections that make an existing policy document compliant with specific ECC-2:2024 controls flagged as partial or non-compliant.
+
+CRITICAL — The generated text is verified by a strict AI compliance checker that will REJECT:
+- Generic phrases: "we follow best practices", "security policies are in place"
+- Vague statements: "security will be maintained", "access is controlled"
+- Passive ownership: "policies should be implemented", "reviews may be conducted"
+
+The checker REQUIRES:
+1. MANDATORY language: "shall", "must", "is required to", "is responsible for"
+2. NAMED responsible party by role: "The Information Security Manager", "The IT Department", "The CISO", "The System Administrator"
+3. SPECIFIC actions — not categories of action
+4. TIMEFRAMES: "within 24 hours", "quarterly", "annually", "within 5 business days"
+5. VERIFICATION mechanism: "documented in the security log", "recorded in the access control register", "reviewed in the annual audit"
+6. One DEDICATED numbered section per control code
+
+FAILING (rejected): "The organization shall follow security best practices for access management."
+
+PASSING (accepted): "3.2.1 Access Rights Management
+The Information Security Manager shall maintain a formal access rights register and conduct quarterly reviews of all user access privileges. Privileged access rights shall be revoked within 4 hours of employee termination or role change. All changes must be approved by the asset owner and documented in the access control log."
+
+FORMAT:
+- Use the ECC control code in each section title, e.g. "Control 3-1-1: Access Control Policy"
+- Write 3-6 specific sentences per control
+- After ALL sections, append exactly one JSON block:
+```json
+{"section_headers": ["title 1", "title 2"], "requirements_addressed": ["CODE1", "CODE2"]}
+```
+"""
+
+_ECC_USER_TEMPLATE = """\
+=== EXISTING POLICY CONTEXT (do NOT reproduce — reference only to avoid duplication) ===
+{policy_excerpt}
+=== END CONTEXT ===
+
+Write ONE dedicated section for EACH of the following ECC-2:2024 controls. Each section must close the specific gap described.
+
+{controls_block}
+
+Write all sections now. Use mandatory language. Name responsible roles. Include timeframes and verification steps.
+"""
+
+_CONTROL_ITEM_TEMPLATE = """\
+---
+Control: [{framework_id}] {control_code}
+Requirement: {control_text}
+Current gap: {gap_description}
+Missing actions: {missing_requirements}
+---"""
+
 # ── Prompts ──────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
@@ -76,6 +133,67 @@ def _call_openai(messages: list[dict]) -> str:
     with httpx.Client(timeout=60.0) as client:
         resp = client.post(_OPENAI_URL, headers=headers, json=payload)
         resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"].strip()
+
+
+async def generate_improved_policy_text_async(
+    policy_text: str,
+    failing_controls: list[dict],
+) -> str:
+    """
+    Async, DB-free OpenAI call that generates ECC-specific policy sections.
+
+    Each entry in failing_controls must have:
+        framework_id, control_code, control_text, gap_description, missing_requirements
+
+    Returns the raw generated text (may include trailing ```json``` block).
+    Does NOT touch the database — all DB work is the caller's responsibility.
+    """
+    if not failing_controls:
+        raise ValueError("failing_controls must not be empty.")
+    if not policy_text or not policy_text.strip():
+        raise ValueError("policy_text must not be blank.")
+
+    policy_excerpt = policy_text[:5000]
+    if len(policy_text) > 5000:
+        policy_excerpt += "\n[… policy continues — remaining content omitted …]"
+
+    controls_block = "\n".join(
+        _CONTROL_ITEM_TEMPLATE.format(
+            framework_id=c.get("framework_id", ""),
+            control_code=c.get("control_code", ""),
+            control_text=(c.get("control_text") or "")[:300],
+            gap_description=(c.get("gap_description") or "Not specified")[:200],
+            missing_requirements=", ".join(
+                (c.get("missing_requirements") or ["Not specified"])[:5]
+            ),
+        )
+        for c in failing_controls
+    )
+
+    user_msg = _ECC_USER_TEMPLATE.format(
+        policy_excerpt=policy_excerpt,
+        controls_block=controls_block,
+    )
+
+    payload = {
+        "model": _MODEL,
+        "messages": [
+            {"role": "system", "content": _ECC_SYSTEM_PROMPT},
+            {"role": "user",   "content": user_msg},
+        ],
+        "temperature": 0.15,    # near-deterministic for formal policy language
+        "max_tokens": 4096,
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(_OPENAI_URL, headers=headers, json=payload)
+        resp.raise_for_status()
+
     return resp.json()["choices"][0]["message"]["content"].strip()
 
 

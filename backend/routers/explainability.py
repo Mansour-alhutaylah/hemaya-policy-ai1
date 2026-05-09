@@ -38,7 +38,9 @@ from backend.database import get_db, set_user_context
 from backend.pdf_export import build_policy_version_pdf
 from backend.remediation_engine import (
     _next_version_number,
+    _strip_metadata_block,
     generate_remediation_draft,
+    generate_improved_policy_text_async,
 )
 from backend.security import is_admin
 
@@ -358,7 +360,15 @@ class GenerateImprovedResponse(BaseModel):
     version_type: str
     framework_id: Optional[str]
     addressed_controls: list[str]
-    estimated_improvement: float
+    # Real scores from incremental re-analysis
+    original_score: float
+    new_score: float
+    improvement_delta: float
+    total_targeted: int
+    fixed_controls: int
+    still_partial: int
+    still_non_compliant: int
+    remediation_score: float       # fixed / targeted × 100
     change_summary: str
 
 
@@ -466,7 +476,7 @@ def get_policy_version(
     "/api/policy-versions/generate",
     response_model=GenerateImprovedResponse,
 )
-def generate_improved_version(
+async def generate_improved_version(
     body: GenerateImprovedRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(_get_current_user),
@@ -530,136 +540,294 @@ def generate_improved_version(
             ),
         )
 
-    # 3. Consolidated missing-requirements list. Each entry is prefixed with
-    # the control code so the AI's output is traceable per control. Cap total
-    # length so the GPT prompt stays well under model context.
-    missing_lines: list[str] = []
+    import hashlib
+    from backend.chunker import chunk_text
+    from backend.ecc2_analyzer import run_ecc2_analysis
+    from backend.sacs002_analyzer import run_sacs002_analysis
+    from backend.vector_store import (
+        delete_policy_chunks, get_embeddings, store_chunks_with_embeddings,
+    )
+    # 3. Build per-control list for the prompt and for tracking.
     addressed_controls: list[str] = []
-    total_chars = 0
-    MAX_CHARS = 8000     # ~2k tokens worth of missing requirements
-    for r in rows:
-        framework_id, control_code, status_db, gap, _ev, _conf, ctrl_text = r
+    failing_controls_for_prompt: list[dict] = []
+    MAX_CONTROLS = 40   # cap so the prompt stays within model context
+    for r in rows[:MAX_CONTROLS]:
+        framework_id_r, control_code, status_db, gap, _ev, _conf, ctrl_text = r
         gap_parts = _split_missing(gap)
-        if not gap_parts and ctrl_text:
-            # Fallback: non_compliant rows often have no per-checkpoint gap
-            # description, so use the L1 requirement text directly.
-            gap_parts = [ctrl_text[:240]]
-        if not gap_parts:
-            continue
-        for part in gap_parts:
-            line = f"[{framework_id} {control_code}] {part}"
-            if total_chars + len(line) > MAX_CHARS:
-                break
-            missing_lines.append(line)
-            total_chars += len(line)
-        addressed_controls.append(f"{framework_id} {control_code}")
-        if total_chars >= MAX_CHARS:
-            break
+        addressed_controls.append(f"{framework_id_r} {control_code}")
+        failing_controls_for_prompt.append({
+            "framework_id":       framework_id_r,
+            "control_code":       control_code,
+            "control_text":       ctrl_text or "",
+            "gap_description":    gap or "",
+            "missing_requirements": gap_parts or ([ctrl_text[:200]] if ctrl_text else []),
+        })
 
-    if not missing_lines:
-        raise HTTPException(
-            status_code=422,
-            detail="Could not derive any missing requirements from analysis.",
-        )
+    if not failing_controls_for_prompt:
+        raise HTTPException(422, "Could not derive any missing requirements from analysis.")
 
-    # Prefer a single descriptive framework label for the prompt context.
-    framework_label = body.framework_id or rows[0][0]
-    representative_control_code = rows[0][1]
+    print(f"[GENERATE] policy_id={policy.id} targeted={len(failing_controls_for_prompt)} controls")
+    print(f"[GENERATE] Targets: {addressed_controls}")
 
-    # 4. Single LLM call producing the consolidated additive text.
+    # ── 4. Capture baseline before touching any rows ───────────────────────
+    frameworks_used = list({r[0] for r in rows})
+    target_codes_by_fw: dict[str, set] = {}
+    baseline_by_fw: dict[str, dict] = {}
+
+    for fw in frameworks_used:
+        target_codes_by_fw[fw] = {r[1] for r in rows if r[0] == fw}
+
+    for fw in frameworks_used:
+        brows = db.execute(sql_text("""
+            SELECT compliance_status::text, COUNT(*)
+            FROM policy_ecc_assessments
+            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            GROUP BY compliance_status
+        """), {"pid": policy.id, "fw": fw}).fetchall()
+        c = {r[0]: int(r[1]) for r in brows}
+        comp = c.get("compliant", 0)
+        part = c.get("partial", 0)
+        non_c = c.get("non_compliant", 0)
+        total = comp + part + non_c
+        baseline_by_fw[fw] = {
+            "total": total, "compliant": comp, "partial": part,
+            "non_compliant": non_c,
+            "score": round(((comp + part * 0.5) / total * 100), 1) if total else 0.0,
+        }
+
+    original_score = (
+        round(sum(v["score"] for v in baseline_by_fw.values()) / len(baseline_by_fw), 1)
+        if baseline_by_fw else 0.0
+    )
+    original_hash = hashlib.sha256(policy_text.encode("utf-8")).hexdigest()[:16]
+    print(f"[GENERATE] Original hash={original_hash} len={len(policy_text)}")
+
+    # ── 5. Generate improved policy text via ASYNC LLM call ───────────────
+    # Uses generate_improved_policy_text_async — fully async, NO db access,
+    # NO asyncio.to_thread. This avoids the SQLAlchemy thread-safety bug.
     try:
-        draft = generate_remediation_draft(
-            db=db,
-            policy_id=policy.id,
+        ai_text = await generate_improved_policy_text_async(
             policy_text=policy_text,
-            control={
-                "framework_name": framework_label,
-                "framework_id": None,            # null FK — multi-control draft
-                "control_id": None,
-                "control_code": representative_control_code,
-                "control_title": "Multiple controls (consolidated remediation)",
-            },
-            ai_rationale=(
-                f"Consolidated remediation for {len(addressed_controls)} "
-                f"control(s) flagged partial or non-compliant in the latest "
-                f"analysis."
-            ),
-            missing_checkpoints=missing_lines,
-            mapping_review_id=None,
-            created_by_id=str(current_user.id),
+            failing_controls=failing_controls_for_prompt,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:                                 # noqa: BLE001
         raise HTTPException(
             status_code=503,
-            detail=f"Improved-version generation failed: {type(e).__name__}: {e}",
+            detail=f"AI policy generation failed: {type(e).__name__}: {e}",
         )
 
-    # 5. Build the merged content and persist as a new PolicyVersion.
-    # The original policy file on disk is never touched. The merged text is a
-    # logical "appended" view: original text + clearly-marked AI section.
+    ai_text_clean = _strip_metadata_block(ai_text)
+    print(f"[GENERATE] AI generated {len(ai_text_clean)} chars of remediation text")
+
+    # ── 6. Build merged content + hash safeguard ───────────────────────────
     merged_content = (
         f"{policy_text.rstrip()}\n\n"
         f"================================================================\n"
-        f"AI-REMEDIATED ADDITIONS — generated {datetime.now(timezone.utc).date()}\n"
+        f"AI-REMEDIATED ADDITIONS — {datetime.now(timezone.utc).date()}\n"
         f"Targets: {', '.join(addressed_controls[:20])}"
         f"{' …' if len(addressed_controls) > 20 else ''}\n"
         f"================================================================\n\n"
-        f"{draft.suggested_policy_text}"
+        f"{ai_text_clean}"
     )
+    merged_hash = hashlib.sha256(merged_content.encode("utf-8")).hexdigest()[:16]
+    print(f"[GENERATE] Merged hash={merged_hash} len={len(merged_content)}")
 
-    # Snapshot the original policy as version 1 if no original row exists yet —
-    # otherwise the new version_number could collide and audit history would
-    # have a gap.
+    if original_hash == merged_hash:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Improved policy content is identical to original. "
+                "Remediation generation produced no new text."
+            ),
+        )
+    if len(ai_text_clean) < 200:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"AI generated only {len(ai_text_clean)} chars — too short to be a valid "
+                "remediation. Check the OpenAI response."
+            ),
+        )
+
+    # ── 7. Snapshot original version if missing ────────────────────────────
     has_original = db.execute(sql_text(
         "SELECT 1 FROM policy_versions "
         "WHERE policy_id = :pid AND version_type = 'original' LIMIT 1"
     ), {"pid": policy.id}).fetchone()
     if not has_original:
-        original_version = models.PolicyVersion(
+        db.add(models.PolicyVersion(
             policy_id=policy.id,
             version_number=_next_version_number(db, policy.id),
             version_type="original",
             content=policy_text,
-            compliance_score=_latest_compliance_score(db, policy.id, body.framework_id),
+            compliance_score=original_score,
             remediation_draft_id=None,
             change_summary="Original upload (auto-snapshot before AI remediation).",
             created_by=current_user.id,
-        )
-        db.add(original_version)
+        ))
         db.flush()
 
-    old_score = _latest_compliance_score(db, policy.id, body.framework_id) or 0.0
-    estimated_improvement = round(
-        min(100.0, old_score + 10.0 * (len(addressed_controls) ** 0.5)),
-        1,
-    )
-    change_summary = (
-        f"AI-remediated version addressing {len(addressed_controls)} "
-        f"control(s) flagged partial or non-compliant. "
-        f"Estimated post-remediation score (subject to re-analysis): "
-        f"{estimated_improvement}% (was {round(old_score, 1)}%)."
-    )
-
+    # ── 8. Persist the new ai_remediated version ───────────────────────────
     new_version = models.PolicyVersion(
         policy_id=policy.id,
         version_number=_next_version_number(db, policy.id),
         version_type="ai_remediated",
         content=merged_content,
-        compliance_score=estimated_improvement,
-        remediation_draft_id=draft.id,
-        change_summary=change_summary,
+        compliance_score=None,    # will be set after real re-analysis below
+        remediation_draft_id=None,
+        change_summary=(
+            f"AI-remediated version addressing {len(addressed_controls)} control(s). "
+            f"Original score: {original_score}% — re-analysis in progress."
+        ),
         created_by=current_user.id,
     )
     db.add(new_version)
-
     try:
         db.commit()
         db.refresh(new_version)
     except Exception as e:                                 # noqa: BLE001
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Persist failed: {e}")
+
+    # ── 9. Incremental re-analysis on targeted controls only ───────────────
+    # Delete partial/non-compliant rows so the analyzers write fresh results.
+    try:
+        for fw, codes in target_codes_by_fw.items():
+            if codes:
+                db.execute(sql_text(
+                    "DELETE FROM policy_ecc_assessments "
+                    "WHERE policy_id = CAST(:pid AS uuid) "
+                    "AND framework_id = :fw "
+                    "AND compliance_status IN ('non_compliant', 'partial')"
+                ), {"pid": policy.id, "fw": fw})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Failed to prepare re-analysis rows: {e}")
+
+    # Embed improved content linked to the specific version (not just policy_id).
+    # This isolates improved chunks so the analyzer can never accidentally read
+    # original policy chunks even if something else modifies the shared space.
+    version_id_str = str(new_version.id)
+    try:
+        # Delete any previous chunks for THIS version (idempotent re-run safety).
+        delete_policy_chunks(db, policy.id, policy_version_id=version_id_str)
+        chunks = chunk_text(merged_content)
+        if not chunks:
+            raise HTTPException(422, "Merged content could not be chunked.")
+        embeddings = await get_embeddings([c["text"] for c in chunks])
+        # store_chunks_with_embeddings already calls db.commit() internally.
+        store_chunks_with_embeddings(
+            db, policy.id, chunks, embeddings,
+            policy_version_id=version_id_str,
+        )
+        print(f"[GENERATE] version={version_id_str} "
+              f"stored {len(chunks)} chunks hash={merged_hash}")
+    except HTTPException:
+        raise
+    except Exception as e:                                 # noqa: BLE001
+        db.rollback()
+        raise HTTPException(500, f"Failed to embed improved content: {type(e).__name__}: {e}")
+
+    try:
+        for fw, codes in target_codes_by_fw.items():
+            target = codes or None
+            if fw == "ECC-2:2024":
+                await run_ecc2_analysis(
+                    db, policy.id,
+                    progress_cb=None,
+                    control_codes=target,
+                    policy_version_id=version_id_str,
+                )
+            elif fw == "SACS-002":
+                await run_sacs002_analysis(
+                    db, policy.id,
+                    progress_cb=None,
+                    control_codes=target,
+                    policy_version_id=version_id_str,
+                )
+    except Exception as e:                                 # noqa: BLE001
+        raise HTTPException(503, f"Re-analysis failed: {type(e).__name__}: {e}")
+
+    # ── 10. Compute real before/after scores ───────────────────────────────
+    total_targeted = sum(len(c) for c in target_codes_by_fw.values())
+    total_fixed = 0
+    total_still_partial = 0
+    total_still_nc = 0
+    new_fw_scores: list[float] = []
+
+    for fw, baseline in baseline_by_fw.items():
+        codes = target_codes_by_fw.get(fw, set())
+        outcome_rows = db.execute(sql_text("""
+            SELECT control_code, compliance_status::text
+            FROM policy_ecc_assessments
+            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+        """), {"pid": policy.id, "fw": fw}).fetchall()
+        status_map = {r[0]: r[1] for r in outcome_rows}
+
+        fixed      = sum(1 for cc in codes if status_map.get(cc) == "compliant")
+        still_part = sum(1 for cc in codes if status_map.get(cc) == "partial")
+        still_nc   = sum(1 for cc in codes if status_map.get(cc) == "non_compliant")
+        total_fixed         += fixed
+        total_still_partial += still_part
+        total_still_nc      += still_nc
+
+        new_comp  = baseline["compliant"] + fixed
+        new_part  = still_part
+        total     = baseline["total"]
+        new_fw_scores.append(
+            round(((new_comp + new_part * 0.5) / total * 100), 1) if total else 0.0
+        )
+
+    new_score = round(sum(new_fw_scores) / len(new_fw_scores), 1) if new_fw_scores else original_score
+    improvement_delta = round(new_score - original_score, 1)
+    rem_score = round(total_fixed / total_targeted * 100, 1) if total_targeted else 0.0
+
+    # ── 11. Persist final scores ───────────────────────────────────────────
+    change_summary = (
+        f"AI-remediated version: {total_fixed}/{total_targeted} targeted controls fixed. "
+        f"Score: {original_score}% → {new_score}% ({'+' if improvement_delta >= 0 else ''}{improvement_delta}%)."
+    )
+    try:
+        new_version.compliance_score = new_score
+        new_version.change_summary   = change_summary
+        db.execute(sql_text(
+            "UPDATE policies SET status='analyzed', last_analyzed_at=:ts WHERE id=:pid"
+        ), {"ts": datetime.now(timezone.utc), "pid": policy.id})
+        # Update compliance_results with the correct blended score
+        for fw, baseline in baseline_by_fw.items():
+            codes = target_codes_by_fw.get(fw, set())
+            outcome_rows = db.execute(sql_text("""
+                SELECT control_code, compliance_status::text
+                FROM policy_ecc_assessments
+                WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            """), {"pid": policy.id, "fw": fw}).fetchall()
+            status_map = {r[0]: r[1] for r in outcome_rows}
+            fixed     = sum(1 for cc in codes if status_map.get(cc) == "compliant")
+            still_p   = sum(1 for cc in codes if status_map.get(cc) == "partial")
+            still_n   = sum(1 for cc in codes if status_map.get(cc) == "non_compliant")
+            new_comp  = baseline["compliant"] + fixed
+            total     = baseline["total"]
+            fw_score  = round(((new_comp + still_p * 0.5) / total * 100), 1) if total else 0.0
+            db.execute(sql_text("""
+                UPDATE compliance_results
+                SET compliance_score = :sc,
+                    controls_covered = :cov,
+                    controls_partial = :par,
+                    controls_missing = :mis,
+                    analyzed_at      = :ts
+                WHERE policy_id   = :pid
+                  AND framework_id = (SELECT id FROM frameworks WHERE name = :fw LIMIT 1)
+            """), {
+                "pid": policy.id, "fw": fw, "sc": fw_score,
+                "cov": new_comp, "par": still_p, "mis": still_n,
+                "ts": datetime.now(timezone.utc),
+            })
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return GenerateImprovedResponse(
         version_id=new_version.id,
@@ -668,7 +836,14 @@ def generate_improved_version(
         version_type=new_version.version_type,
         framework_id=body.framework_id,
         addressed_controls=addressed_controls,
-        estimated_improvement=estimated_improvement,
+        original_score=original_score,
+        new_score=new_score,
+        improvement_delta=improvement_delta,
+        total_targeted=total_targeted,
+        fixed_controls=total_fixed,
+        still_partial=total_still_partial,
+        still_non_compliant=total_still_nc,
+        remediation_score=rem_score,
         change_summary=change_summary,
     )
 
@@ -760,22 +935,45 @@ class ReanalyzeRequest(BaseModel):
     frameworks: Optional[List[str]] = None
 
 
-class FrameworkSummary(BaseModel):
+class FrameworkRemediationSummary(BaseModel):
     framework_id: str
-    score: float
-    compliant: int
-    partial: int
-    non_compliant: int
+    # Original full-analysis baseline
+    total_controls: int
+    original_compliant: int
+    original_partial: int
+    original_non_compliant: int
+    original_score: float
+    # What was targeted (partial + non_compliant before)
+    targeted_controls: int
+    # Outcomes for targeted controls after re-analysis
+    fixed_controls: int        # targeted → now compliant
+    still_partial: int         # targeted → still partial
+    still_non_compliant: int   # targeted → still non_compliant
+    remediation_score: float   # fixed / targeted × 100
+    # New overall (baseline compliant + fixed, weighted with still_partial)
+    new_compliant: int
+    new_partial: int
+    new_non_compliant: int
+    new_score: float           # weighted: (new_compliant + new_partial×0.5) / total × 100
 
 
 class ReanalyzeResponse(BaseModel):
     policy_id: str
     version_id: str
     version_number: int
-    overall_score: float
-    previous_score: Optional[float]
-    delta: Optional[float]
-    frameworks: List[FrameworkSummary]
+    # Overall compliance scores (based on full control set)
+    original_overall_score: float
+    new_overall_score: float
+    overall_delta: float
+    # Aggregate remediation stats
+    total_controls: int
+    targeted_controls: int     # partial + non_compliant before
+    fixed_controls: int        # of targeted, now compliant
+    still_partial: int
+    still_non_compliant: int
+    remediation_score: float   # fixed / targeted × 100
+    # Per-framework detail
+    frameworks: List[FrameworkRemediationSummary]
     duration_seconds: float
 
 
@@ -847,10 +1045,40 @@ async def reanalyze_version(
     if not frameworks:
         frameworks = ["ECC-2:2024", "SACS-002"]
 
-    previous_score = _latest_compliance_score(db, policy.id, None)
+    # ── 1. Capture baseline counts from policy_ecc_assessments ───────────
+    baseline_by_fw: dict[str, dict] = {}
+    for fw in frameworks:
+        rows = db.execute(sql_text("""
+            SELECT compliance_status::text, COUNT(*)
+            FROM policy_ecc_assessments
+            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+            GROUP BY compliance_status
+        """), {"pid": policy.id, "fw": fw}).fetchall()
+        c = {r[0]: int(r[1]) for r in rows}
+        comp  = c.get("compliant", 0)
+        part  = c.get("partial", 0)
+        non_c = c.get("non_compliant", 0)
+        total = comp + part + non_c
+        baseline_by_fw[fw] = {
+            "total": total,
+            "compliant": comp,
+            "partial": part,
+            "non_compliant": non_c,
+            "score": round(((comp + part * 0.5) / total * 100), 1) if total else 0.0,
+        }
 
-    # ── Stale-row cleanup. Mirrors the wipe inside /api/functions/analyze_policy
-    # so the UI shows clean post-remediation findings rather than a mix.
+    # ── 2. Identify targeted control codes (partial + non_compliant only) ─
+    target_codes_by_fw: dict[str, set] = {}
+    for fw in frameworks:
+        rows = db.execute(sql_text("""
+            SELECT control_code
+            FROM policy_ecc_assessments
+            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+              AND compliance_status IN ('non_compliant', 'partial')
+        """), {"pid": policy.id, "fw": fw}).fetchall()
+        target_codes_by_fw[fw] = {r[0] for r in rows}
+
+    # ── 3. Stale-row cleanup (keep compliant rows intact) ─────────────────
     try:
         db.query(models.AIInsight).filter(
             models.AIInsight.policy_id == policy.id
@@ -864,13 +1092,16 @@ async def reanalyze_version(
         db.query(models.ComplianceResult).filter(
             models.ComplianceResult.policy_id == policy.id
         ).delete()
-        # policy_ecc_assessments uses the same UNIQUE (policy_id, control_code)
-        # ON CONFLICT semantics, so analyzers will overwrite rows. We still
-        # delete them here so the count is accurate even if a control no
-        # longer maps to the new content.
-        db.execute(sql_text(
-            "DELETE FROM policy_ecc_assessments WHERE policy_id = CAST(:pid AS uuid)"
-        ), {"pid": policy.id})
+        # Only delete targeted (partial + non_compliant) rows per framework.
+        # Compliant rows are preserved so the overall score cannot regress.
+        for fw, codes in target_codes_by_fw.items():
+            if codes:
+                db.execute(sql_text(
+                    "DELETE FROM policy_ecc_assessments "
+                    "WHERE policy_id = CAST(:pid AS uuid) "
+                    "AND framework_id = :fw "
+                    "AND compliance_status IN ('non_compliant', 'partial')"
+                ), {"pid": policy.id, "fw": fw})
         db.commit()
     except Exception as e:                                 # noqa: BLE001
         db.rollback()
@@ -879,19 +1110,28 @@ async def reanalyze_version(
             detail=f"Failed to clear previous analysis rows: {e}",
         )
 
-    # ── Replace policy_chunks with chunks of the version content. The
-    # analyzers read from this table, so this is what feeds them the
-    # remediated text without modifying the original uploaded file.
+    # ── 4. Re-embed version content (version-scoped) ──────────────────────
+    reanalyze_version_id = str(version.id)
     try:
-        delete_policy_chunks(db, policy.id)
+        # Delete only THIS version's chunks; other versions are unaffected.
+        delete_policy_chunks(db, policy.id, policy_version_id=reanalyze_version_id)
         chunks = chunk_text(content)
         if not chunks:
             raise HTTPException(
                 status_code=422,
                 detail="Version content could not be chunked.",
             )
+        import hashlib as _hl
+        content_hash = _hl.sha256(content.encode("utf-8")).hexdigest()[:16]
+        print(f"  [REANALYZE] version={reanalyze_version_id} "
+              f"content_hash={content_hash} len={len(content)}")
         embeddings = await get_embeddings([c["text"] for c in chunks])
-        store_chunks_with_embeddings(db, policy.id, chunks, embeddings)
+        # store_chunks_with_embeddings already commits internally.
+        store_chunks_with_embeddings(
+            db, policy.id, chunks, embeddings,
+            policy_version_id=reanalyze_version_id,
+        )
+        print(f"  [REANALYZE] Stored {len(chunks)} version-scoped chunks")
     except HTTPException:
         raise
     except Exception as e:                                 # noqa: BLE001
@@ -901,34 +1141,29 @@ async def reanalyze_version(
             detail=f"Failed to embed version content: {type(e).__name__}: {e}",
         )
 
+    # ── 5. Re-analyze only targeted controls ──────────────────────────────
     t0 = time.time()
-    fw_summaries: list[FrameworkSummary] = []
-
     try:
         if "ECC-2:2024" in frameworks:
-            res = await run_ecc2_analysis(db, policy.id, progress_cb=None)
+            target = target_codes_by_fw.get("ECC-2:2024") or None
+            res = await run_ecc2_analysis(
+                db, policy.id, progress_cb=None,
+                control_codes=target,
+                policy_version_id=reanalyze_version_id,
+            )
             payload = res.get("ECC-2:2024") or {}
             if "error" in payload:
                 raise HTTPException(status_code=503, detail=payload["error"])
-            fw_summaries.append(FrameworkSummary(
-                framework_id="ECC-2:2024",
-                score=float(payload.get("score") or 0.0),
-                compliant=int(payload.get("compliant") or 0),
-                partial=int(payload.get("partial") or 0),
-                non_compliant=int(payload.get("non_compliant") or 0),
-            ))
         if "SACS-002" in frameworks:
-            res = await run_sacs002_analysis(db, policy.id, progress_cb=None)
+            target = target_codes_by_fw.get("SACS-002") or None
+            res = await run_sacs002_analysis(
+                db, policy.id, progress_cb=None,
+                control_codes=target,
+                policy_version_id=reanalyze_version_id,
+            )
             payload = res.get("SACS-002") or {}
             if "error" in payload:
                 raise HTTPException(status_code=503, detail=payload["error"])
-            fw_summaries.append(FrameworkSummary(
-                framework_id="SACS-002",
-                score=float(payload.get("compliance_score") or 0.0),
-                compliant=int(payload.get("compliant") or 0),
-                partial=int(payload.get("partial") or 0),
-                non_compliant=int(payload.get("non_compliant") or 0),
-            ))
     except HTTPException:
         raise
     except Exception as e:                                 # noqa: BLE001
@@ -939,40 +1174,124 @@ async def reanalyze_version(
 
     duration = round(time.time() - t0, 1)
 
-    # Overall score = average of the framework scores we ran (matches the
-    # convention used by the rest of the UI when multiple frameworks are
-    # active for one policy).
-    overall_score = (
-        round(sum(f.score for f in fw_summaries) / len(fw_summaries), 1)
-        if fw_summaries
-        else 0.0
-    )
+    # ── 6. Compute per-framework remediation stats + new overall score ────
+    fw_summaries: list[FrameworkRemediationSummary] = []
 
-    # Persist the new score back onto the version so the version-history
-    # list shows the validated, post-remediation number.
+    for fw in frameworks:
+        baseline     = baseline_by_fw.get(fw, {"total": 0, "compliant": 0, "partial": 0, "non_compliant": 0, "score": 0.0})
+        target_codes = target_codes_by_fw.get(fw, set())
+
+        # Query all current rows for this framework (preserved + newly analyzed)
+        all_rows = db.execute(sql_text("""
+            SELECT control_code, compliance_status::text
+            FROM policy_ecc_assessments
+            WHERE policy_id = CAST(:pid AS uuid) AND framework_id = :fw
+        """), {"pid": policy.id, "fw": fw}).fetchall()
+        status_map = {r[0]: r[1] for r in all_rows}
+
+        # What happened to the targeted controls?
+        fixed      = sum(1 for cc in target_codes if status_map.get(cc) == "compliant")
+        still_part = sum(1 for cc in target_codes if status_map.get(cc) == "partial")
+        still_nc   = sum(1 for cc in target_codes if status_map.get(cc) == "non_compliant")
+        n_targeted = len(target_codes)
+        rem_score  = round(fixed / n_targeted * 100, 1) if n_targeted else 0.0
+
+        # New overall: preserved compliant + newly fixed, blended with remaining partial
+        total     = baseline["total"]
+        new_comp  = baseline["compliant"] + fixed
+        new_part  = still_part
+        new_nc    = still_nc
+        new_score = round(((new_comp + new_part * 0.5) / total * 100), 1) if total else 0.0
+
+        fw_summaries.append(FrameworkRemediationSummary(
+            framework_id=fw,
+            total_controls=total,
+            original_compliant=baseline["compliant"],
+            original_partial=baseline["partial"],
+            original_non_compliant=baseline["non_compliant"],
+            original_score=baseline["score"],
+            targeted_controls=n_targeted,
+            fixed_controls=fixed,
+            still_partial=still_part,
+            still_non_compliant=still_nc,
+            remediation_score=rem_score,
+            new_compliant=new_comp,
+            new_partial=new_part,
+            new_non_compliant=new_nc,
+            new_score=new_score,
+        ))
+
+    # Aggregate across all frameworks
+    total_controls    = sum(f.total_controls for f in fw_summaries)
+    targeted_controls = sum(f.targeted_controls for f in fw_summaries)
+    fixed_controls    = sum(f.fixed_controls for f in fw_summaries)
+    still_partial     = sum(f.still_partial for f in fw_summaries)
+    still_nc          = sum(f.still_non_compliant for f in fw_summaries)
+    rem_score         = round(fixed_controls / targeted_controls * 100, 1) if targeted_controls else 0.0
+
+    original_overall = (
+        round(sum(f.original_score for f in fw_summaries) / len(fw_summaries), 1)
+        if fw_summaries else 0.0
+    )
+    new_overall = (
+        round(sum(f.new_score for f in fw_summaries) / len(fw_summaries), 1)
+        if fw_summaries else 0.0
+    )
+    overall_delta = round(new_overall - original_overall, 1)
+
+    # ── 7. Persist the correct blended score everywhere ──────────────────
     try:
-        version.compliance_score = overall_score
+        # Version row — shown in version history list
+        version.compliance_score = new_overall
+
+        # Policy row — status + timestamp
         db.execute(sql_text(
             "UPDATE policies SET status='analyzed', last_analyzed_at=:ts "
             "WHERE id = :pid"
         ), {"ts": datetime.now(timezone.utc), "pid": policy.id})
+
+        # compliance_results — what the Analyses page reads.
+        # The analyzer wrote partial-only scores; overwrite with the correct
+        # blended score for each framework.
+        for fw_sum in fw_summaries:
+            db.execute(sql_text("""
+                UPDATE compliance_results
+                SET compliance_score  = :sc,
+                    controls_covered  = :cov,
+                    controls_partial  = :par,
+                    controls_missing  = :mis,
+                    analyzed_at       = :ts
+                WHERE policy_id   = :pid
+                  AND framework_id = (
+                      SELECT id FROM frameworks WHERE name = :fw LIMIT 1
+                  )
+            """), {
+                "pid": policy.id,
+                "fw":  fw_sum.framework_id,
+                "sc":  fw_sum.new_score,
+                "cov": fw_sum.new_compliant,
+                "par": fw_sum.new_partial,
+                "mis": fw_sum.new_non_compliant,
+                "ts":  datetime.now(timezone.utc),
+            })
+
         db.commit()
     except Exception:
         db.rollback()
-
-    delta = (
-        round(overall_score - previous_score, 1)
-        if previous_score is not None
-        else None
-    )
 
     return ReanalyzeResponse(
         policy_id=policy.id,
         version_id=version.id,
         version_number=version.version_number,
-        overall_score=overall_score,
-        previous_score=round(previous_score, 1) if previous_score is not None else None,
-        delta=delta,
+        original_overall_score=original_overall,
+        new_overall_score=new_overall,
+        overall_delta=overall_delta,
+        total_controls=total_controls,
+        targeted_controls=targeted_controls,
+        fixed_controls=fixed_controls,
+        still_partial=still_partial,
+        still_non_compliant=still_nc,
+        remediation_score=rem_score,
         frameworks=fw_summaries,
         duration_seconds=duration,
     )

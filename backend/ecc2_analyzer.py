@@ -690,12 +690,20 @@ def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: 
     })
 
 
-async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
+async def run_ecc2_analysis(
+    db,
+    policy_id: str,
+    progress_cb=None,
+    control_codes=None,
+    policy_version_id: str | None = None,
+) -> dict:
     """
-    Main entry point: analyze a policy against all 200 ECC-2:2024 controls.
+    Analyze a policy against ECC-2:2024 controls.
 
-    Returns a summary dict keyed by FRAMEWORK_ID, compatible with the format
-    returned by run_checkpoint_analysis so main.py can merge results.
+    control_codes:      optional set of control codes to assess (incremental mode).
+    policy_version_id:  when provided, reads chunks ONLY for that version so
+                        improved-version content is never confused with original.
+                        When None, reads all chunks for policy_id (original behavior).
     """
     def _report(pct: int, stage: str):
         if progress_cb:
@@ -711,13 +719,31 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
 
     _report(12, "ECC-2: Checking policy chunks")
 
-    # ── Auto-embed policy if chunks are missing ───────────────────────────
+    # ── Chunk lookup: version-scoped when policy_version_id is provided ───
+    if policy_version_id:
+        _chunk_where = "policy_version_id = :vid AND embedding IS NOT NULL"
+        _chunk_params_base = {"vid": policy_version_id}
+        print(f"  [ECC2] Version-scoped mode: policy_version_id={policy_version_id}")
+    else:
+        _chunk_where = "policy_id = :pid AND embedding IS NOT NULL"
+        _chunk_params_base = {"pid": policy_id}
+
     n_chunks = db.execute(sql_text(
-        "SELECT COUNT(*) FROM policy_chunks "
-        "WHERE policy_id = :pid AND embedding IS NOT NULL"
-    ), {"pid": policy_id}).fetchone()[0]
+        f"SELECT COUNT(*) FROM policy_chunks WHERE {_chunk_where}"
+    ), _chunk_params_base).fetchone()[0]
 
     if n_chunks == 0:
+        if policy_version_id:
+            # Never auto-embed when a specific version is requested —
+            # that would silently fall back to the original policy content.
+            return {
+                FRAMEWORK_ID: {
+                    "error": (
+                        f"No embedded chunks found for version {policy_version_id}. "
+                        "The version content was not embedded before analysis."
+                    )
+                }
+            }
         print("  [ECC2] Auto-embedding policy chunks...")
         _report(15, "ECC-2: Embedding policy text")
         from backend.checkpoint_analyzer import _auto_embed
@@ -728,28 +754,26 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
             }
         n_chunks = embedded
 
-    # Phase 11: opt-in source-attribution backfill. If every chunk for
-    # this policy lacks page_number AND paragraph_index, the policy was
-    # uploaded before Phase 11 — re-extract + re-chunk + re-embed once
-    # so future evidence can be attributed to a source. Atomic swap;
-    # any prepare-stage failure leaves existing chunks untouched.
-    from backend.checkpoint_analyzer import (
-        policy_needs_source_attribution_backfill,
-        rechunk_for_source_attribution,
-        RechunkError,
-    )
-    if policy_needs_source_attribution_backfill(db, policy_id):
-        print("  [ECC2] Policy chunks lack source attribution -> backfill rechunk")
-        _report(16, "ECC-2: Rechunking for source attribution")
-        try:
-            new_count = await rechunk_for_source_attribution(db, policy_id)
-            n_chunks = new_count
-            print(f"  [ECC2] Source-attribution backfill complete: "
-                  f"{new_count} chunks")
-        except RechunkError as e:
-            print(f"  [ECC2] Backfill skipped (existing chunks intact): {e}")
+    # Phase 11: source-attribution backfill — skip for version-scoped runs
+    # to avoid overwriting improved chunks with rechunked original content.
+    if not policy_version_id:
+        from backend.checkpoint_analyzer import (
+            policy_needs_source_attribution_backfill,
+            rechunk_for_source_attribution,
+            RechunkError,
+        )
+        if policy_needs_source_attribution_backfill(db, policy_id):
+            print("  [ECC2] Policy chunks lack source attribution -> backfill rechunk")
+            _report(16, "ECC-2: Rechunking for source attribution")
+            try:
+                new_count = await rechunk_for_source_attribution(db, policy_id)
+                n_chunks = new_count
+                print(f"  [ECC2] Source-attribution backfill: {new_count} chunks")
+            except RechunkError as e:
+                print(f"  [ECC2] Backfill skipped: {e}")
 
-    print(f"  [ECC2] Policy has {n_chunks} embedded chunks")
+    print(f"  [ECC2] Loaded {n_chunks} chunks "
+          f"(version={policy_version_id or 'original'})")
     _report(18, "ECC-2: Loading structured controls")
 
     # ── Load all ECC-2 controls (L1 + L2 + L3) ───────────────────────────
@@ -778,19 +802,25 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
     deleted_count = len(controls) - len(active_controls)
     print(f"  [ECC2] {len(active_controls)} active controls "
           f"({deleted_count} deleted in ECC-2 — skipped)")
+
+    if control_codes is not None:
+        active_controls = [c for c in active_controls if c["control_code"] in control_codes]
+        print(f"  [ECC2] Incremental mode: restricted to {len(active_controls)} targeted controls")
+
     _report(22, f"ECC-2: Analysing {len(active_controls)} controls")
 
     # ── Load policy chunks for BM25 retrieval ────────────────────────────
-    # Phase 11: include chunk_index, page_number, paragraph_index so
-    # _attribute_evidence_to_chunk can pin grounded evidence to a source
-    # chunk. The "chunk_id" we attach mirrors prepare_chunks_for_storage's
-    # convention ("<policy_id>_chunk_<idx>") for downstream entity lookup.
+    # Use version-scoped WHERE clause when policy_version_id is provided so
+    # the analyzer reads ONLY the improved chunks, never the original ones.
+    _load_where   = "policy_version_id = :vid" if policy_version_id else "policy_id = :pid"
+    _load_params  = {"vid": policy_version_id} if policy_version_id else {"pid": policy_id}
+
     try:
         chunk_rows = db.execute(sql_text(
             "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
             "       chunk_index, page_number, paragraph_index "
-            "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
-        ), {"pid": policy_id}).fetchall()
+            f"FROM policy_chunks WHERE {_load_where} ORDER BY chunk_index"
+        ), _load_params).fetchall()
         policy_chunks = [
             {
                 "text": r[0],
@@ -803,17 +833,13 @@ async def run_ecc2_analysis(db, policy_id: str, progress_cb=None) -> dict:
             for r in chunk_rows if r[0]
         ]
     except Exception:
-        # Fallback for older schemas missing the Phase-11 columns. Source
-        # attribution will be NULL on every assessment row from this run;
-        # the next analysis after a startup that adds the columns will
-        # populate them via opt-in rechunk.
         db.rollback()
         try:
             chunk_rows = db.execute(sql_text(
                 "SELECT chunk_text, COALESCE(classification, 'descriptive'), "
                 "       chunk_index "
-                "FROM policy_chunks WHERE policy_id = :pid ORDER BY chunk_index"
-            ), {"pid": policy_id}).fetchall()
+                f"FROM policy_chunks WHERE {_load_where} ORDER BY chunk_index"
+            ), _load_params).fetchall()
             policy_chunks = [
                 {
                     "text": r[0], "classification": r[1],

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -120,8 +121,10 @@ function VersionTypeBadge({ type }) {
 const LOADING_STEPS = [
   'Loading partial and non-compliant controls…',
   'Building consolidated remediation request…',
-  'Generating new policy sections…',
-  'Persisting AI-remediated version…',
+  'Generating improved policy sections via AI…',
+  'Saving AI-remediated version…',
+  'Re-analyzing improved version…',
+  'Calculating new compliance score…',
 ];
 
 function GenerateImprovedDialog({
@@ -262,30 +265,87 @@ function GenerateImprovedDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-emerald-500" />
-                New version saved
+                Improved version created
               </DialogTitle>
               <DialogDescription>
-                A new <span className="font-mono">ai_remediated</span> version is now in the
-                version history below.
+                New <span className="font-mono">ai_remediated</span> version saved and
+                re-analyzed. Results are based on actual compliance analysis.
               </DialogDescription>
             </DialogHeader>
+
             <div className="space-y-3 py-2">
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/8 p-4">
-                <p className="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
-                  Estimated post-remediation score
+
+              {/* Score comparison */}
+              <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/8 to-teal-500/5 p-4">
+                <p className="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300 mb-3 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  Overall Compliance Score
                 </p>
-                <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {result.estimated_improvement}%
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Run analysis on this new version to verify the actual score.
-                </p>
+                <div className="flex items-center justify-center gap-5">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Before</p>
+                    <p className="text-3xl font-black text-muted-foreground tabular-nums">
+                      {result.original_score}<span className="text-xl">%</span>
+                    </p>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-emerald-500 shrink-0" />
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">After</p>
+                    <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {result.new_score}<span className="text-2xl">%</span>
+                    </p>
+                  </div>
+                  <span className={`text-sm font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                    result.improvement_delta > 0
+                      ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15'
+                      : result.improvement_delta === 0
+                      ? 'text-muted-foreground bg-muted/50'
+                      : 'text-red-700 dark:text-red-300 bg-red-500/15'
+                  }`}>
+                    {result.improvement_delta > 0 && <TrendingUp className="w-3.5 h-3.5" />}
+                    {result.improvement_delta < 0 && <TrendingDown className="w-3.5 h-3.5" />}
+                    {result.improvement_delta > 0 ? '+' : ''}{result.improvement_delta}%
+                  </span>
+                </div>
               </div>
+
+              {/* Remediation stats */}
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4">
+                <p className="text-xs uppercase font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Remediation Results
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                  <div className="rounded-lg bg-muted/30 py-2">
+                    <p className="text-2xl font-black tabular-nums">{result.total_targeted}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Targeted</p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-500/10 py-2">
+                    <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{result.fixed_controls}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Fixed</p>
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 py-2">
+                    <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                      {result.still_partial + result.still_non_compliant}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Remaining</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs px-0.5 mb-1.5">
+                  <span className="text-muted-foreground">Remediation success rate</span>
+                  <span className="font-bold text-blue-700 dark:text-blue-300">{result.remediation_score}%</span>
+                </div>
+                <div className="w-full bg-muted/40 rounded-full h-1.5">
+                  <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${result.remediation_score}%` }} />
+                </div>
+              </div>
+
+              {/* Addressed controls */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-1.5">
-                  Controls addressed ({result.addressed_controls.length})
+                  Controls targeted ({result.addressed_controls.length})
                 </p>
-                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                   {result.addressed_controls.map((c, i) => (
                     <Badge key={i} variant="outline" className="font-mono text-xs">
                       {c}
@@ -293,7 +353,9 @@ function GenerateImprovedDialog({
                   ))}
                 </div>
               </div>
+
             </div>
+
             <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border/60">
               <Button variant="outline" onClick={handleClose}>Close</Button>
               <Button
@@ -301,11 +363,7 @@ function GenerateImprovedDialog({
                 disabled={pdfDownloading}
                 className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
               >
-                {pdfDownloading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <FileDown className="w-4 h-4" />
-                )}
+                {pdfDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                 {pdfDownloading ? 'Preparing PDF…' : 'Download PDF'}
               </Button>
             </div>
@@ -717,7 +775,7 @@ function VersionDetailDialog({ versionId, policyId, onClose, onReanalysisDone })
       // Refresh the version row so its compliance_score updates inline.
       queryClient.invalidateQueries({ queryKey: ['policyVersion', versionId] });
       onReanalysisDone?.();
-      toast({ title: `Re-analysis complete · ${res.overall_score}%` });
+      toast({ title: `Re-analysis complete · ${res.new_overall_score}% overall (was ${res.original_overall_score}%)` });
     },
     onError: (e) =>
       toast({
@@ -911,9 +969,8 @@ function ReanalysisResultDialog({
   const { toast } = useToast();
   const [pdfDownloading, setPdfDownloading] = useState(false);
 
-  const delta = result.delta;
-  const hasDelta = delta !== null && delta !== undefined;
-  const deltaPositive = hasDelta && delta >= 0;
+  const deltaPositive = result.overall_delta > 0;
+  const deltaZero     = result.overall_delta === 0;
 
   const handleDownloadPdf = async () => {
     setPdfDownloading(true);
@@ -947,96 +1004,120 @@ function ReanalysisResultDialog({
             Re-analysis complete
           </DialogTitle>
           <DialogDescription>
-            Compliance score, control statuses, gaps, and recommendations have been
-            updated based on the re-analyzed remediated content.
+            Targeted {result.targeted_controls} previously flagged controls.
+            Compliant controls were preserved.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* Score banner with before / after / delta */}
-          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/8 to-teal-500/5 p-5">
+        <div className="space-y-3 py-2">
+
+          {/* ── Section 1: Overall Compliance Score ── */}
+          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/8 to-teal-500/5 p-4">
             <p className="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300 mb-3 flex items-center gap-1.5">
               <TrendingUp className="w-3.5 h-3.5" />
-              New compliance score
+              Overall Compliance Score
             </p>
-            <div className="flex items-center justify-center gap-6">
-              {result.previous_score !== null && result.previous_score !== undefined && (
-                <>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground mb-1">Before</p>
-                    <p className="text-3xl font-black text-muted-foreground tabular-nums">
-                      {result.previous_score}
-                      <span className="text-xl">%</span>
-                    </p>
-                  </div>
-                  <ArrowRight className="w-6 h-6 text-emerald-500" />
-                </>
-              )}
+            <div className="flex items-center justify-center gap-5">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Before</p>
+                <p className="text-3xl font-black text-muted-foreground tabular-nums">
+                  {result.original_overall_score}<span className="text-xl">%</span>
+                </p>
+              </div>
+              <ArrowRight className="w-5 h-5 text-emerald-500 shrink-0" />
               <div className="text-center">
                 <p className="text-xs text-muted-foreground mb-1">After</p>
                 <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {result.overall_score}
-                  <span className="text-2xl">%</span>
+                  {result.new_overall_score}<span className="text-2xl">%</span>
                 </p>
               </div>
-              {hasDelta && (
-                <span
-                  className={`text-sm font-bold px-2.5 py-1 rounded-full ${
-                    deltaPositive
-                      ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15'
-                      : 'text-red-700 dark:text-red-300 bg-red-500/15'
-                  } flex items-center gap-1`}
-                >
-                  {deltaPositive ? (
-                    <TrendingUp className="w-3.5 h-3.5" />
-                  ) : (
-                    <TrendingDown className="w-3.5 h-3.5" />
-                  )}
-                  {deltaPositive ? '+' : ''}
-                  {delta}%
-                </span>
-              )}
+              <span className={`text-sm font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                deltaPositive ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/15'
+                : deltaZero   ? 'text-muted-foreground bg-muted/50'
+                :               'text-red-700 dark:text-red-300 bg-red-500/15'
+              }`}>
+                {deltaPositive && <TrendingUp className="w-3.5 h-3.5" />}
+                {!deltaPositive && !deltaZero && <TrendingDown className="w-3.5 h-3.5" />}
+                {deltaPositive ? '+' : ''}{result.overall_delta}%
+              </span>
             </div>
-            <p className="text-xs text-muted-foreground text-center mt-3">
-              Re-analysis ran in {result.duration_seconds}s.
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Based on all {result.total_controls} framework controls · {result.duration_seconds}s
             </p>
           </div>
 
-          {/* Per-framework breakdown */}
+          {/* ── Section 2: Remediation Results ── */}
+          <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4">
+            <p className="text-xs uppercase font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Remediation Results
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-center mb-3">
+              <div className="rounded-lg bg-muted/30 py-2">
+                <p className="text-2xl font-black text-foreground tabular-nums">{result.targeted_controls}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Targeted</p>
+              </div>
+              <div className="rounded-lg bg-emerald-500/10 py-2">
+                <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{result.fixed_controls}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Fixed</p>
+              </div>
+              <div className="rounded-lg bg-amber-500/10 py-2">
+                <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                  {result.still_partial + result.still_non_compliant}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Remaining</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-xs px-0.5 mb-1.5">
+              <span className="text-muted-foreground">Remediation success rate</span>
+              <span className="font-bold text-blue-700 dark:text-blue-300 tabular-nums">{result.remediation_score}%</span>
+            </div>
+            <div className="w-full bg-muted/40 rounded-full h-1.5">
+              <div
+                className="bg-blue-500 h-1.5 rounded-full transition-all"
+                style={{ width: `${result.remediation_score}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Of the {result.targeted_controls} previously partial or non-compliant controls
+            </p>
+          </div>
+
+          {/* ── Section 3: Per-framework breakdown ── */}
           {result.frameworks?.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs uppercase font-semibold text-muted-foreground">
-                Frameworks analyzed
+                Frameworks Analyzed
               </p>
               {result.frameworks.map((fw) => (
-                <div
-                  key={fw.framework_id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Shield className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span className="font-mono text-xs font-semibold truncate">
-                      {fw.framework_id}
-                    </span>
+                <div key={fw.framework_id} className="p-3 rounded-lg border border-border bg-muted/20 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Shield className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span className="font-mono text-xs font-semibold truncate">{fw.framework_id}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs tabular-nums">
+                      <span className="text-muted-foreground line-through">{fw.original_score}%</span>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-bold text-foreground">{fw.new_score}%</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs tabular-nums">
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      ✓ {fw.compliant}
-                    </span>
-                    <span className="text-amber-600 dark:text-amber-400">
-                      ~ {fw.partial}
-                    </span>
-                    <span className="text-red-600 dark:text-red-400">
-                      ✗ {fw.non_compliant}
-                    </span>
-                    <span className="font-bold text-foreground">
-                      {Math.round(fw.score)}%
-                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400">✓ {fw.new_compliant}</span>
+                    <span className="text-amber-600 dark:text-amber-400">~ {fw.new_partial}</span>
+                    <span className="text-red-600 dark:text-red-400">✗ {fw.new_non_compliant}</span>
+                    <span className="text-muted-foreground">/ {fw.total_controls}</span>
                   </div>
+                  {fw.targeted_controls > 0 && (
+                    <p className="text-xs text-muted-foreground border-t border-border/50 pt-1.5">
+                      Fixed {fw.fixed_controls}/{fw.targeted_controls} targeted controls ({fw.remediation_score}% success)
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           )}
+
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border/60">
