@@ -38,17 +38,10 @@ import {
   Legend,
 } from 'recharts';
 import { format } from 'date-fns';
+import { SEVERITY_COLORS, STATUS_COLORS } from '@/components/charts/severityColors';
 
 const Policy   = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
-
-// Standard cybersecurity severity palette
-const SEVERITY_COLORS = {
-  Critical: '#EF4444',
-  High:     '#F97316',
-  Medium:   '#EAB308',
-  Low:      '#22C55E',
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -302,6 +295,32 @@ export default function Dashboard() {
     })),
   [complianceByFramework]);
 
+  // Phase D: status donut data (covered / partial / missing across frameworks)
+  const statusOverview = stats?.status_overview || {};
+  const statusData = useMemo(() => [
+    { name: 'Covered', value: statusOverview.compliant     || 0, color: STATUS_COLORS.Covered },
+    { name: 'Partial', value: statusOverview.partial       || 0, color: STATUS_COLORS.Partial },
+    { name: 'Missing', value: statusOverview.non_compliant || 0, color: STATUS_COLORS.Missing },
+  ], [stats]);
+  const totalAssessed = statusData.reduce((s, r) => s + r.value, 0);
+  const compliancePct = totalAssessed
+    ? Math.round((statusData[0].value / totalAssessed) * 100)
+    : 0;
+
+  // Phase D: top-10 risky controls (severity-weighted)
+  const topRiskyData = useMemo(() => {
+    const rows = stats?.top_risky_controls || [];
+    return rows.map(r => ({
+      // truncate long control names so the y-axis stays readable
+      name: (r.control_name || '').length > 38
+        ? (r.control_name || '').slice(0, 36) + '…'
+        : (r.control_name || ''),
+      fullName:  r.control_name || '',
+      gap_count: r.gap_count || 0,
+      score:     r.risk_score || 0,
+    }));
+  }, [stats]);
+
   // Whether KPI/chart areas should show skeletons (first load or no data yet)
   const statsSkeletons = statsLoading;
   // Whether a subtle "refreshing" indicator is needed (file switch in-flight)
@@ -526,6 +545,138 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Phase D: Compliance Status Donut + Top-10 Risky Controls ─────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+        {/* Compliance Status Donut — covered / partial / missing across frameworks */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon bg="bg-emerald-50 dark:bg-emerald-500/15">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </CardIcon>
+              Compliance Status
+              {statsRefreshing && (
+                <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin ml-auto" />
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-5">
+            {statsSkeletons ? (
+              <Skeleton className="h-60 w-full rounded-xl" />
+            ) : totalAssessed === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
+                  <BarChart3 className="w-6 h-6 text-muted-foreground/60" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">No analyses yet</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Run an analysis to see compliance status</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-6">
+                <div className="relative flex-shrink-0" style={{ width: 200, height: 200 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={88}
+                        paddingAngle={2}
+                        dataKey="value"
+                        startAngle={90}
+                        endAngle={-270}
+                        strokeWidth={0}
+                      >
+                        {statusData.map((entry, index) => (
+                          <Cell key={`cell-status-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-bold text-foreground leading-none">{compliancePct}%</span>
+                    <span className="text-xs text-muted-foreground mt-1 font-medium">Compliant</span>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-3">
+                  {statusData.map((item, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-3 w-full text-left rounded-lg px-2 py-1 -mx-2"
+                    >
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="text-sm text-muted-foreground flex-1">{item.name}</span>
+                      <span
+                        className="text-xs font-semibold text-white px-2 py-0.5 rounded-full tabular-nums"
+                        style={{ backgroundColor: item.color }}
+                      >
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top-10 Risky Controls — severity-weighted */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+              <CardIcon bg="bg-red-50 dark:bg-red-500/15">
+                <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
+              </CardIcon>
+              Top Risky Controls
+              {statsRefreshing && (
+                <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin ml-auto" />
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-5">
+            {statsSkeletons ? (
+              <Skeleton className="h-60 w-full rounded-xl" />
+            ) : topRiskyData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-500/60" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">No open gaps</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">All controls are compliant</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(220, topRiskyData.length * 28)}>
+                <BarChart
+                  data={topRiskyData}
+                  layout="vertical"
+                  margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
+                  barSize={16}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={170}
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)' }} />
+                  <Bar dataKey="score" fill={SEVERITY_COLORS.High} radius={[0, 4, 4, 0]} name="Risk score" />
+                </BarChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>

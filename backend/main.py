@@ -1082,6 +1082,35 @@ def dashboard_stats(
     ), bind).fetchall()
     severity_distribution = {r[0]: r[1] for r in sev_rows}
 
+    # Phase D: Top-10 risky controls — weighted by severity so a single
+    # Critical outranks several Mediums. Weights: Critical=4, High=3,
+    # Medium=2, Low=1, anything else=1. Returns control_name +
+    # gap_count + risk_score, ordered by risk_score desc.
+    top_risky_rows = db.execute(_t(f"""
+        SELECT
+            g.control_name,
+            COUNT(*) AS gap_count,
+            SUM(CASE g.severity
+                  WHEN 'Critical' THEN 4
+                  WHEN 'High'     THEN 3
+                  WHEN 'Medium'   THEN 2
+                  WHEN 'Low'      THEN 1
+                  ELSE 1
+                END) AS risk_score
+        FROM gaps g
+        WHERE g.status='Open'
+          AND g.control_name IS NOT NULL
+          {policy_filter_gap} {user_filter_gap}
+        GROUP BY g.control_name
+        ORDER BY risk_score DESC, gap_count DESC
+        LIMIT 10
+    """), bind).fetchall()
+    top_risky_controls = [
+        {"control_name": r[0], "gap_count": int(r[1] or 0),
+         "risk_score": int(r[2] or 0)}
+        for r in top_risky_rows
+    ]
+
     # Control counts (latest CR per framework, summed across frameworks).
     # `controls_total` = every control assessed (covered + partial + missing) —
     # this is what the "Controls Mapped" KPI on the dashboard wants.
@@ -1108,6 +1137,7 @@ def dashboard_stats(
         "controls_compliant": controls_compliant,
         "controls_mapped": controls_total,  # deprecated alias of controls_total
         "status_overview": status_overview,
+        "top_risky_controls": top_risky_controls,
     }
 
 
