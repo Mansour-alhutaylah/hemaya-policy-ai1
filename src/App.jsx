@@ -36,17 +36,18 @@ const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
-// Mirrors backend ADMIN_EMAIL + Sidebar admin check. Reusable when admin-only
+// Phase C: gate admin access on the backend-provided is_admin flag
+// (honours both ADMIN_EMAIL env and role='admin'). Reusable when admin-only
 // user-app pages are added in future (Audit Trail now lives in /admin only).
-const ADMIN_EMAIL = "himayaadmin@gmail.com";
-const ADMIN_ONLY_PAGES = new Set();
+// Phase C: Simulation is BETA, hidden from regular users until productised.
+const ADMIN_ONLY_PAGES = new Set(['Simulation']);
 
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
 
 const AdminOnly = ({ children }) => {
   const { user } = useAuth();
-  if (user?.email !== ADMIN_EMAIL) {
+  if (!user?.is_admin) {
     return <Navigate to="/Dashboard" replace />;
   }
   return children;

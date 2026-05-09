@@ -88,7 +88,7 @@ export default function Login() {
       }
 
       login({ token, user, session_timeout_minutes: data?.session_timeout_minutes });
-      nav(user?.email === "himayaadmin@gmail.com" ? "/admin" : "/Dashboard");
+      nav(user?.is_admin ? "/admin" : "/Dashboard");
     } catch (err) {
       clearTimeout(timeoutId);
       if (err?.name === "AbortError" || err?.name === "TimeoutError") {

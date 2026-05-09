@@ -43,8 +43,6 @@ import { format } from 'date-fns';
 const ComplianceResult = api.entities.ComplianceResult;
 const Framework = api.entities.Framework;
 
-const ADMIN_EMAIL = 'himayaadmin@gmail.com';
-
 // Visual rotation reused across all frameworks rendered from the DB.
 // Each palette entry bundles both light and dark variants for tints and borders.
 const PALETTE = [
@@ -103,7 +101,7 @@ export default function Frameworks() {
   const [selectedFramework, setSelectedFramework] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const { user } = useAuth();
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  const isAdmin = !!user?.is_admin;
 
   // Real frameworks (DB-backed) — include_empty so admins can also see
   // frameworks that exist as records but have no document yet.

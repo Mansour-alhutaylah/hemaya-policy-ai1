@@ -66,8 +66,6 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-const ADMIN_EMAIL = 'himayaadmin@gmail.com';
-
 // ─────────────────────────────────────────────────────────
 // API HELPER — authenticated fetch wrapper for admin routes
 // ─────────────────────────────────────────────────────────
@@ -1861,7 +1859,7 @@ function SettingsSection({ adminUser }) {
             </div>
             <div>
               <label className="text-muted-foreground text-xs block mb-1">Email</label>
-              <Input defaultValue={ADMIN_EMAIL} disabled className="bg-muted border-border text-muted-foreground" />
+              <Input defaultValue={user?.email || ''} disabled className="bg-muted border-border text-muted-foreground" />
             </div>
             <Button className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2"
               disabled={savingProfile} onClick={saveProfile}>
@@ -2116,7 +2114,7 @@ export default function Admin() {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.email !== ADMIN_EMAIL) return <AccessDenied />;
+  if (!user?.is_admin) return <AccessDenied />;
 
   const renderSection = () => {
     switch (active) {
@@ -2165,7 +2163,7 @@ export default function Admin() {
               <p className="text-foreground text-sm font-medium">
                 {user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Admin'}
               </p>
-              <p className="text-muted-foreground text-xs">{ADMIN_EMAIL}</p>
+              <p className="text-muted-foreground text-xs">{user?.email || 'admin'}</p>
             </div>
             <div className="w-9 h-9 bg-emerald-500/20 rounded-full flex items-center justify-center">
               <ShieldCheck className="w-5 h-5 text-emerald-400" />

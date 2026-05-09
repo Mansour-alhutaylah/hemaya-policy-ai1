@@ -24,8 +24,6 @@ import {
   GitFork,
 } from 'lucide-react';
 
-const ADMIN_EMAIL = 'himayaadmin@gmail.com';
-
 // Audit Trail / Activity Logs lives in the Admin panel only — no entry here.
 const navigationItems = [
   { name: 'Home', icon: Home, page: 'Home' },
@@ -39,7 +37,7 @@ const navigationItems = [
   { name: 'Reports', icon: FileBarChart, page: 'Reports' },
   { name: 'AI Insights', icon: Lightbulb, page: 'AIInsights', badge: 'NEW' },
   { name: 'Explainability', icon: Brain, page: 'Explainability' },
-  { name: 'Simulation', icon: FlaskConical, page: 'Simulation', badge: 'BETA' },
+  { name: 'Simulation', icon: FlaskConical, page: 'Simulation', badge: 'BETA', adminOnly: true },
   { name: 'AI Assistant', icon: MessageSquare, page: 'AIAssistant' },
   { name: 'Settings', icon: Settings, page: 'Settings' },
 ];
@@ -48,8 +46,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const location = useLocation();
   const currentPath = location.pathname;
   const { user } = useAuth();
-  const isAdmin = user?.email === ADMIN_EMAIL;
-  const visibleNav = navigationItems;
+  const isAdmin = !!user?.is_admin;
+  const visibleNav = navigationItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <aside

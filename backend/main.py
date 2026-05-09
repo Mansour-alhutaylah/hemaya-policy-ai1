@@ -517,6 +517,7 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
             "first_name": db_user.first_name,
             "last_name": db_user.last_name,
             "phone": db_user.phone,
+            "is_admin": is_admin(db_user),
         },
     }
 
@@ -773,9 +774,21 @@ def change_password(
     return {"message": "Password updated successfully."}
 
 
-@app.get("/api/auth/me", response_model=schemas.User)
+@app.get("/api/auth/me")
 def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
+    # Phase C: return is_admin so the frontend can stop hardcoding the
+    # admin email. is_admin() honours both ADMIN_EMAIL env and role='admin'.
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "phone": current_user.phone,
+        "role": current_user.role,
+        "settings": current_user.settings,
+        "created_at": current_user.created_at,
+        "is_admin": is_admin(current_user),
+    }
 
 
 @app.post("/api/auth/updateMe")

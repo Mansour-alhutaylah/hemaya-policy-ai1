@@ -60,70 +60,10 @@ export default function Explainability() {
     return acc;
   }, {});
 
-  // Generate sample explanations if no real mappings
-  const generateSampleExplanations = () => {
-    return [
-      {
-        id: 'sample-1',
-        control_id: 'A.5.1.1',
-        framework: 'ISO 27001',
-        evidence_snippet: 'The organization shall establish and maintain an information security policy that is approved by management, published, and communicated to employees.',
-        confidence_score: 0.92,
-        ai_rationale: 'High confidence match. The policy text directly addresses the requirement for management-approved security policies. Key phrases matched: "security policy", "approved by management", "communicated to employees".',
-        decision: 'Accepted',
-        matched_keywords: ['security policy', 'management approval', 'communication'],
-        similarity_score: 0.89,
-      },
-      {
-        id: 'sample-2',
-        control_id: '2-1-1',
-        framework: 'NCA ECC',
-        evidence_snippet: 'Access to information systems shall be restricted based on business requirements and security classification of data.',
-        confidence_score: 0.78,
-        ai_rationale: 'Good match for access control requirements. The policy addresses data classification-based access but could be more specific about role-based access controls.',
-        decision: 'Modified',
-        matched_keywords: ['access control', 'data classification', 'restricted'],
-        similarity_score: 0.75,
-      },
-      {
-        id: 'sample-3',
-        control_id: 'AC-2',
-        framework: 'NIST 800-53',
-        evidence_snippet: 'User accounts shall be reviewed quarterly to ensure appropriate access levels are maintained.',
-        confidence_score: 0.45,
-        ai_rationale: 'Partial match. The policy mentions account review but does not fully address all aspects of AC-2 including: account types, group membership, privileges, and account management procedures. Recommend human review.',
-        decision: 'Pending',
-        matched_keywords: ['user accounts', 'review', 'access levels'],
-        similarity_score: 0.42,
-        uncertainty_reason: 'Missing coverage of account types, group membership management, and detailed account lifecycle procedures.',
-      },
-      {
-        id: 'sample-4',
-        control_id: 'A.12.4.1',
-        framework: 'ISO 27001',
-        evidence_snippet: 'All security events shall be logged and monitored. Logs shall be protected from tampering and retained for a minimum of 12 months.',
-        confidence_score: 0.88,
-        ai_rationale: 'Strong match for event logging requirements. Policy addresses logging, monitoring, protection, and retention. Meets all key requirements of the control.',
-        decision: 'Accepted',
-        matched_keywords: ['logging', 'monitoring', 'retention', 'protection'],
-        similarity_score: 0.85,
-      },
-      {
-        id: 'sample-5',
-        control_id: '3-2-4',
-        framework: 'NCA ECC',
-        evidence_snippet: 'Employees must complete security awareness training upon hire and annually thereafter.',
-        confidence_score: 0.52,
-        ai_rationale: 'Weak match. The policy addresses basic awareness training but does not cover specific NCA ECC requirements including: role-based training, phishing simulations, and training effectiveness measurement.',
-        decision: 'Pending',
-        matched_keywords: ['security awareness', 'training'],
-        similarity_score: 0.48,
-        uncertainty_reason: 'Missing role-based training differentiation, simulation exercises, and effectiveness metrics.',
-      },
-    ];
-  };
-
-  const displayMappings = mappings.length > 0 ? mappings : generateSampleExplanations();
+  // Phase C: removed sample-data fallback. Real mappings only — the empty
+  // state below kicks in when there are none, so reviewers never see
+  // fabricated evidence in production.
+  const displayMappings = mappings;
 
   const filteredMappings = displayMappings.filter(mapping => {
     const matchesSearch = mapping.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
