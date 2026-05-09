@@ -1,8 +1,8 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.pool import NullPool, QueuePool
 
 
@@ -68,3 +68,14 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def set_user_context(db: Session, user_id: str) -> None:
+    """Set the current user's UUID as a session-local variable so RLS policies
+    can reference it via current_setting('app.current_user_id', true).
+
+    Call this once per authenticated request, right after resolving the user.
+    SET LOCAL persists for the lifetime of the current transaction, which maps
+    to the lifetime of a single FastAPI request with autocommit=False.
+    """
+    db.execute(text("SET LOCAL app.current_user_id = :uid"), {"uid": str(user_id)})

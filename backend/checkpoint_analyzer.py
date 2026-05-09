@@ -35,6 +35,18 @@ _openai_client = httpx.AsyncClient(
 # Bumping it invalidates all cached verdicts from the old prompt.
 PROMPT_VERSION = "v2"
 
+# Phase 9 retrieval relevance floor.
+# After hybrid (keyword + BM25) scoring in _find_relevant_sections, chunks
+# whose combined per-query score falls below this threshold are dropped
+# before being sent to GPT. The combined score is per-query normalized
+# (top chunk ≈ 1.0), so 0.10 filters only obviously irrelevant chunks
+# (boilerplate / no keyword hit / near-zero BM25). Diagnostic on real
+# data showed ~30% of (chunk × control) score points are filtered at 0.10
+# and every filtered example was clear noise. Set to 0.0 to disable the
+# floor and restore the legacy "always send top-k, fall back to all
+# chunks when fewer than 3 selected" behavior.
+RAG_MIN_RELEVANCE_SCORE = float(os.getenv("RAG_MIN_RELEVANCE_SCORE", "0.10"))
+
 
 def _normalize_text(s):
     """Lowercase and collapse all whitespace."""
@@ -416,13 +428,28 @@ def _find_relevant_sections(chunks, requirement, keywords, bm25=None, offset=0):
 
     # Apply offset for second-pass retrieval
     selected = combined[offset:offset + 8]
+
+    # Phase 9: drop chunks whose combined per-query score is below the
+    # relevance floor. Filters obvious noise (boilerplate / no keyword hit
+    # / near-zero BM25) before sending text to GPT. Empty result is a
+    # legitimate signal of weak retrieval — the downstream verifier will
+    # report "no evidence found" and the grounding check will keep the
+    # status at non_compliant. With RAG_MIN_RELEVANCE_SCORE=0.0 the floor
+    # is disabled and the legacy "fewer than 3 → return all chunks"
+    # fallback below restores the pre-Phase-9 behavior exactly.
+    if RAG_MIN_RELEVANCE_SCORE > 0.0:
+        selected = [s for s in selected if s[0] >= RAG_MIN_RELEVANCE_SCORE]
+
     top = [c[1] for c in selected]
 
     # Retrieval quality = best combined score (0.0 to 1.0)
     quality = selected[0][0] if selected else 0.0
 
-    # Fallback: if fewer than 3 relevant chunks found, return all chunks
-    if len(top) < 3:
+    # Legacy "fewer than 3 → return all chunks" fallback. Only fires when
+    # the relevance floor is disabled. With the floor enabled, an empty
+    # result intentionally signals weak retrieval to the analyzer instead
+    # of flooding GPT with potentially irrelevant chunks.
+    if RAG_MIN_RELEVANCE_SCORE == 0.0 and len(top) < 3:
         return "\n---\n".join(texts), quality
     return "\n---\n".join(top), quality
 
