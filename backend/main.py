@@ -49,9 +49,10 @@ app = FastAPI()
 # wraps the full ASGI app.  Cannot combine allow_origins=["*"] with
 # allow_credentials=True — Starlette raises ValueError on startup.
 # Local dev origins are included so the frontend works without any env changes.
-_ALLOWED_ORIGINS = [
-    "https://himaya.site",
-    "https://www.himaya.site",
+ALLOWED_ORIGINS = [
+    "https://ai-himaya.site",
+    "https://www.ai-himaya.site",
+
     # local development
     "http://localhost:5173",
     "http://localhost:3000",
@@ -59,15 +60,19 @@ _ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-# Allow additional origins via env var (comma-separated), e.g. on Render:
-#   EXTRA_CORS_ORIGINS=https://staging.himaya.site
+# Allow additional origins via env var
 _extra = os.getenv("EXTRA_CORS_ORIGINS", "")
+
 if _extra:
-    _ALLOWED_ORIGINS.extend(o.strip() for o in _extra.split(",") if o.strip())
+    ALLOWED_ORIGINS.extend(
+        o.strip()
+        for o in _extra.split(",")
+        if o.strip()
+    )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
