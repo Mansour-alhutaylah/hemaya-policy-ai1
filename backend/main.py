@@ -78,6 +78,31 @@ app.include_router(export_router)
 app.include_router(explainability_router)
 
 
+# Phase 13: critical-secret validator. Run at the very top of startup_seed
+# so a misconfigured deploy fails before serving any traffic. SECRET_KEY
+# is already enforced by backend/auth.py at import time; the others are
+# enforced here so the failure mode is "refuses to start" rather than
+# "starts and then 500s on first GPT call".
+_REQUIRED_ENV_VARS = ("DATABASE_URL", "SECRET_KEY", "OPENAI_API_KEY")
+
+
+def _validate_required_env():
+    """Refuse to start if any required env var is missing.
+
+    DATABASE_URL is also enforced by backend/database.py at module import
+    (raises RuntimeError there); SECRET_KEY is enforced by backend/auth.py
+    at module import (raises KeyError). Re-checking here gives one
+    aggregate error message naming everything that's missing, instead of
+    failing on the first one and hiding the rest.
+    """
+    missing = [k for k in _REQUIRED_ENV_VARS if not os.environ.get(k)]
+    if missing:
+        raise RuntimeError(
+            f"Missing required environment variables: {', '.join(missing)}. "
+            f"Refusing to start. Add them to your .env or deployment config."
+        )
+
+
 @app.on_event("startup")
 def startup_seed():
     """
@@ -92,6 +117,9 @@ def startup_seed():
         seed_checkpoints, framework row inserts, SACS-002 auto-import.
         These use INSERT ... ON CONFLICT DO NOTHING and are safe every boot.
     """
+    # Phase 13: env-var gate runs before anything else.
+    _validate_required_env()
+
     from backend.checkpoint_seed import seed_checkpoints
     from sqlalchemy import text as _ddl
 
