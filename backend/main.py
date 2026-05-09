@@ -28,7 +28,7 @@ from backend.email_utils import (
     send_password_reset_email,
     EmailDeliveryError,
 )
-from backend.text_extractor import extract_text
+from backend.text_extractor import extract_text, extract_text_segments
 from backend.checkpoint_analyzer import (
     run_checkpoint_analysis, chat_with_context, chat_with_user_context,
     run_simulation, generate_insights, explain_mapping,
@@ -36,7 +36,7 @@ from backend.checkpoint_analyzer import (
 from backend.ecc2_analyzer import run_ecc2_analysis, verify_ecc2_loaded
 from backend.sacs002_analyzer import run_sacs002_analysis
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
-from backend.chunker import chunk_text
+from backend.chunker import chunk_text, chunk_text_segments
 from backend.routers.remediation import router as remediation_router
 from backend.routers.reports_export import router as export_router
 from backend.routers.explainability import router as explainability_router
@@ -797,14 +797,30 @@ async def upload_policy(
     })
     db.commit()
 
-    # Extract text
+    # Extract text — Phase 11 uses the segmented extractor so each chunk
+    # carries page_number (PDF) or paragraph_index (DOCX). For TXT/XLSX
+    # both source fields stay NULL. content_preview keeps the joined text
+    # for keyword search and downstream callers that expect a string.
     set_policy_progress(db, policy_id, 15, "Extracting text")
+    segments = []
     try:
-        content = extract_text(str(dest), ext)
-    except TypeError:
-        content = extract_text(str(dest))
-    if not content or content.startswith("[Extraction error"):
-        content = ""
+        segments = extract_text_segments(str(dest), ext)
+    except Exception as e:
+        print(f"  [upload] segmented extraction failed: {e}; "
+              f"falling back to plain extract_text")
+        segments = []
+    if not segments:
+        # Final fallback: legacy extractor produces plain text but no
+        # source attribution. Wrap in a single segment so downstream
+        # chunking still works.
+        try:
+            content = extract_text(str(dest), ext)
+        except TypeError:
+            content = extract_text(str(dest))
+        if content and not content.startswith("[Extraction error"):
+            segments = [{"text": content, "page_number": None,
+                         "paragraph_index": None}]
+    content = "\n".join(s["text"] for s in segments) if segments else ""
     set_policy_progress(db, policy_id, 30, "Text extracted")
 
     # Save full content for keyword search during analysis
@@ -814,12 +830,13 @@ async def upload_policy(
         ), {"content": content, "pid": policy_id})
         db.commit()
 
-    # Chunk and embed the full text
+    # Chunk and embed the full text — Phase 11 uses the source-aware
+    # chunker so each chunk carries page_number / paragraph_index.
     chunks_count = 0
-    if content:
+    if segments:
         try:
             set_policy_progress(db, policy_id, 45, "Chunking document")
-            chunks = chunk_text(content)
+            chunks = chunk_text_segments(segments)
             if chunks:
                 set_policy_progress(db, policy_id, 60, f"Embedding {len(chunks)} chunks")
                 embeddings = await get_embeddings([c["text"] for c in chunks])
@@ -2728,6 +2745,15 @@ def ensure_pgvector_columns(db):
     from sqlalchemy import text as _t
     statements = [
         "ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS classification VARCHAR DEFAULT 'descriptive'",
+        # Phase 11: source attribution. Five additive nullable columns.
+        # PDF chunks populate page_number; DOCX chunks populate paragraph_index;
+        # TXT/XLSX leave both NULL. Existing rows stay NULL until a manual
+        # re-analysis triggers _rechunk_for_source_attribution.
+        "ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS page_number INT NULL",
+        "ALTER TABLE policy_chunks ADD COLUMN IF NOT EXISTS paragraph_index INT NULL",
+        "ALTER TABLE policy_ecc_assessments ADD COLUMN IF NOT EXISTS chunk_id VARCHAR NULL",
+        "ALTER TABLE policy_ecc_assessments ADD COLUMN IF NOT EXISTS page_number INT NULL",
+        "ALTER TABLE policy_ecc_assessments ADD COLUMN IF NOT EXISTS paragraph_index INT NULL",
     ]
     for stmt in statements:
         try:
