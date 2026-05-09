@@ -668,8 +668,7 @@ async def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depe
         await send_password_reset_email(user.email, otp)
     except EmailDeliveryError as e:
         # Roll back the token so the user can retry without hitting the
-        # 60-second cooldown. Surface a friendly message instead of the
-        # raw SMTP exception.
+        # 60-second cooldown. Surface a friendly message to the frontend.
         try:
             db.query(models.PasswordResetToken).filter(
                 models.PasswordResetToken.id == token.id

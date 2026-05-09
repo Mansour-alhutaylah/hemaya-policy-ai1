@@ -16,3 +16,4 @@ openpyxl==3.1.5
 chardet==6.0.0.post1
 watchfiles==1.1.1
 rank_bm25==0.2.2
+resend==2.10.0
