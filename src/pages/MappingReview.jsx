@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   GitCompare, Search, FileText, AlertTriangle, CheckCircle2,
@@ -18,6 +18,13 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip as UiTooltip,
+  TooltipTrigger as UiTooltipTrigger,
+  TooltipContent as UiTooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
+import { useToast } from '@/components/ui/use-toast';
 
 import { api } from '@/api/apiClient';
 
@@ -95,7 +102,7 @@ function StatChip({ tone, value, label, icon: Icon }) {
 
 // ─── Explainability card ──────────────────────────────────────────────────────
 
-function ExplainabilityCard({ item }) {
+function ExplainabilityCard({ item, onGenerateDraft, isGenerating }) {
   const meta = STATUS_META[item.status] || STATUS_META.non_compliant;
   const Icon = meta.icon;
 
@@ -104,8 +111,16 @@ function ExplainabilityCard({ item }) {
     item.policy_evidence.trim() &&
     item.policy_evidence.trim().toLowerCase() !== 'no direct evidence found';
 
+  // Phase UI-5: per-card "Generate draft" action. Only meaningful when the
+  // control isn't already compliant AND the backend returned a
+  // mapping_review_id we can post to /api/remediation/generate.
+  const canGenerate = item.status !== 'compliant' && !!item.mapping_review_id;
+  const showGenerate = item.status !== 'compliant';
+
   return (
-    <Card className={`overflow-hidden border ${meta.headerClass}`}>
+    <Card className={`relative overflow-hidden border ${meta.headerClass}`}>
+      {/* Phase UI-5: status accent — 4 px left bar, status-coloured */}
+      <span className={`absolute left-0 top-0 h-full w-1 ${meta.barClass}`} />
       <CardContent className="p-0">
         {/* Header */}
         <div className="flex items-start gap-3 px-5 py-4 border-b border-border/40">
@@ -208,6 +223,43 @@ function ExplainabilityCard({ item }) {
                   {item.recommended_fix}
                 </p>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Phase UI-5: action footer — Generate draft (where wired) + space
+            reserved for Accept / Reject in a follow-up phase. */}
+        {showGenerate && (
+          <div className="px-5 py-3 border-t border-border/40 flex items-center justify-end gap-2">
+            {canGenerate ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onGenerateDraft?.(item)}
+                disabled={isGenerating}
+                className="border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+              >
+                {isGenerating
+                  ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  : <Wrench className="w-3.5 h-3.5 mr-1.5" />}
+                Generate remediation draft
+              </Button>
+            ) : (
+              <UiTooltip>
+                <UiTooltipTrigger asChild>
+                  <span>
+                    <Button size="sm" variant="outline" disabled>
+                      <Wrench className="w-3.5 h-3.5 mr-1.5" />
+                      Generate remediation draft
+                    </Button>
+                  </span>
+                </UiTooltipTrigger>
+                <UiTooltipContent className="bg-popover text-popover-foreground border border-border text-xs max-w-xs">
+                  This framework's analyzer doesn't write a mapping_reviews
+                  row, so drafts can't be generated from this card yet. Use
+                  the Gaps page or wait for the next workflow update.
+                </UiTooltipContent>
+              </UiTooltip>
             )}
           </div>
         )}
@@ -364,9 +416,45 @@ export default function MappingReviewPage() {
     return null;
   }, [policiesLoading, policies.length, policyId, isLoading, items, counts.non_compliant]);
 
+  // Phase UI-5: per-card "Generate draft" mutation. Backend now resolves
+  // mapping_review_id for cards that have one, so the existing
+  // /api/remediation/generate endpoint accepts the call. Toast + cache
+  // invalidations mirror the GapsRisks inline action so flows agree.
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const generateDraftMutation = useMutation({
+    mutationFn: ({ mapping_review_id, policy_id }) =>
+      api.post('/remediation/generate', { mapping_review_id, policy_id }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['mappingReviews'] });
+      queryClient.invalidateQueries({ queryKey: ['gaps'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      toast({
+        title: 'Draft generated',
+        description:
+          `Saved as draft for ${data?.control_code || 'this control'}. ` +
+          `Improvement: ${data?.improvement_pct ?? 0}%.`,
+      });
+    },
+    onError: (err) => toast({
+      title: 'Could not generate draft',
+      description: err.message || 'Try again in a moment.',
+      variant: 'destructive',
+    }),
+  });
+
+  const handleGenerateDraft = (item) => {
+    if (!item?.mapping_review_id || !item?.policy_id) return;
+    generateDraftMutation.mutate({
+      mapping_review_id: item.mapping_review_id,
+      policy_id: item.policy_id,
+    });
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <TooltipProvider delayDuration={150}>
     <PageContainer
       title="Mapping Review"
       subtitle="Per-control explainability — what the framework requires, what the policy says, and how to close the gap."
@@ -560,6 +648,12 @@ export default function MappingReviewPage() {
                 <ExplainabilityCard
                   key={`${item.framework_id}|${item.control_code}`}
                   item={item}
+                  onGenerateDraft={handleGenerateDraft}
+                  isGenerating={
+                    generateDraftMutation.isPending &&
+                    generateDraftMutation.variables?.mapping_review_id ===
+                      item.mapping_review_id
+                  }
                 />
               ))}
             </div>
@@ -567,5 +661,6 @@ export default function MappingReviewPage() {
         </>
       )}
     </PageContainer>
+    </TooltipProvider>
   );
 }

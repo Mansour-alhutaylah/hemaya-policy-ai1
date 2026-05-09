@@ -193,6 +193,11 @@ class MappingReviewItem(BaseModel):
     framework_name: str
     control_code: str
     checkpoint_index: int = 1
+    # Phase UI-5: optional resolution to the underlying mapping_reviews row
+    # so the frontend can call workflow endpoints (Generate draft, etc.) per
+    # card. Null when no mapping_reviews row exists (SACS-002 today, or any
+    # framework whose analyzer doesn't write mapping_reviews).
+    mapping_review_id: Optional[str] = None
     status: str                         # compliant | partial | non_compliant
     confidence: float
     framework_requirement: str          # L1 control_text from ecc_framework
@@ -269,6 +274,42 @@ def list_mapping_reviews(
 
     where_sql = " AND ".join(where_parts)
 
+    # Phase UI-5: resolve mapping_review_id per (framework_id, control_code).
+    # ECC-2 writes mapping_reviews rows with control_id=NULL but stamps the
+    # control_code into ai_rationale as "[ECC2][<code>] ...". One query, then
+    # we build a (framework_id, control_code) -> mapping_review_id map in
+    # Python so each explainability row can be enriched in O(1). SACS-002
+    # doesn't write mapping_reviews today; those rows fall through with
+    # mapping_review_id=null, which the frontend treats as "Generate draft
+    # not available for this row".
+    import re as _re
+    mr_rows = db.execute(sql_text("""
+        SELECT id, framework_id, ai_rationale, control_id
+        FROM mapping_reviews
+        WHERE policy_id = :pid
+    """), {"pid": policy_id}).fetchall()
+    _ECC_MARKER = _re.compile(r"\[ECC2\]\[([^\]]+)\]")
+    mapping_review_ids: dict[tuple[str, str], str] = {}
+    legacy_control_ids: set[str] = set()
+    for mr_id, mr_fwid, mr_rat, mr_cid in mr_rows:
+        m = _ECC_MARKER.search(mr_rat or "")
+        if m and mr_fwid:
+            mapping_review_ids.setdefault((str(mr_fwid), m.group(1)), str(mr_id))
+        elif mr_cid:
+            legacy_control_ids.add(str(mr_cid))
+    # Resolve legacy control_id -> control_code so generic-framework rows
+    # also become reachable.
+    if legacy_control_ids:
+        cl_rows = db.execute(sql_text("""
+            SELECT id::text, control_code FROM control_library
+            WHERE id::text = ANY(:ids)
+        """), {"ids": list(legacy_control_ids)}).fetchall()
+        cl_code_by_id = {cid: code for cid, code in cl_rows}
+        for mr_id, mr_fwid, _, mr_cid in mr_rows:
+            if mr_cid and str(mr_cid) in cl_code_by_id and mr_fwid:
+                code = cl_code_by_id[str(mr_cid)]
+                mapping_review_ids.setdefault((str(mr_fwid), code), str(mr_id))
+
     # Phase 11 source attribution (chunk_id, page_number, paragraph_index)
     # is already written to policy_ecc_assessments by the analyzers; we now
     # surface it on the API so the UI can render "[Page N · Para M]" chips.
@@ -303,6 +344,7 @@ def list_mapping_reviews(
             framework_name=r[1],
             control_code=r[2],
             checkpoint_index=1,
+            mapping_review_id=mapping_review_ids.get((str(r[1]), r[2])),
             status=status_norm,
             confidence=round(confidence, 3),
             framework_requirement=r[8] or "",
