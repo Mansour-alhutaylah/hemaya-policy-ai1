@@ -61,9 +61,18 @@ export default function Topbar() {
     );
   }, [user]);
 
+  // Phase D-4: derive a friendly role label from real backend data.
+  // is_admin trumps role: it's true when ADMIN_EMAIL matches OR when
+  // role='admin' (per backend/security.is_admin), so it's the most
+  // reliable indicator. Falls through to a capitalised user.role for
+  // anything else, and a neutral '' (rendered as nothing) while user
+  // is still loading — beats lying with "Compliance Officer".
   const displayRole = useMemo(() => {
-    if (!user) return "Compliance Officer";
-    return user.role || "Compliance Officer";
+    if (!user) return "";
+    if (user.is_admin) return "Administrator";
+    const r = (user.role || "").trim();
+    if (!r) return "";
+    return r.charAt(0).toUpperCase() + r.slice(1).toLowerCase();
   }, [user]);
 
   const getInitials = (u) => {
