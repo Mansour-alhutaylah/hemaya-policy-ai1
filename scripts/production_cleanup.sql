@@ -94,6 +94,12 @@ DELETE FROM verification_cache;
 -- ECC-2:2024 per-policy AI analysis cache
 DELETE FROM ecc2_verification_cache;
 
+-- SACS-002 per-policy AI analysis cache (Phase G.2)
+DELETE FROM sacs002_verification_cache;
+
+-- CCC-2:2024 per-policy AI analysis cache
+DELETE FROM ccc2_verification_cache;
+
 -- ============================================================
 -- SECTION 4: Policy ECC assessments
 --
@@ -377,7 +383,9 @@ UNION ALL SELECT 'reports',                COUNT(*), CASE WHEN COUNT(*) = 0 THEN
 UNION ALL SELECT 'ai_insights',            COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM ai_insights
 UNION ALL SELECT 'audit_logs',             COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM audit_logs
 UNION ALL SELECT 'verification_cache',     COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM verification_cache
-UNION ALL SELECT 'ecc2_verification_cache',COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM ecc2_verification_cache
+UNION ALL SELECT 'ecc2_verification_cache', COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM ecc2_verification_cache
+UNION ALL SELECT 'sacs002_verification_cache', COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM sacs002_verification_cache
+UNION ALL SELECT 'ccc2_verification_cache', COUNT(*), CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END FROM ccc2_verification_cache
 
 ORDER BY status DESC, check_table;
 

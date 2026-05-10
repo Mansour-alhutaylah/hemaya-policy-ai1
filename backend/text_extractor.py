@@ -103,17 +103,60 @@ def _extract_page_blocks(page_dict: dict) -> str:
 
 
 def _extract_docx_segments(file_path: Path) -> list:
-    """One segment per non-empty paragraph; paragraph_index is 0-indexed enumerate."""
+    """
+    Extract all text from a DOCX file in document order: paragraphs AND tables.
+
+    The previous implementation only iterated doc.paragraphs. python-docx does
+    NOT include table content in doc.paragraphs — tables must be accessed via
+    doc.tables or by iterating doc.element.body directly. A compliance policy
+    with implementation matrices stored as tables was producing zero table
+    segments, hence the ~9 KB / 24 chunk extraction failure.
+
+    Table rows are formatted as "Cell1 | Cell2 | Cell3" strings. Merged cells
+    (which appear multiple times in row.cells) are deduplicated via a seen-set.
+    Each non-empty paragraph or table row becomes one segment.
+    """
     from docx import Document
+    from docx.text.paragraph import Paragraph as _Para
+    from docx.table import Table as _Tbl
+
     doc = Document(str(file_path))
     segments = []
-    for i, p in enumerate(doc.paragraphs):
-        if p.text.strip():
-            segments.append({
-                "text": p.text,
-                "page_number": None,
-                "paragraph_index": i,
-            })
+    para_idx = 0
+
+    for child in doc.element.body:
+        tag = child.tag  # e.g. '{http://...}p' or '{http://...}tbl'
+
+        if tag.endswith("}p"):
+            p = _Para(child, doc)
+            text = p.text.strip()
+            if text:
+                segments.append({
+                    "text": text,
+                    "page_number": None,
+                    "paragraph_index": para_idx,
+                })
+                para_idx += 1
+
+        elif tag.endswith("}tbl"):
+            tbl = _Tbl(child, doc)
+            for row in tbl.rows:
+                # Deduplicate: merged cells appear multiple times in row.cells
+                cells: list[str] = []
+                seen: set[str] = set()
+                for cell in row.cells:
+                    ct = cell.text.strip()
+                    if ct and ct not in seen:
+                        cells.append(ct)
+                        seen.add(ct)
+                if cells:
+                    segments.append({
+                        "text": " | ".join(cells),
+                        "page_number": None,
+                        "paragraph_index": para_idx,
+                    })
+                    para_idx += 1
+
     return segments
 
 

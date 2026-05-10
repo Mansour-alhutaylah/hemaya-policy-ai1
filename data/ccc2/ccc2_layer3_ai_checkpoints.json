@@ -1,0 +1,600 @@
+{
+  "schema_layer": 3,
+  "layer_name": "AI Audit Checkpoints",
+  "framework_id": "CCC-2:2024",
+  "AI_GENERATED": true,
+  "warning": "All entries in this file are AI-generated guidance. They are NOT regulatory text. Verify against official CCC-2:2024 before use in formal audits.",
+  "total_records": 175,
+  "checkpoints": [
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Has the Authorizing Official formally approved a document listing all cloud services provided, including service type and data classification?", "Is there a documented approval record showing AO sign-off on cybersecurity requirements per cloud service category?", "Does the entity have a defined process for AO approval of new cloud service offerings before launch?"],
+      "suggested_evidence": ["Signed authorization memo or board resolution covering cloud service scope", "Cloud service registry with AO approval signatures and data classification", "New service approval checklist with AO sign-off records"],
+      "indicators_of_implementation": ["Formal document listing cloud services with AO approval date", "Evidence of risk thresholds documented per service category", "Traceable approval trail from AO for each active cloud service"],
+      "red_flags": ["No formal AO authorization document exists", "Cloud services offered without recorded AO approval", "Risk thresholds are undefined or not approved"],
+      "maturity_signals": {
+        "initial": "No formal authorization process; cloud services launched ad hoc.",
+        "developing": "AO approval sought informally for some services; no consistent documentation.",
+        "defined": "Documented authorization process; AO approves new cloud services before launch.",
+        "managed": "Centralized cloud service registry with AO approval records; periodic review scheduled.",
+        "optimizing": "Automated workflow enforces AO approval gates; registry auto-updated; risk thresholds reviewed quarterly."
+      }
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-P-1-1", "applicability_type": "CSP", "parent_control_code": "1-1-P-1", "audit_questions": ["Does the cloud service registry include service type (IaaS/PaaS/SaaS) and data classification for each service?"], "suggested_evidence": ["Cloud service inventory document with service type and classification columns"], "indicators_of_implementation": ["Inventory is current and classified"], "red_flags": ["Inventory missing or lacks data classification"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-P-1-2", "applicability_type": "CSP", "parent_control_code": "1-1-P-1", "audit_questions": ["Are cybersecurity requirements documented per cloud service category and formally approved?"], "suggested_evidence": ["Security requirements document signed by AO"], "indicators_of_implementation": ["Requirements exist for each service category"], "red_flags": ["Requirements generic or not service-specific"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-P-1-3", "applicability_type": "CSP", "parent_control_code": "1-1-P-1", "audit_questions": ["Are residual risk acceptance decisions formally documented and approved by the AO?"], "suggested_evidence": ["Risk acceptance records with AO signature"], "indicators_of_implementation": ["Residual risk levels defined per service"], "red_flags": ["No formal risk acceptance documentation"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-P-1-4", "applicability_type": "CSP", "parent_control_code": "1-1-P-1", "audit_questions": ["Are roles and responsibilities for cloud cybersecurity management formally assigned and documented?"], "suggested_evidence": ["RACI matrix or role description documents"], "indicators_of_implementation": ["Named owners for each cloud cybersecurity function"], "red_flags": ["Roles undefined or overlapping"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-P-1-5", "applicability_type": "CSP", "parent_control_code": "1-1-P-1", "audit_questions": ["Is there a documented approval gate that must be passed before launching a new cloud service?"], "suggested_evidence": ["New service approval form with defined criteria"], "indicators_of_implementation": ["No service launched without approval gate completion"], "red_flags": ["Services launched without formal approval"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-1-T-1", "applicability_type": "CST",
+      "audit_questions": ["Has the Authorizing Official formally approved the use of each cloud service before adoption?", "Is there a documented record of AO approval for each cloud service currently in use?"],
+      "suggested_evidence": ["Signed cloud service adoption approval memo or decision record", "Cloud service register with AO approval dates"],
+      "indicators_of_implementation": ["No cloud service in active use without prior AO approval", "Approval records accessible to auditors"],
+      "red_flags": ["Cloud services adopted without formal approval", "No evidence of AO involvement in cloud adoption decisions"],
+      "maturity_signals": {
+        "initial": "Cloud services adopted without formal governance.", "developing": "Informal approval sought but not consistently documented.", "defined": "AO approval required; approval records maintained.", "managed": "Centralized register with AO approvals; periodic review.", "optimizing": "Automated approval workflow with AO digital sign-off."
+      }
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-2-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is there a formally established cloud cybersecurity function or team with defined scope and reporting line?", "Are roles and responsibilities for cloud cybersecurity management documented and communicated?"],
+      "suggested_evidence": ["Organizational chart showing cloud cybersecurity function", "Job descriptions for cloud cybersecurity roles", "Governance framework document for cloud cybersecurity"],
+      "indicators_of_implementation": ["Named cloud cybersecurity team or function exists", "Reporting line and authority are defined", "Function is operationally active"],
+      "red_flags": ["No dedicated cloud cybersecurity function", "Cloud security managed ad hoc by general IT staff"],
+      "maturity_signals": {
+        "initial": "No dedicated cloud cybersecurity function.", "developing": "Responsibilities assigned informally to existing staff.", "defined": "Dedicated function established with documented scope.", "managed": "Function has KPIs, budget, and reports to senior management.", "optimizing": "Mature function with continuous improvement program and board reporting."
+      }
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-2-T-1", "applicability_type": "CST",
+      "audit_questions": ["Is a responsible party formally designated for cloud cybersecurity within the entity?", "Does the designated party have sufficient authority and resources?"],
+      "suggested_evidence": ["Appointment letter or role description for cloud cybersecurity owner", "Evidence of budget or resource allocation"],
+      "indicators_of_implementation": ["Named individual accountable for cloud cybersecurity", "Authority formally granted in writing"],
+      "red_flags": ["No named responsible party for cloud cybersecurity", "Responsible party lacks authority to enforce controls"],
+      "maturity_signals": {
+        "initial": "No designated owner.", "developing": "Informally designated.", "defined": "Formally appointed with documented authority.", "managed": "Accountable with regular reporting to management.", "optimizing": "Integrated into enterprise governance with measurable objectives."
+      }
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-3-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Do cloud-specific cybersecurity policies exist and are they formally approved?", "Do the policies cover infrastructure security, tenant data protection, and multi-tenancy requirements?", "Were policies reviewed in the past 12 months or after a significant change?"],
+      "suggested_evidence": ["Approved cloud cybersecurity policy document with version history", "Review log showing annual review completion", "Distribution records proving policy communication to staff"],
+      "indicators_of_implementation": ["Cloud-specific policy distinct from generic IT policy", "Policy covers key cloud topics: multi-tenancy, data segregation, provisioning", "Policy review cycle is documented and followed"],
+      "red_flags": ["No cloud-specific cybersecurity policy", "Generic IT policy applied to cloud without adaptation", "Policy last reviewed more than 12 months ago"],
+      "maturity_signals": {
+        "initial": "No cloud-specific policy.", "developing": "Draft policy exists but not formally approved.", "defined": "Approved policy covering key cloud topics; annually reviewed.", "managed": "Policy mapped to controls; compliance monitored.", "optimizing": "Policies automatically triggered for review on change events; integrated with GRC."
+      }
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-3-T-1", "applicability_type": "CST",
+      "audit_questions": ["Does the entity have a policy for secure use of cloud services?", "Does it cover data classification, access control, acceptable use, and exit procedures?"],
+      "suggested_evidence": ["Cloud acceptable use policy document", "Data classification policy referencing cloud environments"],
+      "indicators_of_implementation": ["Policy includes cloud-specific sections", "Exit procedures are defined"],
+      "red_flags": ["No policy for cloud service use", "Exit procedures not documented"],
+      "maturity_signals": {
+        "initial": "No cloud use policy.", "developing": "Partial policy informally in place.", "defined": "Approved policy covering all required topics.", "managed": "Policy enforced with compliance monitoring.", "optimizing": "Policy auto-reviewed on cloud service changes."
+      }
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Does a cloud-specific risk register exist covering multi-tenancy and supply chain threats?", "Are risk treatment plans documented with timelines and owners?", "Is the risk register reviewed annually?"],
+      "suggested_evidence": ["Cloud cybersecurity risk register", "Risk treatment plan with owner assignments and target dates", "Evidence of annual review and AO sign-off"],
+      "indicators_of_implementation": ["Cloud-specific threat scenarios included", "Treatment plans actionable and tracked", "Residual risks formally accepted by AO"],
+      "red_flags": ["Cloud risks not separately tracked", "Risk register not reviewed in over 12 months", "No treatment plans for high-rated risks"],
+      "maturity_signals": {
+        "initial": "No cloud risk register.", "developing": "Ad hoc risk identification.", "defined": "Documented risk register with treatment plans.", "managed": "Risk register integrated with GRC; regular reviews.", "optimizing": "Automated risk monitoring with real-time threat intelligence integration."
+      }
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-1-1", "applicability_type": "CSP", "parent_control_code": "1-4-P-1", "audit_questions": ["Are multi-tenancy and shared resource risks explicitly documented in the risk register?"], "suggested_evidence": ["Risk register entries for multi-tenancy and supply chain scenarios"], "indicators_of_implementation": ["Cloud-specific threats documented"], "red_flags": ["Risk register lacks cloud-specific scenarios"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-1-2", "applicability_type": "CSP", "parent_control_code": "1-4-P-1", "audit_questions": ["Are CIA risks for tenant data assessed and rated in the risk register?"], "suggested_evidence": ["Risk assessments covering data confidentiality, integrity, availability for each service"], "indicators_of_implementation": ["CIA triad explicitly assessed per cloud service"], "red_flags": ["Risk assessment does not distinguish CIA impacts"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-1-3", "applicability_type": "CSP", "parent_control_code": "1-4-P-1", "audit_questions": ["Do treatment plans include named owners and target completion dates?"], "suggested_evidence": ["Risk treatment plan tracker with owners and dates"], "indicators_of_implementation": ["All high/critical risks have active treatment plans"], "red_flags": ["Treatment plans lack ownership or deadlines"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-1-4", "applicability_type": "CSP", "parent_control_code": "1-4-P-1", "audit_questions": ["Are residual risk acceptance decisions formally signed by the AO?"], "suggested_evidence": ["Signed risk acceptance records per residual risk"], "indicators_of_implementation": ["Unmitigated risks formally accepted rather than ignored"], "red_flags": ["Residual risks not formally reviewed or accepted"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-1-5", "applicability_type": "CSP", "parent_control_code": "1-4-P-1", "audit_questions": ["Is there evidence of annual risk register review with dates and outcomes documented?"], "suggested_evidence": ["Annual review meeting minutes or risk review report"], "indicators_of_implementation": ["Review cycle is followed consistently"], "red_flags": ["No evidence of annual review"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Does the CSP have a defined process for notifying tenants of significant risks or incidents?", "Are notification timelines and channels documented?"],
+      "suggested_evidence": ["Tenant notification procedure document", "Sample incident notification sent to tenants"],
+      "indicators_of_implementation": ["Notification templates exist", "Tenants can demonstrate receiving past notifications"],
+      "red_flags": ["No tenant notification process", "Incidents discovered by tenants before CSP notifies them"],
+      "maturity_signals": {"initial": "No notification process.", "developing": "Ad hoc notification.", "defined": "Documented process with defined timelines.", "managed": "Notifications tracked and acknowledged.", "optimizing": "Automated tenant notification with SLA enforcement."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-T-1", "applicability_type": "CST",
+      "audit_questions": ["Has the entity assessed the CSP's security posture and compliance with applicable Saudi regulations?", "Are data residency and cross-border transfer risks formally assessed?", "Is there a documented exit strategy for critical cloud services?"],
+      "suggested_evidence": ["CSP security assessment report or third-party audit report (e.g., IRAP, ISO 27001)", "Data residency confirmation from CSP", "Cloud exit plan document"],
+      "indicators_of_implementation": ["CSP assessment completed before and periodically after adoption", "Data residency confirmed in writing", "Exit plan tested or reviewed"],
+      "red_flags": ["No CSP security assessment performed", "Data residency unknown or unconfirmed", "No exit plan exists"],
+      "maturity_signals": {"initial": "No CSP assessment.", "developing": "Informal review of CSP certifications.", "defined": "Structured CSP assessment covering all subcontrols.", "managed": "Periodic reassessment on schedule.", "optimizing": "Continuous CSP risk monitoring with automated alerts."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-T-1-1", "applicability_type": "CST", "parent_control_code": "1-4-T-1", "audit_questions": ["Is there a formal report documenting the CSP's security certifications and Saudi regulatory compliance?"], "suggested_evidence": ["CSP audit report, ISO 27001 certificate, or NCA compliance report"], "indicators_of_implementation": ["Assessment covers relevant certifications"], "red_flags": ["No documented CSP assessment"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-T-1-2", "applicability_type": "CST", "parent_control_code": "1-4-T-1", "audit_questions": ["Has the entity confirmed data residency with the CSP and assessed cross-border transfer risks?"], "suggested_evidence": ["CSP contractual data residency clause", "Data flow diagram showing where data is stored"], "indicators_of_implementation": ["Data residency clause in contract", "Data flow diagram reviewed"], "red_flags": ["Data residency unconfirmed or data stored outside approved jurisdictions"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-4-T-1-3", "applicability_type": "CST", "parent_control_code": "1-4-T-1", "audit_questions": ["Is there a documented exit plan and has data portability been confirmed with the CSP?"], "suggested_evidence": ["Cloud exit plan document", "CSP data export capabilities documentation"], "indicators_of_implementation": ["Exit plan is documented and periodically reviewed"], "red_flags": ["No exit plan; vendor lock-in risk not assessed"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-5-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is there evidence of an annual compliance assessment against applicable NCA cloud regulations?", "Are compliance gaps tracked with remediation timelines?", "When was the last independent audit conducted and what were the findings?"],
+      "suggested_evidence": ["Annual compliance assessment report against NCA/CCC-2", "Compliance gap tracker with owners and dates", "Independent audit report and management response"],
+      "indicators_of_implementation": ["Assessment cycle is annual and documented", "Gap tracker is actively maintained", "Auditor independence is verifiable"],
+      "red_flags": ["No annual compliance assessment", "Compliance gaps tracked but not remediated", "Last independent audit older than 24 months"],
+      "maturity_signals": {"initial": "No compliance program.", "developing": "Ad hoc assessments.", "defined": "Annual assessment with documented gaps.", "managed": "Tracked remediation with management oversight.", "optimizing": "Continuous compliance monitoring with automated reporting."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-5-P-1-1", "applicability_type": "CSP", "parent_control_code": "1-5-P-1", "audit_questions": ["Does the assessment explicitly cover NCA CCC-2 requirements?"], "suggested_evidence": ["Assessment checklist mapped to CCC-2 controls"], "indicators_of_implementation": ["All CCC-2 controls covered in assessment"], "red_flags": ["Assessment does not reference CCC-2"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-5-P-1-2", "applicability_type": "CSP", "parent_control_code": "1-5-P-1", "audit_questions": ["Is there a documented gap remediation process with owners and target dates?"], "suggested_evidence": ["Gap register with assigned owners and target dates"], "indicators_of_implementation": ["All gaps have owners and timelines"], "red_flags": ["Gaps identified but not tracked to closure"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "1-5-P-1-3", "applicability_type": "CSP", "parent_control_code": "1-5-P-1", "audit_questions": ["Is the audit conducted by an independent and qualified auditor?"], "suggested_evidence": ["Auditor credentials and independence declaration", "Audit engagement letter"], "indicators_of_implementation": ["Auditor has no conflict of interest", "Audit scope covers cloud services"], "red_flags": ["Audit conducted by internal team without independence", "Auditor not qualified in cloud security"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is a complete and current cloud asset inventory maintained?", "Does the inventory include classification by sensitivity and criticality?", "How frequently is the inventory reconciled against actual deployed assets?"],
+      "suggested_evidence": ["Cloud asset inventory spreadsheet or CMDB export", "Data classification labels in inventory", "Reconciliation report showing last comparison date"],
+      "indicators_of_implementation": ["Inventory covers all asset categories (compute, storage, network, API)", "Classification levels match data sensitivity", "Undiscovered assets detected by automated scan"],
+      "red_flags": ["Inventory incomplete or not maintained", "No classification in inventory", "Inventory not reconciled in past 90 days"],
+      "maturity_signals": {"initial": "No inventory.", "developing": "Manual inventory maintained inconsistently.", "defined": "Comprehensive inventory covering all asset types.", "managed": "Automated discovery with reconciliation.", "optimizing": "Real-time inventory with automated drift detection and alerting."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-1-P-1", "audit_questions": ["Does the inventory include all compute assets: physical servers, VMs, and containers?"], "suggested_evidence": ["Inventory extract showing compute assets"], "indicators_of_implementation": ["Compute assets listed with classification"], "red_flags": ["Containers or VMs missing from inventory"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-1-P-1", "audit_questions": ["Are storage systems, databases, and data repositories included in the inventory?"], "suggested_evidence": ["Inventory section covering storage assets"], "indicators_of_implementation": ["Storage assets with data classification"], "red_flags": ["Databases not tracked in inventory"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-1-P-1", "audit_questions": ["Are network components such as virtual networks and load balancers inventoried?"], "suggested_evidence": ["Network asset section in inventory"], "indicators_of_implementation": ["Virtual network components tracked"], "red_flags": ["Network components absent from inventory"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-1-P-1", "audit_questions": ["Are APIs, microservices, and cloud-native components catalogued?"], "suggested_evidence": ["API registry or service mesh inventory"], "indicators_of_implementation": ["APIs tracked with ownership"], "red_flags": ["No API inventory maintained"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-1-5", "applicability_type": "CSP", "parent_control_code": "2-1-P-1", "audit_questions": ["Are assets classified by sensitivity and criticality?"], "suggested_evidence": ["Classification column in inventory"], "indicators_of_implementation": ["All assets have a classification level"], "red_flags": ["Classification missing for any asset category"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is an automated asset discovery tool in place?", "How are unauthorized assets detected and responded to?"],
+      "suggested_evidence": ["Automated discovery tool configuration and scan reports", "Alert and response procedure for unauthorized assets"],
+      "indicators_of_implementation": ["Tool is actively scanning at defined frequency", "Alerts generated for undiscovered assets"],
+      "red_flags": ["No automated discovery; manual only", "No process to act on unauthorized asset alerts"],
+      "maturity_signals": {"initial": "Manual only.", "developing": "Periodic automated scans.", "defined": "Automated discovery with unauthorized asset alerting.", "managed": "Real-time discovery with CMDB integration.", "optimizing": "Self-healing inventory with automated quarantine of unauthorized assets."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-T-1", "applicability_type": "CST",
+      "audit_questions": ["Does the CST maintain an inventory of all cloud services in use?", "Does the inventory include the data classification of information processed by each service?"],
+      "suggested_evidence": ["Cloud service inventory with provider, type, data classification, and owners", "Data classification policy referencing cloud services"],
+      "indicators_of_implementation": ["All cloud services inventoried before use", "Business and technical owners identified"],
+      "red_flags": ["Shadow cloud services not inventoried", "Data classification unknown for any cloud service"],
+      "maturity_signals": {"initial": "No cloud service inventory.", "developing": "Partial list maintained manually.", "defined": "Comprehensive inventory with classification.", "managed": "Inventory integrated with procurement; auto-updated on subscription.", "optimizing": "Real-time cloud spend and inventory monitoring with automated classification."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-T-1-1", "applicability_type": "CST", "parent_control_code": "2-1-T-1", "audit_questions": ["Does the inventory include service type and data classification for each cloud service?"], "suggested_evidence": ["Inventory with service type and data classification columns"], "indicators_of_implementation": ["All services classified"], "red_flags": ["Classification missing"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-T-1-2", "applicability_type": "CST", "parent_control_code": "2-1-T-1", "audit_questions": ["Are business and technical owners named for each cloud service?"], "suggested_evidence": ["Ownership column in cloud service inventory"], "indicators_of_implementation": ["Named owners for all services"], "red_flags": ["Orphaned cloud services with no owner"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-1-T-1-3", "applicability_type": "CST", "parent_control_code": "2-1-T-1", "audit_questions": ["Is data residency location documented for each cloud service?"], "suggested_evidence": ["Data residency column in inventory with country/region"], "indicators_of_implementation": ["Residency confirmed for all services storing classified data"], "red_flags": ["Residency unknown or outside approved jurisdictions"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is MFA enforced on all cloud management interfaces and control planes?", "Are privileged sessions recorded and monitored?", "When were privileged access reviews last conducted?", "Is JIT access implemented for administrative accounts?"],
+      "suggested_evidence": ["MFA enforcement policy and technical evidence (IdP config, login reports)", "Privileged session recording configuration and sample recordings", "Access review reports (quarterly) with approver sign-off", "JIT access provisioning configuration and approval logs"],
+      "indicators_of_implementation": ["Zero login possible to management interfaces without MFA", "Session recordings retained per policy", "No over-provisioned accounts found in access review", "JIT requests logged and automatically expire"],
+      "red_flags": ["MFA disabled for any privileged account", "No session recording for administrative access", "Access reviews not conducted in past quarter", "Shared admin accounts in use"],
+      "maturity_signals": {
+        "initial": "Basic username/password; no MFA; no access reviews.",
+        "developing": "MFA for some accounts; manual access reviews annually.",
+        "defined": "MFA enforced on all privileged accounts; quarterly access reviews; sessions logged.",
+        "managed": "JIT access implemented; automated deprovisioning; RBAC enforced; monthly review.",
+        "optimizing": "Zero-trust model; continuous access analytics; anomaly-based deprovisioning; real-time session monitoring."
+      }
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is MFA technically enforced — not just required by policy — on all cloud management interfaces?"], "suggested_evidence": ["IdP/SSO configuration showing MFA enforcement", "Login audit log with no MFA bypass"], "indicators_of_implementation": ["MFA cannot be bypassed by any admin account"], "red_flags": ["MFA enforced by policy only, not technically"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Are PAWs or equivalent secure access mechanisms deployed for cloud admin tasks?"], "suggested_evidence": ["PAW deployment records; network isolation evidence"], "indicators_of_implementation": ["Admin tasks only possible from designated secure endpoints"], "red_flags": ["Admins use personal or shared workstations"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is JIT access implemented with automatic expiry for privileged accounts?"], "suggested_evidence": ["JIT access system configuration; sample request and expiry logs"], "indicators_of_implementation": ["Privileged access automatically revoked after session ends"], "red_flags": ["Standing privileged access with no time-based expiry"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Are privileged access sessions to cloud management systems recorded?"], "suggested_evidence": ["PAM session recording tool; sample recording"], "indicators_of_implementation": ["All privileged sessions recorded and stored"], "red_flags": ["Session recording disabled or not retained"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-5", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is there an automated deprovisioning process triggered by HR termination or role change events?"], "suggested_evidence": ["HR-to-IAM integration configuration; termination deprovisioning log"], "indicators_of_implementation": ["Accounts disabled within 1 business day of termination"], "red_flags": ["Terminated user accounts found still active"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-6", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Were privileged access reviews conducted at least quarterly with documented approvals?"], "suggested_evidence": ["Quarterly access review reports with approver signatures"], "indicators_of_implementation": ["Reviews completed on schedule; removals actioned promptly"], "red_flags": ["Reviews not conducted or findings not actioned"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-7", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Are administrative duties segregated to prevent any single person from performing conflicting cloud actions?"], "suggested_evidence": ["RBAC policy; access matrix showing segregation"], "indicators_of_implementation": ["No single account can both approve and execute critical changes"], "red_flags": ["Single admin account with unrestricted access to all functions"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-8", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is least privilege enforced — no account has more permissions than required for its role?"], "suggested_evidence": ["Access rights review showing least privilege alignment"], "indicators_of_implementation": ["Over-privileged accounts identified and remediated in reviews"], "red_flags": ["Accounts with admin rights not requiring them"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-9", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is RBAC implemented and aligned to job function definitions?"], "suggested_evidence": ["RBAC policy; role-to-job-function mapping document"], "indicators_of_implementation": ["Roles match job functions; no custom permissions outside role definitions"], "red_flags": ["Permissions assigned individually outside RBAC framework"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-10", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is there an audit trail for all access provisioning and deprovisioning activities?"], "suggested_evidence": ["IAM audit log showing provisioning events"], "indicators_of_implementation": ["All provisioning actions logged with timestamp and approver"], "red_flags": ["Access changes not logged"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-11", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Is sharing of administrative credentials technically prevented?"], "suggested_evidence": ["Policy prohibiting shared accounts; individual account provisioning for all admins"], "indicators_of_implementation": ["All admin accounts are personal and non-shared"], "red_flags": ["Generic or shared admin accounts in use"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-1-12", "applicability_type": "CSP", "parent_control_code": "2-2-P-1", "audit_questions": ["Do cloud account password policies meet NCA requirements for length, complexity, and rotation?"], "suggested_evidence": ["Password policy configuration in IdP", "Comparison against NCA password requirements"], "indicators_of_implementation": ["Policy enforced technically, not just by procedure"], "red_flags": ["Password policy below NCA minimum requirements"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is federated identity management implemented for cloud services?", "Are only approved authentication protocols in use (e.g., SAML 2.0, OIDC)?"],
+      "suggested_evidence": ["SSO/federation configuration", "Protocol configuration showing approved standards"],
+      "indicators_of_implementation": ["Users authenticate via central IdP", "No legacy authentication protocols in use"],
+      "red_flags": ["Multiple separate identity silos", "Legacy protocols (NTLM, basic auth) in use for cloud access"],
+      "maturity_signals": {"initial": "No federation; per-service accounts.", "developing": "Some SSO implemented.", "defined": "Full federation across cloud services with approved protocols.", "managed": "Centralized IdP with risk-based authentication.", "optimizing": "Passwordless authentication; continuous identity analytics."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-T-1", "applicability_type": "CST",
+      "audit_questions": ["Is MFA enforced on all accounts with admin access to cloud consoles?", "Are access reviews for cloud accounts conducted at least semi-annually?"],
+      "suggested_evidence": ["MFA enforcement evidence for cloud console access", "Semi-annual access review reports"],
+      "indicators_of_implementation": ["No admin account accessible without MFA", "Review cycle is documented and followed"],
+      "red_flags": ["MFA not enforced for any cloud console access", "Access reviews not conducted or not documented"],
+      "maturity_signals": {"initial": "No MFA; no reviews.", "developing": "MFA for some admins.", "defined": "MFA required for all admins; semi-annual reviews.", "managed": "Automated deprovisioning; quarterly reviews.", "optimizing": "Continuous access analytics; anomaly-based revocation."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-T-1-1", "applicability_type": "CST", "parent_control_code": "2-2-T-1", "audit_questions": ["Is MFA technically enforced for cloud console access?"], "suggested_evidence": ["IdP config or SSO policy showing MFA requirement"], "indicators_of_implementation": ["MFA cannot be bypassed"], "red_flags": ["MFA optional or bypass available"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-T-1-2", "applicability_type": "CST", "parent_control_code": "2-2-T-1", "audit_questions": ["Were cloud service access reviews completed semi-annually?"], "suggested_evidence": ["Access review reports with dates and approver"], "indicators_of_implementation": ["Reviews on schedule; removals actioned"], "red_flags": ["Reviews overdue or findings not actioned"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-T-1-3", "applicability_type": "CST", "parent_control_code": "2-2-T-1", "audit_questions": ["Are cloud accounts promptly deprovisioned on user departure or role change?"], "suggested_evidence": ["Sample deprovisioning tickets with timestamps"], "indicators_of_implementation": ["Deprovisioning within 1 business day"], "red_flags": ["Departed users with active cloud accounts"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-2-T-2", "applicability_type": "CST",
+      "audit_questions": ["Are least-privilege principles applied to all cloud service accounts?", "Is sharing of cloud service admin accounts prohibited and technically prevented?"],
+      "suggested_evidence": ["Access rights review demonstrating least privilege", "Policy prohibiting shared accounts; individual account logs"],
+      "indicators_of_implementation": ["No account has more access than role requires", "No shared accounts discovered"],
+      "red_flags": ["Over-privileged accounts identified and not remediated", "Shared cloud admin accounts in use"],
+      "maturity_signals": {"initial": "Shared accounts; no least privilege.", "developing": "Least privilege applied to some roles.", "defined": "Least privilege enforced; no shared accounts.", "managed": "Automated over-privilege detection.", "optimizing": "Just-enough-access with continuous optimization."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is hypervisor hardening implemented and verified?", "How is tenant isolation technically enforced?", "Are container images scanned before deployment?", "Is IaC security scanning integrated into the deployment pipeline?"],
+      "suggested_evidence": ["Hypervisor hardening guide and compliance scan", "Tenant isolation test results or penetration test findings", "Container image scan reports from CI/CD pipeline", "IaC security scan tool configuration and reports"],
+      "indicators_of_implementation": ["Hypervisor configuration matches hardening baseline", "No cross-tenant access demonstrated in tests", "All images scanned before production deployment", "IaC scan failures block deployment"],
+      "red_flags": ["Default hypervisor configuration in use", "Cross-tenant data accessible in penetration tests", "Container images deployed without security scanning", "IaC deployed without security review"],
+      "maturity_signals": {
+        "initial": "Default configurations; no isolation testing.",
+        "developing": "Some hardening applied; manual reviews.",
+        "defined": "Documented hardening; automated scanning; isolation testing.",
+        "managed": "Comprehensive scanning in CI/CD; micro-segmentation enforced.",
+        "optimizing": "Zero-trust workload security; continuous compliance scanning; automated remediation."
+      }
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Is hypervisor configuration validated against a hardening guide?"], "suggested_evidence": ["Compliance scan report vs hardening baseline"], "indicators_of_implementation": ["All hardening checks pass"], "red_flags": ["Default or unreviewed hypervisor configuration"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Is tenant environment isolation technically enforced?"], "suggested_evidence": ["Isolation architecture diagram; penetration test results confirming isolation"], "indicators_of_implementation": ["No cross-tenant data leakage in tests"], "red_flags": ["Cross-tenant access possible"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Is VM lifecycle (provisioning, migration, decommissioning) managed securely?"], "suggested_evidence": ["VM lifecycle policy; decommissioning checklist"], "indicators_of_implementation": ["Data wiped before decommission; migrations encrypted"], "red_flags": ["VMs decommissioned without data sanitization"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Are container images scanned and orchestration platforms hardened?"], "suggested_evidence": ["Image scanning tool output; Kubernetes CIS benchmark results"], "indicators_of_implementation": ["No critical vulnerabilities in deployed images"], "red_flags": ["Unscanned images deployed to production"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-5", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Is micro-segmentation implemented to isolate workloads?"], "suggested_evidence": ["Network segmentation architecture; firewall rules"], "indicators_of_implementation": ["Workloads cannot communicate laterally without explicit rule"], "red_flags": ["Flat network with no workload segmentation"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-6", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Does the API gateway implement authentication, authorization, and rate limiting?"], "suggested_evidence": ["API gateway configuration; security policy documentation"], "indicators_of_implementation": ["All API calls authenticated; rate limits enforced"], "red_flags": ["Unauthenticated API endpoints exposed"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-7", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Are IaC templates security scanned before deployment?"], "suggested_evidence": ["IaC scan tool (e.g., Checkov, tfsec) integration in CI/CD; scan reports"], "indicators_of_implementation": ["Security issues in IaC block deployment pipeline"], "red_flags": ["IaC deployed without security scanning"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-8", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Is cloud storage encrypted server-side with appropriate access controls?"], "suggested_evidence": ["Storage encryption configuration; access control policy"], "indicators_of_implementation": ["All storage buckets encrypted; public access disabled"], "red_flags": ["Unencrypted storage or publicly accessible buckets"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-9", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Are regular security baseline compliance assessments conducted for all cloud infrastructure?"], "suggested_evidence": ["Periodic compliance scan reports against baselines"], "indicators_of_implementation": ["Assessments on schedule; deviations remediated"], "red_flags": ["No baseline assessment conducted"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-1-10", "applicability_type": "CSP", "parent_control_code": "2-3-P-1", "audit_questions": ["Is immutable infrastructure implemented for production workloads?"], "suggested_evidence": ["IaC deployment policy prohibiting in-place changes; deployment pipeline configuration"], "indicators_of_implementation": ["Production changes made by redeploy, not patching in place"], "red_flags": ["Mutable production infrastructure with manual changes"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Are security baselines documented for all cloud infrastructure types?", "Is baseline compliance verified periodically?"],
+      "suggested_evidence": ["Security baseline documents per infrastructure type", "Periodic compliance scan reports"],
+      "indicators_of_implementation": ["Baselines cover all infrastructure categories", "Non-compliance alerts are actioned"],
+      "red_flags": ["Baselines not documented", "Non-compliance drifts unchecked"],
+      "maturity_signals": {"initial": "No baselines.", "developing": "Informal baselines.", "defined": "Documented baselines; periodic scanning.", "managed": "Automated compliance enforcement.", "optimizing": "Policy-as-code with automatic remediation."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-T-1", "applicability_type": "CST",
+      "audit_questions": ["Does the CST apply CSP security recommendations and NCA controls to cloud workloads?"],
+      "suggested_evidence": ["Hardened VM configurations; security baseline compliance report"],
+      "indicators_of_implementation": ["Workloads pass CSP security posture assessment"],
+      "red_flags": ["Default configurations in use; no hardening applied"],
+      "maturity_signals": {"initial": "Default configurations.", "developing": "Some hardening applied.", "defined": "Hardening aligned to CSP and NCA guidance.", "managed": "Automated compliance scanning.", "optimizing": "Continuous security posture management."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-T-1-1", "applicability_type": "CST", "parent_control_code": "2-3-T-1", "audit_questions": ["Are approved security baselines applied to all cloud-hosted VMs and containers?"], "suggested_evidence": ["Compliance scan against baseline for cloud workloads"], "indicators_of_implementation": ["All workloads pass baseline scan"], "red_flags": ["Workloads with unreviewed configurations"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-T-1-2", "applicability_type": "CST", "parent_control_code": "2-3-T-1", "audit_questions": ["Is workload isolation and network segmentation implemented for cloud applications?"], "suggested_evidence": ["Virtual network segmentation configuration"], "indicators_of_implementation": ["Applications isolated in separate network segments"], "red_flags": ["All applications on flat network"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-3-T-2", "applicability_type": "CST",
+      "audit_questions": ["Is access to cloud management interfaces restricted to approved IP addresses or VPN?", "Are management protocols encrypted?"],
+      "suggested_evidence": ["Network access control configuration restricting management access", "TLS/SSH configuration for management protocols"],
+      "indicators_of_implementation": ["Management interfaces not accessible from the internet without VPN", "No unencrypted management protocols in use"],
+      "red_flags": ["Cloud management console accessible from any IP", "Unencrypted protocols (HTTP, Telnet) used for management"],
+      "maturity_signals": {"initial": "Unrestricted management access.", "developing": "Some IP restrictions.", "defined": "IP allowlisting and encrypted protocols enforced.", "managed": "VPN-only access with device health checks.", "optimizing": "Zero-trust network access with continuous verification."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is DDoS protection enabled for all cloud-hosted services?", "Is network traffic monitored for anomalies?", "Are tenant network environments isolated?"],
+      "suggested_evidence": ["DDoS protection service configuration", "Network monitoring/SIEM alerts and dashboards", "Virtual network segmentation architecture diagram"],
+      "indicators_of_implementation": ["DDoS protection active on all public endpoints", "Network anomaly alerts configured and tested", "Tenant networks logically isolated"],
+      "red_flags": ["DDoS protection not enabled", "No network traffic monitoring", "Tenants share network segments"],
+      "maturity_signals": {"initial": "No DDoS or monitoring.", "developing": "Basic firewall; manual monitoring.", "defined": "DDoS protection and network monitoring active.", "managed": "Automated anomaly detection and response.", "optimizing": "AI-driven threat detection with automated mitigation."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-4-P-1", "audit_questions": ["Are virtual networks segmented and isolated per tenant?"], "suggested_evidence": ["VPC/VNET configuration showing tenant isolation"], "indicators_of_implementation": ["Each tenant in isolated network segment"], "red_flags": ["Shared flat network across tenants"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-4-P-1", "audit_questions": ["Is DDoS protection enabled on all public-facing cloud services?"], "suggested_evidence": ["DDoS mitigation service activation records"], "indicators_of_implementation": ["DDoS protection confirmed active"], "red_flags": ["Public services without DDoS protection"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-4-P-1", "audit_questions": ["Is network traffic monitored across all cloud tiers with anomaly detection?"], "suggested_evidence": ["Network monitoring tool configuration; alert history"], "indicators_of_implementation": ["Alerts generated and responded to for anomalous traffic"], "red_flags": ["No network monitoring or alerts"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is a WAF deployed for cloud-hosted web services?", "Are IDS/IPS systems active in the cloud environment?"],
+      "suggested_evidence": ["WAF configuration and block rule reports", "IDS/IPS deployment architecture and alert logs"],
+      "indicators_of_implementation": ["WAF active with blocking enabled", "IDS/IPS alerts reviewed and responded to"],
+      "red_flags": ["No WAF for public web services", "IDS/IPS in monitoring-only mode without response"],
+      "maturity_signals": {"initial": "No WAF or IDS/IPS.", "developing": "Basic firewall only.", "defined": "WAF and IDS/IPS deployed and configured.", "managed": "WAF rules tuned; automated incident response.", "optimizing": "ML-powered WAF with zero-day protection."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-T-1", "applicability_type": "CST",
+      "audit_questions": ["Are virtual firewalls and network ACLs implemented for cloud-hosted workloads?", "Is all data in transit encrypted?"],
+      "suggested_evidence": ["Virtual firewall and ACL configuration", "TLS configuration evidence; network traffic encryption scan"],
+      "indicators_of_implementation": ["All traffic between cloud services encrypted", "Firewall rules reviewed and approved"],
+      "red_flags": ["Unencrypted inter-service communication", "Overly permissive firewall rules"],
+      "maturity_signals": {"initial": "No virtual firewall.", "developing": "Basic ACLs.", "defined": "Virtual firewall and TLS enforced.", "managed": "Automated rule review.", "optimizing": "Zero-trust microsegmentation."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-T-1-1", "applicability_type": "CST", "parent_control_code": "2-4-T-1", "audit_questions": ["Are virtual firewalls and ACLs configured for all cloud workloads?"], "suggested_evidence": ["Firewall and ACL configuration exports"], "indicators_of_implementation": ["All workloads behind firewall with deny-default rule"], "red_flags": ["No firewall; any-any rules"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-T-1-2", "applicability_type": "CST", "parent_control_code": "2-4-T-1", "audit_questions": ["Is all data in transit encrypted using TLS 1.2 or higher?"], "suggested_evidence": ["SSL/TLS scan results; certificate inventory"], "indicators_of_implementation": ["No unencrypted channels detected"], "red_flags": ["HTTP or TLS 1.0/1.1 in use"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-4-T-1-3", "applicability_type": "CST", "parent_control_code": "2-4-T-1", "audit_questions": ["Are cloud network traffic anomalies monitored and alerted?"], "suggested_evidence": ["SIEM alerts configured for cloud network events"], "indicators_of_implementation": ["Alert history shows cloud network events reviewed"], "red_flags": ["Cloud network traffic not monitored"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-5-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is EDR deployed on all cloud management workstations and servers?", "Is application whitelisting enforced on admin workstations?"],
+      "suggested_evidence": ["EDR deployment inventory and coverage report", "Application whitelisting policy and enforcement evidence"],
+      "indicators_of_implementation": ["100% EDR coverage on management endpoints", "Unauthorized applications blocked on admin workstations"],
+      "red_flags": ["EDR missing from any management endpoint", "Admins able to run arbitrary software"],
+      "maturity_signals": {"initial": "Basic antivirus only.", "developing": "EDR on some endpoints.", "defined": "EDR on all management endpoints; application control.", "managed": "Centralized EDR with automated response.", "optimizing": "AI-driven endpoint detection with zero-trust posture."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-5-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-5-P-1", "audit_questions": ["Is EDR deployed on all cloud management workstations?"], "suggested_evidence": ["EDR console showing 100% coverage"], "indicators_of_implementation": ["No unprotected management endpoints"], "red_flags": ["Management endpoints without EDR"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-5-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-5-P-1", "audit_questions": ["Is application whitelisting enforced on cloud admin workstations?"], "suggested_evidence": ["Application control policy and enforcement log"], "indicators_of_implementation": ["Only approved applications run on admin workstations"], "red_flags": ["Admins able to install arbitrary software"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-5-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Are cloud API clients and management tools kept up to date?"],
+      "suggested_evidence": ["Patch management records for management tools", "Version inventory of cloud CLI/SDK tools"],
+      "indicators_of_implementation": ["No outdated management tools with known vulnerabilities"],
+      "red_flags": ["Outdated cloud SDKs or CLI versions with known CVEs"],
+      "maturity_signals": {"initial": "No patching of management tools.", "developing": "Ad hoc updates.", "defined": "Scheduled patching process.", "managed": "Automated patch management.", "optimizing": "Continuous vulnerability management with auto-remediation."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-5-T-1", "applicability_type": "CST",
+      "audit_questions": ["Are endpoints used for cloud console access secured with MFA and device health checks?"],
+      "suggested_evidence": ["Device compliance policy in MDM; conditional access policy"],
+      "indicators_of_implementation": ["Non-compliant devices blocked from cloud console access"],
+      "red_flags": ["No device health check for cloud console access"],
+      "maturity_signals": {"initial": "No device controls.", "developing": "Basic device policy.", "defined": "MFA and device health enforced for cloud access.", "managed": "Continuous device compliance monitoring.", "optimizing": "Zero-trust device posture with real-time enforcement."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-6-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is an SSDLC implemented for cloud services?", "Are SAST and DAST tools integrated in the CI/CD pipeline?", "Is SCA performed for third-party components?"],
+      "suggested_evidence": ["SSDLC policy document", "CI/CD pipeline configuration showing SAST/DAST integration", "SCA scan reports"],
+      "indicators_of_implementation": ["Security testing blocks deployments with critical findings", "Threat models produced for new services", "Open-source components regularly scanned"],
+      "red_flags": ["No SSDLC; security tested after deployment", "Critical SAST findings deployed to production", "No SCA for open-source components"],
+      "maturity_signals": {"initial": "Security testing ad hoc or absent.", "developing": "Manual security reviews before release.", "defined": "SAST/DAST/SCA in CI/CD; threat modeling.", "managed": "Security gates block high-risk deployments.", "optimizing": "Continuous security testing with developer self-service tooling."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-6-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-6-P-1", "audit_questions": ["Are security requirements and threat models produced in the design phase?"], "suggested_evidence": ["Threat model documents for recent services"], "indicators_of_implementation": ["Threat models produced before development starts"], "red_flags": ["No threat modeling in design phase"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-6-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-6-P-1", "audit_questions": ["Are SAST and DAST automated in the CI/CD pipeline?"], "suggested_evidence": ["CI/CD pipeline SAST/DAST integration config and reports"], "indicators_of_implementation": ["Critical findings block deployment"], "red_flags": ["Testing done manually post-deployment"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-6-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-6-P-1", "audit_questions": ["Is SCA performed for all third-party and open-source components?"], "suggested_evidence": ["SCA tool configuration and scan output"], "indicators_of_implementation": ["No high-severity open-source vulnerabilities in production"], "red_flags": ["Open-source dependencies not scanned"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-6-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Are cloud APIs regularly security tested including auth and authz controls?"],
+      "suggested_evidence": ["API security test reports", "Penetration testing scope confirmation covering APIs"],
+      "indicators_of_implementation": ["API security tests conducted on schedule", "Broken auth findings remediated"],
+      "red_flags": ["APIs not included in security testing", "Broken authentication discovered but unaddressed"],
+      "maturity_signals": {"initial": "APIs not tested.", "developing": "Manual API review occasionally.", "defined": "Regular API security testing with remediation.", "managed": "Automated API security scanning.", "optimizing": "Continuous API fuzzing and monitoring."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-6-T-1", "applicability_type": "CST",
+      "audit_questions": ["Are cloud-hosted applications included in the entity's application security program?"],
+      "suggested_evidence": ["Security assessment reports for cloud-hosted applications", "Security testing sign-off before cloud deployment"],
+      "indicators_of_implementation": ["All cloud applications assessed before launch", "Findings tracked and remediated"],
+      "red_flags": ["Cloud applications deployed without security assessment"],
+      "maturity_signals": {"initial": "No security testing for cloud apps.", "developing": "Ad hoc testing.", "defined": "Assessment required before deployment.", "managed": "Automated testing in pipeline.", "optimizing": "Continuous security testing in production."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is data classified and labeled for all cloud-hosted data?", "Is encryption at rest enforced for all data?", "Is DLP implemented to detect unauthorized data exfiltration?"],
+      "suggested_evidence": ["Data classification policy and labeling evidence", "Encryption at rest configuration for all storage services", "DLP policy configuration and alert log"],
+      "indicators_of_implementation": ["No unclassified data in cloud storage", "All data at rest encrypted with approved algorithms", "DLP alerts reviewed and actioned"],
+      "red_flags": ["Unclassified or unencrypted data in cloud", "DLP not configured or alerts not reviewed"],
+      "maturity_signals": {"initial": "No encryption or classification.", "developing": "Ad hoc encryption.", "defined": "Encryption and classification enforced; DLP active.", "managed": "Automated data discovery and classification.", "optimizing": "AI-driven data risk scoring and automated protection."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-7-P-1", "audit_questions": ["Is data classified and labeled in cloud storage?"], "suggested_evidence": ["Data classification scan results"], "indicators_of_implementation": ["All data classified per policy"], "red_flags": ["Unclassified sensitive data in cloud storage"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-7-P-1", "audit_questions": ["Is encryption at rest enforced for all cloud storage?"], "suggested_evidence": ["Storage encryption configuration reports"], "indicators_of_implementation": ["All storage encrypted with approved algorithm"], "red_flags": ["Unencrypted cloud storage volumes or buckets"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-7-P-1", "audit_questions": ["Is TLS 1.2+ enforced for all data in transit?"], "suggested_evidence": ["TLS configuration; certificate scan results"], "indicators_of_implementation": ["No insecure channels detected"], "red_flags": ["HTTP or deprecated TLS versions in use"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-7-P-1", "audit_questions": ["Is DLP deployed and configured to detect unauthorized data exfiltration?"], "suggested_evidence": ["DLP tool configuration and alert history"], "indicators_of_implementation": ["DLP policies active for sensitive data types"], "red_flags": ["No DLP or DLP in monitoring-only mode with no response"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is tenant data logically isolated using separate encryption keys?", "Are tenant isolation controls periodically tested?"],
+      "suggested_evidence": ["Tenant isolation architecture; per-tenant encryption key configuration", "Isolation test results from penetration testing"],
+      "indicators_of_implementation": ["Each tenant has dedicated encryption keys", "Isolation verified in penetration tests"],
+      "red_flags": ["Shared encryption keys across tenants", "Cross-tenant data access demonstrated in tests"],
+      "maturity_signals": {"initial": "No tenant isolation.", "developing": "Logical separation only.", "defined": "Per-tenant keys and access controls; isolation tested.", "managed": "BYOK/CMEK options available; regular isolation audits.", "optimizing": "Confidential computing; hardware-level isolation."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-T-1", "applicability_type": "CST",
+      "audit_questions": ["Does the CST maintain an inventory of cloud-hosted data with classification?", "Is encryption verified for all data at rest and in transit?"],
+      "suggested_evidence": ["Data inventory with classification for cloud assets", "Encryption verification report"],
+      "indicators_of_implementation": ["All cloud data classified and encrypted", "Deletion procedures documented and tested"],
+      "red_flags": ["Unclassified or unencrypted cloud data", "No deletion procedure for service exit"],
+      "maturity_signals": {"initial": "No data inventory or encryption verification.", "developing": "Partial inventory.", "defined": "Inventory with classification; encryption verified.", "managed": "Automated data discovery and protection.", "optimizing": "Continuous data risk monitoring."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-T-1-1", "applicability_type": "CST", "parent_control_code": "2-7-T-1", "audit_questions": ["Is there a classified inventory of all data stored in cloud services?"], "suggested_evidence": ["Data inventory document with classification"], "indicators_of_implementation": ["All cloud data inventoried and classified"], "red_flags": ["Shadow data in cloud not inventoried"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-T-1-2", "applicability_type": "CST", "parent_control_code": "2-7-T-1", "audit_questions": ["Has encryption been verified for all cloud-hosted data at rest and in transit?"], "suggested_evidence": ["Encryption check report for cloud storage and communications"], "indicators_of_implementation": ["All storage encrypted; TLS enforced"], "red_flags": ["Encryption not verified; assumed but not confirmed"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-T-1-3", "applicability_type": "CST", "parent_control_code": "2-7-T-1", "audit_questions": ["Is there a documented and tested data deletion procedure for cloud service exit?"], "suggested_evidence": ["Data deletion procedure; evidence of test execution"], "indicators_of_implementation": ["Deletion confirmed as part of exit checklist"], "red_flags": ["No deletion procedure; data left in cloud after exit"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-7-T-2", "applicability_type": "CST",
+      "audit_questions": ["Do cloud service contracts specify data residency within Saudi Arabia or approved jurisdictions?"],
+      "suggested_evidence": ["Cloud service contracts with data residency clauses", "CSP data location confirmation letter"],
+      "indicators_of_implementation": ["All contracts have explicit residency clauses", "Residency confirmed in writing by CSP"],
+      "red_flags": ["No data residency clause in contracts", "Classified data stored outside Saudi Arabia without approval"],
+      "maturity_signals": {"initial": "No contractual residency requirement.", "developing": "Residency informally confirmed.", "defined": "Contractual clause for all cloud services handling classified data.", "managed": "CSP residency audited periodically.", "optimizing": "Automated residency monitoring with alerts."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-8-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Are HSMs used for all cryptographic key generation and storage?", "Is a key lifecycle management process implemented?", "Are customer-managed key options available to tenants?"],
+      "suggested_evidence": ["HSM deployment documentation", "Key management policy and lifecycle procedures", "CMEK feature documentation and customer guide"],
+      "indicators_of_implementation": ["HSM used for all key operations", "Key rotation enforced per policy", "CMEK available for tenants"],
+      "red_flags": ["Software-based key storage without HSM", "No key rotation policy", "Keys co-located with encrypted data"],
+      "maturity_signals": {"initial": "Software key storage; no lifecycle management.", "developing": "HSM for some keys.", "defined": "HSM for all keys; lifecycle management implemented.", "managed": "CMEK options available; automated rotation.", "optimizing": "Key management integrated with SIEM; automatic expiry and renewal."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-8-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-8-P-1", "audit_questions": ["Are HSMs used for all cryptographic key generation and storage?"], "suggested_evidence": ["HSM device inventory; HSM certificate"], "indicators_of_implementation": ["All keys generated and stored in HSM"], "red_flags": ["Keys generated in software without HSM"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-8-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-8-P-1", "audit_questions": ["Is a key lifecycle management process covering generation through destruction implemented?"], "suggested_evidence": ["Key management policy; key rotation logs"], "indicators_of_implementation": ["All keys rotated per policy schedule"], "red_flags": ["Keys never rotated; no lifecycle process"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-8-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-8-P-1", "audit_questions": ["Is a CMEK option available for tenants to control their own encryption keys?"], "suggested_evidence": ["CMEK feature documentation; tenant key configuration example"], "indicators_of_implementation": ["CMEK available as a feature; tenants can enable it"], "red_flags": ["No CMEK option; tenants cannot control their keys"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-8-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-8-P-1", "audit_questions": ["Are encryption keys cryptographically separated from the data they protect?"], "suggested_evidence": ["Architecture diagram showing key-data separation"], "indicators_of_implementation": ["Keys stored in separate system from encrypted data"], "red_flags": ["Keys and data stored together"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-8-P-1-5", "applicability_type": "CSP", "parent_control_code": "2-8-P-1", "audit_questions": ["Are NCA-approved algorithms and minimum key lengths enforced?"], "suggested_evidence": ["Cryptographic standards policy; algorithm configuration"], "indicators_of_implementation": ["No weak algorithms (DES, MD5, SHA-1) in use"], "red_flags": ["Deprecated or weak algorithms in use"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is centralized log aggregation implemented across all cloud layers?", "Is real-time monitoring of control plane activities in place?"],
+      "suggested_evidence": ["SIEM configuration showing cloud log sources", "Control plane alert configuration and sample alerts"],
+      "indicators_of_implementation": ["All cloud layers forwarding logs to SIEM", "Real-time alerts firing for anomalous control plane actions"],
+      "red_flags": ["Log gaps: some cloud layers not sending to SIEM", "No real-time alerting for control plane changes"],
+      "maturity_signals": {"initial": "No centralized logging.", "developing": "Some logs in SIEM.", "defined": "All cloud layers centrally logged; real-time alerts.", "managed": "Log retention enforced; alert correlation.", "optimizing": "ML-based anomaly detection; automated threat hunting."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-9-P-1", "audit_questions": ["Are logs from all cloud layers (management, data, network) aggregated centrally?"], "suggested_evidence": ["SIEM source list showing all cloud log categories"], "indicators_of_implementation": ["No log source gaps"], "red_flags": ["Log gaps identified in SIEM coverage audit"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-9-P-1", "audit_questions": ["Are control plane activities monitored in real time with automated alerting?"], "suggested_evidence": ["SIEM alert rules for control plane events; sample alerts"], "indicators_of_implementation": ["Alerts fire within defined SLA of anomalous event"], "red_flags": ["No real-time alerting; logs reviewed manually and periodically"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Can tenants access their own security logs from cloud services?"],
+      "suggested_evidence": ["Tenant log access portal or API documentation", "Sample tenant security log export"],
+      "indicators_of_implementation": ["Tenants can self-serve their security logs", "Logs cover relevant service events"],
+      "red_flags": ["Tenants have no access to their security logs", "Logs only accessible via CSP support ticket"],
+      "maturity_signals": {"initial": "No tenant log access.", "developing": "Logs available on request.", "defined": "Self-service log access available.", "managed": "Real-time tenant log streaming.", "optimizing": "Tenant SIEM integration with pre-built connectors."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-T-1", "applicability_type": "CST",
+      "audit_questions": ["Are cloud service logs integrated into the entity's SIEM?", "Are alert thresholds defined for cloud security events?"],
+      "suggested_evidence": ["SIEM configuration showing cloud log sources", "Alert rules for cloud events with response runbooks"],
+      "indicators_of_implementation": ["Cloud logs flowing to SIEM", "Alerts defined and tested for key cloud events"],
+      "red_flags": ["Cloud logs not integrated with SIEM", "No alerts defined for cloud security events"],
+      "maturity_signals": {"initial": "No cloud logging.", "developing": "Logs collected but not in SIEM.", "defined": "Cloud logs in SIEM with alerts.", "managed": "Correlated cloud alerts with response runbooks.", "optimizing": "AI-assisted cloud threat detection."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-T-1-1", "applicability_type": "CST", "parent_control_code": "2-9-T-1", "audit_questions": ["Is logging enabled for all cloud service management activities?"], "suggested_evidence": ["Cloud service audit log configuration"], "indicators_of_implementation": ["All management actions logged"], "red_flags": ["Audit logging disabled for any cloud service"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-T-1-2", "applicability_type": "CST", "parent_control_code": "2-9-T-1", "audit_questions": ["Are cloud security logs integrated into the entity's SIEM?"], "suggested_evidence": ["SIEM data source configuration showing cloud services"], "indicators_of_implementation": ["Cloud logs visible in SIEM with alerts"], "red_flags": ["Cloud logs not in SIEM"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-9-T-1-3", "applicability_type": "CST", "parent_control_code": "2-9-T-1", "audit_questions": ["Are alert thresholds defined and response procedures documented for cloud log events?"], "suggested_evidence": ["Alert rules and response runbooks for cloud events"], "indicators_of_implementation": ["Alert-to-response workflow documented and tested"], "red_flags": ["Alerts defined but no response procedure"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-10-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is automated vulnerability scanning performed at regular intervals?", "Are patch SLAs defined by severity and adhered to?", "Is there a zero-day response procedure?"],
+      "suggested_evidence": ["Vulnerability scan schedule and recent reports", "Patch SLA policy and compliance tracking report", "Zero-day response procedure document"],
+      "indicators_of_implementation": ["Scanning frequency meets policy", "Critical patches applied within SLA", "Zero-day procedure tested"],
+      "red_flags": ["Scanning infrequent or missing infrastructure", "Critical patches overdue", "No documented zero-day response"],
+      "maturity_signals": {"initial": "No scanning.", "developing": "Manual scanning periodically.", "defined": "Automated scanning; SLA-based patching.", "managed": "Risk-based prioritization; automated patching for some systems.", "optimizing": "Continuous scanning with automated remediation and SLA enforcement."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-10-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-10-P-1", "audit_questions": ["Is automated vulnerability scanning running on all cloud infrastructure components?"], "suggested_evidence": ["Scan tool configuration showing coverage; recent scan reports"], "indicators_of_implementation": ["All cloud components in scan scope"], "red_flags": ["Coverage gaps in cloud vulnerability scanning"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-10-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-10-P-1", "audit_questions": ["Are patch SLAs defined by severity level and is compliance tracked?"], "suggested_evidence": ["Patch SLA policy; SLA compliance report"], "indicators_of_implementation": ["All critical patches within SLA"], "red_flags": ["Critical patches overdue beyond SLA"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-10-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-10-P-1", "audit_questions": ["Is there a documented and tested zero-day response procedure?"], "suggested_evidence": ["Zero-day response procedure document; evidence of activation"], "indicators_of_implementation": ["Procedure documented; team trained"], "red_flags": ["No documented zero-day procedure; reactive only"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is a security impact assessment performed for all cloud infrastructure changes?", "Are changes tested in a non-production environment before deployment?", "Are rollback procedures documented and tested?"],
+      "suggested_evidence": ["Change management policy with security review gate", "Change tickets showing non-production test evidence", "Rollback procedure documentation and test records"],
+      "indicators_of_implementation": ["All changes require security sign-off", "Test evidence present in change tickets", "Rollback tested in past year"],
+      "red_flags": ["Changes deployed without security review", "No testing environment; direct production changes", "Rollback procedures untested"],
+      "maturity_signals": {"initial": "Ad hoc changes without approval.", "developing": "CAB approval but no security review.", "defined": "Security review required; test gate enforced.", "managed": "Automated security gates in CI/CD; rollback tested.", "optimizing": "Progressive deployment with automated rollback on anomaly."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Do change tickets include a security impact assessment?"], "suggested_evidence": ["Sample change tickets with security impact field completed"], "indicators_of_implementation": ["Security review required field cannot be bypassed"], "red_flags": ["Changes approved without security impact assessment"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Is there evidence of non-production testing before production deployment?"], "suggested_evidence": ["Test environment records linked to change tickets"], "indicators_of_implementation": ["Test sign-off required in change process"], "red_flags": ["Changes deployed directly to production without testing"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Are rollback procedures documented and tested?"], "suggested_evidence": ["Rollback procedure documents; test execution records"], "indicators_of_implementation": ["Rollback tested in past 12 months"], "red_flags": ["No rollback procedure or untested"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Are change freeze periods defined and enforced for critical services?"], "suggested_evidence": ["Change freeze policy; enforced freeze calendar"], "indicators_of_implementation": ["No emergency changes without proper approval during freeze"], "red_flags": ["No change freeze policy; changes allowed at any time"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-5", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Are emergency changes subject to post-implementation security review?"], "suggested_evidence": ["Emergency change logs with post-review records"], "indicators_of_implementation": ["All emergency changes reviewed within defined timeframe"], "red_flags": ["Emergency changes not reviewed after implementation"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-6", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Does the CAB include a security representative for significant changes?"], "suggested_evidence": ["CAB membership list; meeting minutes showing security participation"], "indicators_of_implementation": ["Security sign-off required for significant changes"], "red_flags": ["CAB approves security-impacting changes without security review"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-7", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Is advance notification provided to tenants for service-impacting changes?"], "suggested_evidence": ["Tenant notification records; notification SLA policy"], "indicators_of_implementation": ["Tenants notified within required notice period"], "red_flags": ["Tenants not notified of service changes"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-P-1-8", "applicability_type": "CSP", "parent_control_code": "2-11-P-1", "audit_questions": ["Are security gates integrated into the automated deployment pipeline?"], "suggested_evidence": ["CI/CD pipeline configuration showing security gate steps"], "indicators_of_implementation": ["Security scan failures block pipeline progression"], "red_flags": ["Pipeline has no security gates; all code deploys automatically"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-11-T-1", "applicability_type": "CST",
+      "audit_questions": ["Does the CST's change management process include security review for cloud workload changes?"],
+      "suggested_evidence": ["Change management policy with cloud workload scope", "Sample change tickets for cloud workloads with security review"],
+      "indicators_of_implementation": ["Cloud changes require security sign-off", "Significant changes have CAB approval"],
+      "red_flags": ["Cloud workloads changed without change management process"],
+      "maturity_signals": {"initial": "No change management for cloud.", "developing": "Ad hoc approval.", "defined": "Cloud changes in change management with security review.", "managed": "Automated security gates for cloud changes.", "optimizing": "GitOps with security policy enforcement."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1", "applicability_type": "CSP",
+      "audit_questions": ["When was the last penetration test conducted and did it cover cloud management interfaces?", "Were tenant isolation controls tested?", "Is there a remediation plan for all findings with defined timelines?"],
+      "suggested_evidence": ["Penetration test report with scope confirmation", "Tenant isolation test section in pentest report", "Remediation plan with status tracking"],
+      "indicators_of_implementation": ["Test conducted in past 12 months", "Tenant isolation explicitly tested", "All critical findings remediated within SLA"],
+      "red_flags": ["Pentest older than 12 months", "Tenant isolation not tested", "Critical findings open beyond SLA"],
+      "maturity_signals": {"initial": "No penetration testing.", "developing": "Ad hoc testing.", "defined": "Annual pentest covering cloud; remediation tracked.", "managed": "Quarterly targeted testing; red team exercises.", "optimizing": "Continuous adversary simulation; bug bounty program."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Does the pentest scope explicitly include cloud management interfaces and APIs?"], "suggested_evidence": ["Pentest scope statement including cloud management scope"], "indicators_of_implementation": ["Management interfaces tested in pentest"], "red_flags": ["Management interfaces excluded from scope"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Is the penetration test conducted by qualified independent professionals?"], "suggested_evidence": ["Tester credentials and independence declaration"], "indicators_of_implementation": ["Testers are certified and independent"], "red_flags": ["Testing conducted by internal team with no independence"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Does the pentest include explicit testing of tenant isolation mechanisms?"], "suggested_evidence": ["Pentest report section on tenant isolation testing"], "indicators_of_implementation": ["Isolation mechanisms verified in test"], "red_flags": ["No tenant isolation testing in scope"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Are authentication and authorization controls tested in the pentest?"], "suggested_evidence": ["Pentest findings on auth controls"], "indicators_of_implementation": ["Auth controls tested; findings tracked"], "red_flags": ["Auth controls not tested or findings unresolved"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-5", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Is pentesting conducted at least annually?"], "suggested_evidence": ["Pentest schedule; previous reports with dates"], "indicators_of_implementation": ["Annual pentest completed and documented"], "red_flags": ["No annual pentest; testing ad hoc"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-6", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Is a remediation plan with prioritized findings produced after each pentest?"], "suggested_evidence": ["Remediation plan with priority and dates; status tracker"], "indicators_of_implementation": ["All critical findings in active remediation"], "red_flags": ["No remediation plan; findings not tracked"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-7", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Are red team exercises conducted at least every 2 years for critical services?"], "suggested_evidence": ["Red team exercise report; scheduling evidence"], "indicators_of_implementation": ["Red team exercises on schedule"], "red_flags": ["No red team exercises conducted"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-12-P-1-8", "applicability_type": "CSP", "parent_control_code": "2-12-P-1", "audit_questions": ["Are pentest results reported to senior management and the AO?"], "suggested_evidence": ["Management briefing record or board summary of pentest findings"], "indicators_of_implementation": ["AO receives pentest summary"], "red_flags": ["Pentest results not reported to management"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-13-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Are security baselines documented for all cloud infrastructure types?", "Is automated compliance scanning running against baselines?", "Are configuration changes tracked with approval workflows?"],
+      "suggested_evidence": ["Security baseline documents (CIS Benchmarks or equivalent)", "Compliance scan reports against baselines", "Configuration change log with approval evidence"],
+      "indicators_of_implementation": ["Baselines cover all infrastructure types", "Deviations alerted and remediated", "No unapproved configuration changes"],
+      "red_flags": ["No baselines documented", "Deviations not detected or not remediated", "Configuration changes made without approval"],
+      "maturity_signals": {"initial": "No baselines.", "developing": "Informal baselines.", "defined": "Documented baselines; automated scanning.", "managed": "Deviation auto-remediation for some controls.", "optimizing": "Policy-as-code with drift prevention and real-time enforcement."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-13-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-13-P-1", "audit_questions": ["Are security baselines based on CIS Benchmarks or equivalent standards?"], "suggested_evidence": ["Baseline documents referencing CIS or approved standard"], "indicators_of_implementation": ["Baselines documented and current"], "red_flags": ["No formal baseline; vendor defaults used"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-13-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-13-P-1", "audit_questions": ["Is automated configuration compliance scanning running with deviation alerting?"], "suggested_evidence": ["Scan tool reports and alert history"], "indicators_of_implementation": ["Deviations alerted and tracked to closure"], "red_flags": ["No automated scanning; manual only"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-13-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-13-P-1", "audit_questions": ["Do security-relevant configuration changes require formal approval?"], "suggested_evidence": ["Change approval workflow for configuration changes"], "indicators_of_implementation": ["No security config changed without approval"], "red_flags": ["Configuration changes bypass approval workflow"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-14-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is multi-layer physical access control implemented at cloud data centers?", "Is 24/7 CCTV monitoring in place for all data center access points?", "Are environmental controls (fire, cooling, power) tested periodically?"],
+      "suggested_evidence": ["Physical security audit report for data centers", "CCTV coverage map and monitoring records", "Environmental systems test records"],
+      "indicators_of_implementation": ["Multi-layer access (perimeter, building, hall, cabinet)", "CCTV coverage confirmed with no blind spots at access points", "Environmental systems tested per schedule"],
+      "red_flags": ["Single-layer physical access control", "CCTV gaps at access points", "Environmental systems not tested"],
+      "maturity_signals": {"initial": "Basic physical lock only.", "developing": "Access card system; limited CCTV.", "defined": "Multi-layer access; full CCTV; environmental monitoring.", "managed": "Biometric access; 24/7 guard; automated environmental alerts.", "optimizing": "AI-driven physical security with anomaly detection."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-14-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-14-P-1", "audit_questions": ["Is multi-layer physical access control implemented (perimeter to cabinet)?"], "suggested_evidence": ["Physical security architecture document; access log"], "indicators_of_implementation": ["At least 3 access control layers documented"], "red_flags": ["Single-factor or single-layer access control"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-14-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-14-P-1", "audit_questions": ["Is 24/7 CCTV coverage in place at all access points and critical areas?"], "suggested_evidence": ["CCTV coverage map; monitoring records"], "indicators_of_implementation": ["No access point without camera coverage"], "red_flags": ["Gaps in CCTV coverage at access points"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-14-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-14-P-1", "audit_questions": ["Are fire suppression, cooling, and power redundancy systems tested periodically?"], "suggested_evidence": ["Environmental systems test records; maintenance logs"], "indicators_of_implementation": ["Tests conducted on schedule with results documented"], "red_flags": ["Environmental systems not tested; potential single points of failure"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is a Cloud Incident Response Plan (CIRP) documented and tested?", "Are tenant notification timelines defined and met?", "Is NCA notification coordination documented?"],
+      "suggested_evidence": ["CIRP document with all phases", "Tabletop exercise records and after-action reports", "Tenant notification timeline in CIRP; sample notifications", "NCA notification procedure"],
+      "indicators_of_implementation": ["CIRP tested annually", "Tenant notification SLA defined", "NCA notification triggers clearly defined"],
+      "red_flags": ["No CIRP or generic incident plan", "CIRP untested", "Tenant notification SLA undefined"],
+      "maturity_signals": {"initial": "No incident response plan.", "developing": "Generic plan not cloud-specific.", "defined": "Cloud CIRP with all phases; annual tabletop.", "managed": "CIRP integrated with monitoring; drills include tenant notification.", "optimizing": "Automated incident classification and response orchestration."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-P-1-1", "applicability_type": "CSP", "parent_control_code": "2-15-P-1", "audit_questions": ["Does the CIRP cover all phases: detection, containment, eradication, recovery, lessons learned?"], "suggested_evidence": ["CIRP document with all five phases documented"], "indicators_of_implementation": ["Complete phase coverage in CIRP"], "red_flags": ["CIRP missing key phases (e.g., lessons learned)"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-P-1-2", "applicability_type": "CSP", "parent_control_code": "2-15-P-1", "audit_questions": ["Are tenant notification timelines defined and met?"], "suggested_evidence": ["CIRP tenant notification section; incident log showing notification times"], "indicators_of_implementation": ["Notifications sent within required timeframe"], "red_flags": ["No defined notification SLA; tenants notified late"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-P-1-3", "applicability_type": "CSP", "parent_control_code": "2-15-P-1", "audit_questions": ["Is there a documented procedure for NCA notification coordination?"], "suggested_evidence": ["NCA notification procedure in CIRP; contact details"], "indicators_of_implementation": ["NCA notification triggers and contacts documented"], "red_flags": ["No NCA notification procedure"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-P-1-4", "applicability_type": "CSP", "parent_control_code": "2-15-P-1", "audit_questions": ["Is the CIRP tested at least annually through tabletop exercises?"], "suggested_evidence": ["Tabletop exercise records for current year"], "indicators_of_implementation": ["Annual exercise completed; lessons documented"], "red_flags": ["CIRP not tested in past 12 months"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is a dedicated cloud incident response capability (CSIRT or equivalent) established?", "Are escalation procedures documented with named roles?"],
+      "suggested_evidence": ["CSIRT charter or equivalent documentation", "Escalation matrix with named contacts"],
+      "indicators_of_implementation": ["Dedicated team with defined roles and on-call rotation", "Escalation procedures tested"],
+      "red_flags": ["No dedicated incident response capability", "Escalation ad hoc and undocumented"],
+      "maturity_signals": {"initial": "No IR team.", "developing": "Ad hoc response team.", "defined": "Named CSIRT with documented escalation.", "managed": "24/7 on-call rotation; SLA-based response.", "optimizing": "AI-assisted triage with automated playbooks."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-T-1", "applicability_type": "CST",
+      "audit_questions": ["Does the entity's incident management process cover cloud service incidents?", "Are cloud security events integrated into the SIEM for incident detection?"],
+      "suggested_evidence": ["Incident response plan including cloud services scope", "SIEM configuration showing cloud event alerting", "Annual incident response test records"],
+      "indicators_of_implementation": ["Cloud incidents managed through standard IR process", "Cloud events generate SIEM alerts", "IR tests include cloud scenarios"],
+      "red_flags": ["Cloud incidents handled ad hoc outside IR process", "Cloud events not in SIEM"],
+      "maturity_signals": {"initial": "No IR process for cloud incidents.", "developing": "Cloud incidents handled ad hoc.", "defined": "IR process covers cloud; SIEM integrated.", "managed": "Playbooks for cloud scenarios; regular drills.", "optimizing": "Automated cloud incident detection and response."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-T-1-1", "applicability_type": "CST", "parent_control_code": "2-15-T-1", "audit_questions": ["Are cloud security incident reporting procedures defined for CSP and NCA notification?"], "suggested_evidence": ["IR plan section on cloud incident reporting"], "indicators_of_implementation": ["Reporting triggers and timelines defined"], "red_flags": ["No reporting procedure for cloud incidents"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-T-1-2", "applicability_type": "CST", "parent_control_code": "2-15-T-1", "audit_questions": ["Are cloud service security events integrated into the SIEM?"], "suggested_evidence": ["SIEM showing cloud event sources and cloud-specific alert rules"], "indicators_of_implementation": ["Cloud events in SIEM with alert history"], "red_flags": ["Cloud events not in SIEM"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-15-T-1-3", "applicability_type": "CST", "parent_control_code": "2-15-T-1", "audit_questions": ["Are incident response procedures involving cloud services tested annually?"], "suggested_evidence": ["Annual IR test records covering cloud scenarios"], "indicators_of_implementation": ["Cloud scenario included in most recent IR test"], "red_flags": ["IR tests do not include cloud scenarios"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-16-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is the CSP subscribed to threat intelligence feeds relevant to cloud services?", "Is threat intelligence integrated into monitoring and IR processes?"],
+      "suggested_evidence": ["Threat intelligence subscription records", "Evidence of TI integration in SIEM or detection rules"],
+      "indicators_of_implementation": ["TI feeds active and consumed by security tools", "Threat actor TTPs reflected in detection rules"],
+      "red_flags": ["No threat intelligence program", "TI data not integrated into security operations"],
+      "maturity_signals": {"initial": "No TI program.", "developing": "Ad hoc threat news monitoring.", "defined": "TI feeds subscribed; integrated into SIEM.", "managed": "TI-driven detection rules; ISACs participation.", "optimizing": "Automated TI ingestion with ML-based correlation."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "2-17-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Are digital forensics capabilities established for cloud environments?", "Is a chain of custody process documented for cloud forensic evidence?"],
+      "suggested_evidence": ["Digital forensics policy for cloud environments", "Chain of custody procedure document", "Forensic tool inventory for cloud investigations"],
+      "indicators_of_implementation": ["Forensic capability covers cloud log preservation and evidence collection", "Chain of custody procedures documented and understood by response team"],
+      "red_flags": ["No forensic capability for cloud environments", "Evidence potentially inadmissible due to lack of chain of custody"],
+      "maturity_signals": {"initial": "No forensic capability.", "developing": "Basic log retrieval only.", "defined": "Cloud forensics capability with chain of custody.", "managed": "Forensic readiness program with legal review.", "optimizing": "Automated evidence preservation triggered on incident detection."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Are RTO and RPO defined for each cloud service category?", "Are disaster recovery tests conducted annually?"],
+      "suggested_evidence": ["BCP/DRP documentation with RTOs and RPOs per service", "Annual DR test report and after-action review"],
+      "indicators_of_implementation": ["RTOs/RPOs defined and approved", "DR test completed annually with results documented"],
+      "red_flags": ["No RTOs/RPOs defined", "DR test not conducted in past 12 months"],
+      "maturity_signals": {"initial": "No BCP/DRP.", "developing": "Plan exists but untested.", "defined": "Documented BCP/DRP with RTOs/RPOs; annual test.", "managed": "Automated failover for some services; regular tests.", "optimizing": "Continuous resilience testing; chaos engineering."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-P-1-1", "applicability_type": "CSP", "parent_control_code": "3-1-P-1", "audit_questions": ["Are RTO and RPO documented and approved for each cloud service category?"], "suggested_evidence": ["BCP showing service-level RTOs and RPOs"], "indicators_of_implementation": ["All services have defined and approved RTOs/RPOs"], "red_flags": ["RTOs/RPOs missing for any critical cloud service"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-P-1-2", "applicability_type": "CSP", "parent_control_code": "3-1-P-1", "audit_questions": ["Is an annual DR test conducted with results documented?"], "suggested_evidence": ["Annual DR test report; lessons learned log"], "indicators_of_implementation": ["Test completed annually; issues remediated"], "red_flags": ["No DR test in past 12 months"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is geographic redundancy implemented for critical cloud services?"],
+      "suggested_evidence": ["Multi-region architecture diagram", "Failover configuration and test results"],
+      "indicators_of_implementation": ["Critical services replicated to alternate site", "Failover tested and within defined RTO"],
+      "red_flags": ["Single-region architecture with no geographic redundancy", "Failover never tested"],
+      "maturity_signals": {"initial": "Single region; no redundancy.", "developing": "Backup in place but no live replication.", "defined": "Geographic redundancy; annual failover test.", "managed": "Automated failover; regular failover drills.", "optimizing": "Active-active multi-region with continuous replication testing."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-P-3", "applicability_type": "CSP",
+      "audit_questions": ["Do SLAs with tenants document the CSP's BCP/DR capabilities and availability guarantees?"],
+      "suggested_evidence": ["SLA documents referencing BCP/DR capabilities", "Service availability metrics vs SLA commitments"],
+      "indicators_of_implementation": ["SLAs include availability and recovery guarantees", "Availability metrics transparently reported"],
+      "red_flags": ["SLAs do not address BCP/DR", "Availability metrics not disclosed to tenants"],
+      "maturity_signals": {"initial": "No SLA BCP provisions.", "developing": "Informal commitments.", "defined": "BCP/DR capabilities in SLA.", "managed": "SLA metrics monitored and reported.", "optimizing": "Tenant-accessible real-time availability dashboard."}
+    },
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-T-1", "applicability_type": "CST",
+      "audit_questions": ["Are cloud services included in the entity's BCP/DRP?", "Are data backup and restore procedures for cloud-hosted data tested?", "Is a cloud service exit plan documented?"],
+      "suggested_evidence": ["BCP/DRP document including cloud services section", "Backup and restore test records", "Cloud exit plan document"],
+      "indicators_of_implementation": ["Cloud dependencies identified in BCP", "Restore tested successfully", "Exit plan documented and reviewed"],
+      "red_flags": ["BCP does not cover cloud service failures", "Backup not tested", "No exit plan"],
+      "maturity_signals": {"initial": "BCP ignores cloud.", "developing": "Cloud mentioned but not detailed.", "defined": "Cloud in BCP/DRP; backup tested; exit plan documented.", "managed": "Cloud failover tested; exit plan rehearsed.", "optimizing": "Cloud resilience continuously tested; automated failover."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-T-1-1", "applicability_type": "CST", "parent_control_code": "3-1-T-1", "audit_questions": ["Are recovery procedures for cloud-dependent business processes documented in BCP?"], "suggested_evidence": ["BCP section on cloud-dependent processes with recovery steps"], "indicators_of_implementation": ["Cloud dependencies explicitly mapped in BCP"], "red_flags": ["BCP does not address cloud service unavailability"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-T-1-2", "applicability_type": "CST", "parent_control_code": "3-1-T-1", "audit_questions": ["Are cloud data backup and restore procedures tested?"], "suggested_evidence": ["Backup test records with restore verification"], "indicators_of_implementation": ["Restore test completed and within RPO"], "red_flags": ["Backups not tested; restore untried"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "3-1-T-1-3", "applicability_type": "CST", "parent_control_code": "3-1-T-1", "audit_questions": ["Is a cloud service exit plan documented with data portability procedures?"], "suggested_evidence": ["Cloud exit plan document; data portability test"], "indicators_of_implementation": ["Exit plan covers data migration and service continuity"], "red_flags": ["No exit plan; vendor lock-in risk"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "4-1-P-1", "applicability_type": "CSP",
+      "audit_questions": ["Is there a process for security assessing critical cloud suppliers before engagement?", "Do supplier contracts include cybersecurity requirements?", "Is supplier security posture monitored on an ongoing basis?"],
+      "suggested_evidence": ["Supplier security assessment questionnaire and results", "Sample supplier contracts with security clauses", "Supplier risk register and ongoing monitoring records"],
+      "indicators_of_implementation": ["All critical suppliers assessed before engagement", "Security clauses in all supplier contracts", "Supplier risk monitored at least annually"],
+      "red_flags": ["Critical suppliers engaged without security assessment", "Contracts missing security requirements", "No ongoing supplier monitoring"],
+      "maturity_signals": {"initial": "No supplier security assessment.", "developing": "Ad hoc supplier reviews.", "defined": "Pre-engagement assessment; security clauses in contracts; annual review.", "managed": "Continuous supplier risk monitoring; automated alerts.", "optimizing": "Integrated supplier risk platform with real-time threat intelligence."}
+    },
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "4-1-P-1-1", "applicability_type": "CSP", "parent_control_code": "4-1-P-1", "audit_questions": ["Are critical cloud infrastructure suppliers assessed before engagement?"], "suggested_evidence": ["Pre-engagement security assessment reports for critical suppliers"], "indicators_of_implementation": ["Assessment required before contract signature"], "red_flags": ["Suppliers engaged without assessment"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "4-1-P-1-2", "applicability_type": "CSP", "parent_control_code": "4-1-P-1", "audit_questions": ["Do all supplier contracts include cybersecurity requirements?"], "suggested_evidence": ["Sample supplier contracts with security clauses"], "indicators_of_implementation": ["All contracts have security requirements and audit rights"], "red_flags": ["Contracts missing security clauses or audit rights"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "4-1-P-1-3", "applicability_type": "CSP", "parent_control_code": "4-1-P-1", "audit_questions": ["Is supplier cybersecurity posture monitored on an ongoing basis?"], "suggested_evidence": ["Supplier risk register with ongoing monitoring records"], "indicators_of_implementation": ["Supplier risks reviewed at least annually"], "red_flags": ["No ongoing supplier monitoring"], "maturity_signals": null},
+    {"AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "4-1-P-1-4", "applicability_type": "CSP", "parent_control_code": "4-1-P-1", "audit_questions": ["Do supplier contracts require incident notification within defined timeframes?"], "suggested_evidence": ["Supplier contract incident notification clause"], "indicators_of_implementation": ["Notification timeline specified and enforced"], "red_flags": ["No incident notification requirement in supplier contracts"], "maturity_signals": null},
+    {
+      "AI_GENERATED": true, "framework_id": "CCC-2:2024", "control_code": "4-1-P-2", "applicability_type": "CSP",
+      "audit_questions": ["Is a critical supplier register maintained with annual risk assessments?"],
+      "suggested_evidence": ["Supplier register with risk ratings and last assessment dates", "Annual assessment reports for critical suppliers"],
+      "indicators_of_implementation": ["Register is current; all critical suppliers assessed in past 12 months"],
+      "red_flags": ["Supplier register incomplete or not maintained", "Critical suppliers not assessed in past 12 months"],
+      "maturity_signals": {"initial": "No supplier register.", "developing": "Informal supplier list.", "defined": "Supplier register with annual assessments.", "managed": "Risk-based supplier tiering; automated assessment triggers.", "optimizing": "Continuous supplier risk monitoring with automated alerts on posture changes."}
+    }
+  ]
+}

@@ -37,6 +37,7 @@ from backend.checkpoint_analyzer import (
 )
 from backend.ecc2_analyzer import run_ecc2_analysis, verify_ecc2_loaded
 from backend.sacs002_analyzer import run_sacs002_analysis
+from backend.ccc2_analyzer import run_ccc2_analysis
 from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
 from backend.chunker import chunk_text, chunk_text_segments
 from backend.routers.remediation import router as remediation_router
@@ -299,6 +300,28 @@ def startup_seed():
                 print(f"[startup] SACS-002 structured data ready ({n} controls)")
         except Exception as e:
             print(f"[startup] SACS-002 auto-import warning: {e}")
+
+        # Ensure CCC-2:2024 exists in the frameworks master table.
+        # The full data import is done via data/ccc2/ccc2_import.py; this
+        # block only guarantees the frameworks row so the dropdown shows it.
+        try:
+            import uuid as _uuid
+            from sqlalchemy import text as _t
+            _ccc2_id = str(_uuid.uuid4())
+            db.execute(_t("""
+                INSERT INTO frameworks (id, name, description, version)
+                VALUES (:id, :name, :desc, :ver)
+                ON CONFLICT (name) DO NOTHING
+            """), {
+                "id":   _ccc2_id,
+                "name": "CCC-2:2024",
+                "desc": "Cloud Cybersecurity Controls — National Cybersecurity Authority (NCA), Saudi Arabia, 2024",
+                "ver":  "2024",
+            })
+            db.commit()
+            print("[startup] CCC-2:2024 framework row ensured")
+        except Exception as e:
+            print(f"[startup] CCC-2:2024 row warning: {e}")
     finally:
         db.close()
 
@@ -1263,7 +1286,7 @@ def get_frameworks(
     # Known structured frameworks: always appear in the dropdown regardless of
     # whether their ecc_framework rows have been imported yet. Structured
     # frameworks use dedicated DB tables rather than uploaded PDF chunks.
-    _STRUCTURED_NAMES = ("'ECC-2:2024'", "'SACS-002'")
+    _STRUCTURED_NAMES = ("'ECC-2:2024'", "'SACS-002'", "'CCC-2:2024'")
     _structured_name_list = ", ".join(_STRUCTURED_NAMES)
 
     # is_structured = TRUE if ecc_framework has rows for this framework, OR
@@ -2047,6 +2070,13 @@ async def analyze_policy(request: schemas.AnalyzeRequest, db: Session = Depends(
             )
             all_results.update(sacs002_result)
 
+        if "CCC-2:2024" in frameworks_list:
+            frameworks_list.remove("CCC-2:2024")
+            ccc2_result = await run_ccc2_analysis(
+                db, request.policy_id, progress_cb=_progress_cb
+            )
+            all_results.update(ccc2_result)
+
         # ── Other frameworks: use legacy checkpoint analyzer ───────────────
         if frameworks_list:
             legacy_result = await run_checkpoint_analysis(
@@ -2180,6 +2210,102 @@ def sacs002_status(db: Session = Depends(get_db)):
     if result["layer1_count"] >= 92 and result["layer3_count"] >= 92:
         result["status"] = "loaded"
     elif result["layer1_count"] > 0:
+        result["status"] = "partial"
+    else:
+        result["status"] = "not_loaded"
+    return result
+
+
+@app.get("/api/ccc2/status")
+def ccc2_status(db: Session = Depends(get_db)):
+    """
+    Verify that the CCC-2:2024 structured data is loaded and the analyzer
+    is wired to the correct tables.
+
+    Expected row counts (fully loaded):
+      ecc_framework:          203  (4 domains + 24 subdomains + 55 main + 120 subcontrols)
+      ccc_metadata:           175  (main_control + subcontrol only)
+      ecc_compliance_metadata: 175
+      ecc_ai_checkpoints:     175
+    """
+    from sqlalchemy import text as _st
+    result = {
+        "framework_id": "CCC-2:2024",
+        "layer1_total": 0,
+        "layer1_by_type": {},
+        "ccc_metadata_count": 0,
+        "layer2_count": 0,
+        "layer3_count": 0,
+        "orphan_l3_count": 0,
+        "missing_ccc_meta_count": 0,
+        "frameworks_row": False,
+        "errors": [],
+        "status": "not_loaded",
+    }
+    try:
+        rows = db.execute(_st("""
+            SELECT control_type, COUNT(*) FROM ecc_framework
+            WHERE framework_id = 'CCC-2:2024'
+            GROUP BY control_type
+        """)).fetchall()
+        by_type = {r[0]: r[1] for r in rows}
+        result["layer1_by_type"] = by_type
+        result["layer1_total"] = sum(by_type.values())
+    except Exception as e:
+        result["errors"].append(f"ecc_framework: {e}")
+    try:
+        result["ccc_metadata_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ccc_metadata WHERE framework_id = 'CCC-2:2024'"
+        )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ccc_metadata: {e}")
+    try:
+        result["layer2_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_compliance_metadata WHERE framework_id = 'CCC-2:2024'"
+        )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_compliance_metadata: {e}")
+    try:
+        result["layer3_count"] = db.execute(_st(
+            "SELECT COUNT(*) FROM ecc_ai_checkpoints WHERE framework_id = 'CCC-2:2024'"
+        )).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"ecc_ai_checkpoints: {e}")
+    try:
+        result["orphan_l3_count"] = db.execute(_st("""
+            SELECT COUNT(*)
+            FROM ecc_ai_checkpoints c
+            LEFT JOIN ecc_framework f
+                ON c.framework_id = f.framework_id AND c.control_code = f.control_code
+            WHERE c.framework_id = 'CCC-2:2024' AND f.control_code IS NULL
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"orphan_l3: {e}")
+    try:
+        result["missing_ccc_meta_count"] = db.execute(_st("""
+            SELECT COUNT(*)
+            FROM ecc_framework f
+            LEFT JOIN ccc_metadata cm
+                ON f.framework_id = cm.framework_id AND f.control_code = cm.control_code
+            WHERE f.framework_id = 'CCC-2:2024'
+              AND f.control_type IN ('main_control', 'subcontrol')
+              AND cm.control_code IS NULL
+        """)).fetchone()[0]
+    except Exception as e:
+        result["errors"].append(f"missing_ccc_meta: {e}")
+    try:
+        fw_row = db.execute(_st(
+            "SELECT id FROM frameworks WHERE name = 'CCC-2:2024'"
+        )).fetchone()
+        result["frameworks_row"] = fw_row is not None
+    except Exception as e:
+        result["errors"].append(f"frameworks table: {e}")
+
+    l1 = result["layer1_total"]
+    l3 = result["layer3_count"]
+    if l1 >= 203 and l3 >= 175 and result["ccc_metadata_count"] >= 175:
+        result["status"] = "loaded"
+    elif l1 > 0:
         result["status"] = "partial"
     else:
         result["status"] = "not_loaded"
@@ -3543,6 +3669,95 @@ async def admin_reanalyze_policy(
     from backend.rag_engine import run_full_analysis
     results = await run_full_analysis(db, policy_id, frameworks)
     return {"ok": True, "results": results}
+
+
+@app.post("/api/admin/policies/{policy_id}/reextract")
+async def admin_reextract_policy(
+    policy_id: str,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    """
+    Re-extract, re-chunk, and re-embed a policy from its stored file.
+
+    Use this after fixing the DOCX extractor (or any other extraction bug)
+    to rebuild chunks without requiring a full re-upload. Deletes existing
+    policy_chunks and replaces them with fresh ones derived from the stored
+    file on disk.
+
+    Returns:
+        {"ok": True, "chunks": N, "chars": N, "segments": N}
+    """
+    from sqlalchemy import text as _t
+    from backend.text_extractor import extract_text_segments
+    from backend.chunker import chunk_text_segments
+    from backend.vector_store import get_embeddings, store_chunks_with_embeddings, delete_policy_chunks
+
+    row = db.execute(_t(
+        "SELECT file_name FROM policies WHERE id = :pid"
+    ), {"pid": policy_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    file_name = row[0]
+    dest = UPLOAD_DIR / file_name
+    # The stored file_name is the original basename; the physical file has a
+    # timestamp prefix. Search for it.
+    if not dest.exists():
+        matches = list(UPLOAD_DIR.glob(f"*{file_name}"))
+        if not matches:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Stored file not found on disk: {file_name}. Re-upload the document.",
+            )
+        dest = matches[0]
+
+    ext = dest.suffix.lower()
+    try:
+        segments = extract_text_segments(str(dest), ext)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
+
+    if not segments:
+        raise HTTPException(status_code=422, detail="Extraction produced no segments.")
+
+    content = "\n".join(s["text"] for s in segments)
+    chunks = chunk_text_segments(segments)
+    if not chunks:
+        raise HTTPException(status_code=422, detail="Chunker produced zero chunks.")
+
+    try:
+        embeddings = await get_embeddings([c["text"] for c in chunks])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Embedding API error: {e}")
+
+    if len(embeddings) != len(chunks):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Embedding count mismatch: {len(embeddings)} != {len(chunks)}",
+        )
+
+    delete_policy_chunks(db, policy_id)
+    store_chunks_with_embeddings(db, policy_id, chunks, embeddings)
+
+    # Update content_preview so the policy row reflects the re-extracted text
+    db.execute(_t(
+        "UPDATE policies SET content_preview = :content WHERE id = :pid"
+    ), {"content": content[:10000], "pid": policy_id})
+    db.commit()
+
+    print(
+        f"[reextract] policy={policy_id} "
+        f"segments={len(segments)} chunks={len(chunks)} chars={len(content)}"
+    )
+    return {
+        "ok":       True,
+        "policy_id": policy_id,
+        "file":     dest.name,
+        "segments": len(segments),
+        "chunks":   len(chunks),
+        "chars":    len(content),
+    }
 
 
 @app.get("/api/admin/frameworks")

@@ -962,6 +962,23 @@ def test_framework_readiness_sacs002_is_ready():
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Test 21c: CCC-2:2024 is a structured framework with its own analyzer
+# (ccc2_analyzer) and tables (ccc_metadata + ecc_* layer tables). It must
+# bypass the control_library readiness check just like ECC-2 and SACS-002.
+# A regression here causes HTTP 409 for any CCC-2:2024 analysis request.
+# ─────────────────────────────────────────────────────────────────────────
+def test_framework_readiness_ccc2_is_ready():
+    db = MagicMock()
+    db.execute.side_effect = AssertionError("structured framework should not query DB")
+
+    rd = framework_loader.framework_readiness(db, "CCC-2:2024")
+    assert rd["is_ready"] is True
+    assert rd["structured"] is True
+    assert rd["reason"] is None
+    assert rd["framework_id"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Test 22: framework_readiness — unknown framework is not ready.
 # ─────────────────────────────────────────────────────────────────────────
 def test_framework_readiness_unknown_framework_is_not_ready():

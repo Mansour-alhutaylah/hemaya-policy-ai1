@@ -660,7 +660,7 @@ def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: 
              chunk_id, page_number, paragraph_index,
              assessed_by, assessed_at)
         VALUES
-            (:id, CAST(:pid AS uuid), :fwid, :cc, CAST(:cs AS compliance_status_enum),
+            (:id, :pid, :fwid, :cc, CAST(:cs AS compliance_status_enum),
              :ev, :gap, :conf,
              :ckid, :pgnum, :paridx,
              CAST('AI' AS assessed_by_enum), :at)

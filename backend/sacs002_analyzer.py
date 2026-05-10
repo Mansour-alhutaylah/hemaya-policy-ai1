@@ -21,6 +21,8 @@ import asyncio
 from datetime import datetime, timezone
 from sqlalchemy import text as sql_text
 
+import backend.sacs002_cache as _sacs_cache
+
 import backend.checkpoint_analyzer as _ca
 from backend.checkpoint_analyzer import (
     call_llm,
@@ -394,28 +396,22 @@ async def _assess_control(
     keywords = control["keywords"]
 
     # ── Phase G.2: cache lookup ──────────────────────────────────────────
+    # All cache I/O goes through sacs002_cache.py which handles rollback,
+    # TTL filtering, stats, and error swallowing in one place.
     cache_key = None
     if db is not None and policy_hash:
         retrieval_min_score = getattr(_ca, "RAG_MIN_RELEVANCE_SCORE", 0.10)
-        grounding_version = getattr(_ca, "GROUNDING_VERSION", "v1")
-        grounding_sim = getattr(_ca, "GROUNDING_MIN_SIMILARITY", 0.75)
-        key_input = (
-            f"SACS002|{control_code}|{policy_hash}|"
-            f"{SACS002_PROMPT_VERSION}|{SACS002_MODEL}|"
-            f"{retrieval_min_score}|{grounding_version}|{grounding_sim}"
+        grounding_version   = getattr(_ca, "GROUNDING_VERSION", "v1")
+        grounding_sim       = getattr(_ca, "GROUNDING_MIN_SIMILARITY", 0.75)
+        cache_key = _sacs_cache.build_cache_key(
+            control_code, policy_hash,
+            SACS002_PROMPT_VERSION, SACS002_MODEL,
+            retrieval_min_score, grounding_version, grounding_sim,
         )
-        cache_key = hashlib.sha256(key_input.encode("utf-8")).hexdigest()
-        try:
-            row = db.execute(sql_text(
-                "SELECT result FROM sacs002_verification_cache WHERE cache_key = :ck"
-            ), {"ck": cache_key}).fetchone()
-            if row and row[0]:
-                cached = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-                print(f"    [SACS002][{control_code}] cache HIT")
-                return cached
-        except Exception as e:
-            # Non-fatal — fall through to fresh GPT call.
-            print(f"    [SACS002][{control_code}] cache lookup skipped: {type(e).__name__}: {e}")
+        cached = _sacs_cache.lookup(db, cache_key)
+        if cached is not None:
+            print(f"    [SACS002][{control_code}] cache HIT")
+            return cached
 
     # Build BM25 only if the caller did not provide a pre-built index
     if bm25_index is None and policy_chunks:
@@ -638,30 +634,15 @@ async def _assess_control(
     }
 
     # ── Phase G.2: cache write ───────────────────────────────────────────
-    # Don't cache GPT-error fallbacks — those should re-run on the next
-    # analysis once the upstream issue clears. Mirrors ECC-2's invariant.
+    # GPT-error fallbacks are never cached so that the next analysis
+    # re-runs through GPT once the upstream issue clears.
     if db is not None and cache_key is not None and not is_gpt_error_fallback:
-        try:
-            db.execute(sql_text("""
-                INSERT INTO sacs002_verification_cache
-                  (cache_key, control_code, policy_hash, prompt_version, model, result)
-                VALUES
-                  (:ck, :cc, :ph, :pv, :md, CAST(:r AS JSONB))
-                ON CONFLICT (cache_key) DO NOTHING
-            """), {
-                "ck": cache_key,
-                "cc": control_code,
-                "ph": policy_hash,
-                "pv": SACS002_PROMPT_VERSION,
-                "md": SACS002_MODEL,
-                "r":  json.dumps(result, default=str),
-            })
-            db.commit()
-        except Exception as e:
-            # Non-fatal — analysis succeeded; only the cache write didn't.
-            print(f"    [SACS002][{control_code}] cache write skipped: {type(e).__name__}: {e}")
-            try: db.rollback()
-            except Exception: pass
+        ok = _sacs_cache.write(
+            db, cache_key, control_code, policy_hash,
+            SACS002_PROMPT_VERSION, SACS002_MODEL, result,
+        )
+        if not ok:
+            print(f"    [SACS002][{control_code}] cache write failed (non-fatal)")
 
     return result
 
@@ -678,7 +659,7 @@ def _save_assessment_row(db, policy_id: str, result: dict, framework_id_legacy: 
              chunk_id, page_number, paragraph_index,
              assessed_by, assessed_at)
         VALUES
-            (:id, CAST(:pid AS uuid), :fwid, :cc, CAST(:cs AS compliance_status_enum),
+            (:id, :pid, :fwid, :cc, CAST(:cs AS compliance_status_enum),
              :ev, :gap, :conf,
              :ckid, :pgnum, :paridx,
              CAST('AI' AS assessed_by_enum), :at)
@@ -1044,6 +1025,26 @@ async def run_sacs002_analysis(
         db.rollback()
         print(f"  [SACS002] WARNING: compliance_results save failed: {e}")
 
+    # ── Cache observability ──────────────────────────────────────────────
+    cache_stats = _sacs_cache.get_stats(db)
+    print(
+        f"  [SACS002] Cache stats: "
+        f"hits={cache_stats['cache_hits']} "
+        f"misses={cache_stats['cache_misses']} "
+        f"hit_rate={cache_stats['hit_rate']:.1%} "
+        f"write_ok={cache_stats['write_ok']} "
+        f"write_fail={cache_stats['write_failures']} "
+        f"lookup_fail={cache_stats['lookup_failures']} "
+        f"avg_lookup={cache_stats['avg_lookup_ms']:.1f}ms"
+    )
+    if "db_total_rows" in cache_stats:
+        print(
+            f"  [SACS002] Cache DB: "
+            f"total={cache_stats['db_total_rows']} "
+            f"policies={cache_stats['db_distinct_policies']} "
+            f"expired={cache_stats['db_expired_rows']}"
+        )
+
     _report(100, "SACS-002: Complete")
 
     return {
@@ -1070,6 +1071,13 @@ async def run_sacs002_analysis(
             "by_nist_category": by_function,
             "duration_seconds": duration,
             "data_source": "structured_db",
+            "cache_stats": {
+                "hits":          cache_stats["cache_hits"],
+                "misses":        cache_stats["cache_misses"],
+                "hit_rate":      cache_stats["hit_rate"],
+                "write_ok":      cache_stats["write_ok"],
+                "write_failures": cache_stats["write_failures"],
+            },
             "controls": results_list,
         }
     }

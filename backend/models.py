@@ -5,7 +5,7 @@ import uuid
 def _now():
     return datetime.now(timezone.utc)
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
@@ -423,3 +423,56 @@ class PolicyVersion(Base):
         foreign_keys=[created_by],
         back_populates="created_versions",
     )
+
+
+class Sacs002VerificationCache(Base):
+    """
+    Per-control post-grounding GPT result cache for the SACS-002 pipeline.
+
+    Mirrors Ecc2VerificationCache (defined in ecc2_schema.sql) with two
+    additions: updated_at (refreshed on every upsert) and ttl_expiration
+    (wall-clock expiry; NULL = immortal).
+
+    The primary key (cache_key) is a SHA-256 hex digest of:
+      SACS002 | control_code | policy_hash | prompt_version | model |
+      floor=retrieval_floor | grounding=grounding_version | gsim=grounding_sim
+
+    Do NOT interact with this table directly from application code — use
+    the functions in backend/sacs002_cache.py instead.
+    """
+    __tablename__ = "sacs002_verification_cache"
+
+    __table_args__ = (
+        Index("idx_sacs002_cache_control_policy", "control_code", "policy_hash"),
+        Index("idx_sacs002_cache_policy_hash",    "policy_hash"),
+        Index("idx_sacs002_cache_control_code",   "control_code"),
+        Index("idx_sacs002_cache_created_at",     "created_at"),
+        # Partial index on ttl_expiration (only rows that have an expiry).
+        # SQLAlchemy renders this via postgresql_where.
+        Index(
+            "idx_sacs002_cache_ttl",
+            "ttl_expiration",
+            postgresql_where=(
+                # Inline expression — avoids importing Column at class-body time.
+                # The DDL is also declared explicitly in migration_sacs002_cache.sql.
+                text("ttl_expiration IS NOT NULL")
+            ),
+        ),
+    )
+
+    # 64-character SHA-256 hex digest
+    cache_key      = Column(Text, primary_key=True, nullable=False)
+
+    # Human-readable lookup fields (not used in cache lookup logic)
+    control_code   = Column(Text, nullable=False, index=False)   # index via __table_args__
+    policy_hash    = Column(Text, nullable=False, index=False)
+    prompt_version = Column(Text, nullable=False)
+    model          = Column(Text, nullable=False)
+
+    # Full post-grounding _assess_control() return dict
+    result         = Column(JSON, nullable=False)
+
+    # Lifecycle
+    created_at     = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at     = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    ttl_expiration = Column(DateTime(timezone=True), nullable=True)

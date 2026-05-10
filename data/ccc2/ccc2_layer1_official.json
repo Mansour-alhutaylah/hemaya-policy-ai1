@@ -1,0 +1,860 @@
+{
+  "schema_layer": 1,
+  "layer_name": "Official Regulatory Text",
+  "framework_id": "CCC-2:2024",
+  "framework_name": "Cloud Cybersecurity Controls",
+  "version": "2",
+  "issued_by": "National Cybersecurity Authority (NCA)",
+  "country": "Saudi Arabia",
+  "year": 2024,
+  "source": "Official CCC-2:2024 PDF, NCA. Arabic version is binding.",
+  "note": "Control text reconstructed from CCC-2:2024. Verify all text against the official Arabic PDF before production use.",
+  "verified_counts": {
+    "domains": 4,
+    "subdomains": 24,
+    "main_controls": 55,
+    "subcontrols": 120,
+    "csp_main_controls": 37,
+    "cst_main_controls": 18,
+    "csp_subcontrols": 94,
+    "cst_subcontrols": 26
+  },
+  "domains": [
+    {
+      "domain_code": "1",
+      "domain_name": "Cloud Cybersecurity Governance",
+      "subdomains": [
+        {
+          "subdomain_code": "1-1",
+          "subdomain_name": "Cloud Cybersecurity Governance",
+          "objective": "To ensure that the entity's senior leadership takes explicit accountability for cloud cybersecurity through formal authorization and governance of cloud service adoption, scope, and risk.",
+          "controls": [
+            {
+              "control_code": "1-1-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC control 1-4-1, the Authorizing Official shall also identify, document, and approve:",
+              "ecc_references": ["1-4-1"],
+              "source_page": 11,
+              "subcontrols": [
+                {"control_code": "1-1-P-1-1", "control_type": "subcontrol", "control_text": "All cloud services provided to cloud tenants, including service types (IaaS, PaaS, SaaS), scope, and the data classification levels of information stored or processed.", "source_page": 11},
+                {"control_code": "1-1-P-1-2", "control_type": "subcontrol", "control_text": "Cybersecurity requirements and responsibilities for each cloud service category offered.", "source_page": 11},
+                {"control_code": "1-1-P-1-3", "control_type": "subcontrol", "control_text": "Acceptable risk thresholds for cloud services, including residual risks after treatment.", "source_page": 11},
+                {"control_code": "1-1-P-1-4", "control_type": "subcontrol", "control_text": "Roles and responsibilities for cloud cybersecurity management within the organization.", "source_page": 11},
+                {"control_code": "1-1-P-1-5", "control_type": "subcontrol", "control_text": "Conditions and criteria for approving new cloud service offerings or significant changes to existing ones.", "source_page": 11}
+              ]
+            },
+            {
+              "control_code": "1-1-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The entity's Authorizing Official shall approve the adoption of cloud services and ensure that cybersecurity requirements are formally accepted and documented prior to use.",
+              "ecc_references": ["1-4-1"],
+              "source_page": 11,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "1-2",
+          "subdomain_name": "Cloud Cybersecurity Management",
+          "objective": "To ensure that accountable roles are established for managing cloud cybersecurity at both the provider and tenant levels.",
+          "controls": [
+            {
+              "control_code": "1-2-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC control 1-2-1, the CSP shall establish a dedicated cloud cybersecurity management function with defined responsibilities for the security of cloud services provided.",
+              "ecc_references": ["1-2-1"],
+              "source_page": 11,
+              "subcontrols": []
+            },
+            {
+              "control_code": "1-2-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall designate a responsible party for managing the cybersecurity of cloud services used by the entity and ensure that the responsible party has the authority and resources required to fulfill this role.",
+              "ecc_references": ["1-2-1"],
+              "source_page": 11,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "1-3",
+          "subdomain_name": "Cloud Cybersecurity Policies and Procedures",
+          "objective": "To ensure that cloud cybersecurity policies and procedures are developed, approved, implemented, and maintained for both cloud providers and tenants.",
+          "controls": [
+            {
+              "control_code": "1-3-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 1-3, the CSP shall develop, approve, and implement cloud-specific cybersecurity policies and procedures covering the security of cloud infrastructure, services, and tenant data. These policies shall be reviewed at least annually and upon significant changes to cloud services.",
+              "ecc_references": ["1-3-1", "1-3-2"],
+              "source_page": 12,
+              "subcontrols": []
+            },
+            {
+              "control_code": "1-3-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall develop and implement policies and procedures for the secure use of cloud services covering at minimum: acceptable use, data classification and handling, access control, incident reporting, and cloud service exit procedures.",
+              "ecc_references": ["1-3-1"],
+              "source_page": 12,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "1-4",
+          "subdomain_name": "Cloud Cybersecurity Risk Management",
+          "objective": "To ensure that cybersecurity risks related to cloud services are systematically identified, assessed, treated, and monitored.",
+          "controls": [
+            {
+              "control_code": "1-4-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 1-5, the CSP shall implement a cloud-specific cybersecurity risk management program. The program shall include:",
+              "ecc_references": ["1-5-3"],
+              "source_page": 12,
+              "subcontrols": [
+                {"control_code": "1-4-P-1-1", "control_type": "subcontrol", "control_text": "Identification and assessment of cloud-specific threats, including multi-tenancy risks, shared resource risks, and supply chain risks.", "source_page": 12},
+                {"control_code": "1-4-P-1-2", "control_type": "subcontrol", "control_text": "Assessment of risks to tenant data confidentiality, integrity, and availability.", "source_page": 12},
+                {"control_code": "1-4-P-1-3", "control_type": "subcontrol", "control_text": "Risk treatment plans with defined remediation timelines and responsible parties.", "source_page": 12},
+                {"control_code": "1-4-P-1-4", "control_type": "subcontrol", "control_text": "Formal risk acceptance decisions approved by the Authorizing Official for risks that cannot be fully mitigated.", "source_page": 12},
+                {"control_code": "1-4-P-1-5", "control_type": "subcontrol", "control_text": "Annual review of the risk register and the status of risk treatment plans.", "source_page": 12}
+              ]
+            },
+            {
+              "control_code": "1-4-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall notify cloud tenants of significant cybersecurity risks and incidents that may affect tenant services or data.",
+              "ecc_references": ["1-5-3"],
+              "source_page": 12,
+              "subcontrols": []
+            },
+            {
+              "control_code": "1-4-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall include cloud services in the entity's cybersecurity risk management program. The risk assessment shall include:",
+              "ecc_references": ["1-5-3"],
+              "source_page": 13,
+              "subcontrols": [
+                {"control_code": "1-4-T-1-1", "control_type": "subcontrol", "control_text": "Evaluation of the CSP's cybersecurity posture, including relevant certifications and compliance with applicable Saudi regulations.", "source_page": 13},
+                {"control_code": "1-4-T-1-2", "control_type": "subcontrol", "control_text": "Data residency, sovereignty, and cross-border data transfer risks.", "source_page": 13},
+                {"control_code": "1-4-T-1-3", "control_type": "subcontrol", "control_text": "Dependency risks and cloud service exit strategy considerations.", "source_page": 13}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "1-5",
+          "subdomain_name": "Cloud Cybersecurity Compliance and Audit",
+          "objective": "To ensure that cloud service providers comply with applicable cybersecurity regulations and standards and subject their cloud services to independent audits.",
+          "controls": [
+            {
+              "control_code": "1-5-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall establish and implement a cloud cybersecurity compliance program. The program shall include:",
+              "ecc_references": ["1-6-1", "1-6-2"],
+              "source_page": 13,
+              "subcontrols": [
+                {"control_code": "1-5-P-1-1", "control_type": "subcontrol", "control_text": "Annual assessments against applicable NCA regulations, standards, and policies for cloud services.", "source_page": 13},
+                {"control_code": "1-5-P-1-2", "control_type": "subcontrol", "control_text": "Documented procedures for identifying, tracking, and remediating compliance gaps.", "source_page": 13},
+                {"control_code": "1-5-P-1-3", "control_type": "subcontrol", "control_text": "Periodic cybersecurity audits conducted by qualified and independent auditors.", "source_page": 13}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_code": "2",
+      "domain_name": "Cloud Cybersecurity Defense",
+      "subdomains": [
+        {
+          "subdomain_code": "2-1",
+          "subdomain_name": "Cloud Asset Management",
+          "objective": "To ensure that all cloud assets are identified, inventoried, classified, and managed throughout their lifecycle.",
+          "controls": [
+            {
+              "control_code": "2-1-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-1, the CSP shall maintain a complete, accurate, and up-to-date inventory of all cloud assets. The inventory shall include:",
+              "ecc_references": ["2-1-1"],
+              "source_page": 15,
+              "subcontrols": [
+                {"control_code": "2-1-P-1-1", "control_type": "subcontrol", "control_text": "Physical servers, virtual machines, containers, and cloud management infrastructure.", "source_page": 15},
+                {"control_code": "2-1-P-1-2", "control_type": "subcontrol", "control_text": "Cloud storage systems, databases, and data repositories.", "source_page": 15},
+                {"control_code": "2-1-P-1-3", "control_type": "subcontrol", "control_text": "Network components including virtual networks, load balancers, and security appliances.", "source_page": 15},
+                {"control_code": "2-1-P-1-4", "control_type": "subcontrol", "control_text": "APIs, microservices, and cloud-native application components.", "source_page": 15},
+                {"control_code": "2-1-P-1-5", "control_type": "subcontrol", "control_text": "Asset classification by sensitivity, criticality, and data classification level.", "source_page": 15}
+              ]
+            },
+            {
+              "control_code": "2-1-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement automated asset discovery and inventory management tools to maintain inventory accuracy and detect unauthorized cloud assets.",
+              "ecc_references": ["2-1-1"],
+              "source_page": 15,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-1-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall maintain an inventory of all cloud services and cloud-hosted assets used by the entity. The inventory shall include:",
+              "ecc_references": ["2-1-1"],
+              "source_page": 15,
+              "subcontrols": [
+                {"control_code": "2-1-T-1-1", "control_type": "subcontrol", "control_text": "Cloud service name, provider, service type (IaaS/PaaS/SaaS), and data classification of information stored or processed.", "source_page": 15},
+                {"control_code": "2-1-T-1-2", "control_type": "subcontrol", "control_text": "Business owner and technical owner for each cloud service.", "source_page": 15},
+                {"control_code": "2-1-T-1-3", "control_type": "subcontrol", "control_text": "Data residency location and applicable regulatory requirements.", "source_page": 15}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-2",
+          "subdomain_name": "Identity and Access Management",
+          "objective": "To ensure that access to cloud services and infrastructure is controlled, monitored, and enforced based on the principle of least privilege.",
+          "controls": [
+            {
+              "control_code": "2-2-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-2, the CSP shall implement privileged access management for cloud infrastructure and services. The following controls shall be implemented:",
+              "ecc_references": ["2-2-1", "2-2-2"],
+              "source_page": 16,
+              "subcontrols": [
+                {"control_code": "2-2-P-1-1", "control_type": "subcontrol", "control_text": "Multi-factor authentication (MFA) for all accounts accessing cloud management interfaces and control planes.", "source_page": 16},
+                {"control_code": "2-2-P-1-2", "control_type": "subcontrol", "control_text": "Dedicated privileged access workstations (PAW) or equivalent secure access mechanisms for cloud administrative tasks.", "source_page": 16},
+                {"control_code": "2-2-P-1-3", "control_type": "subcontrol", "control_text": "Just-in-time (JIT) access provisioning for privileged cloud accounts with automatic expiry.", "source_page": 16},
+                {"control_code": "2-2-P-1-4", "control_type": "subcontrol", "control_text": "Recording and monitoring of all privileged access sessions to cloud management systems.", "source_page": 16},
+                {"control_code": "2-2-P-1-5", "control_type": "subcontrol", "control_text": "Automated deprovisioning of privileged access upon role change, transfer, or termination.", "source_page": 16},
+                {"control_code": "2-2-P-1-6", "control_type": "subcontrol", "control_text": "Periodic access reviews for all privileged cloud accounts conducted at least quarterly.", "source_page": 16},
+                {"control_code": "2-2-P-1-7", "control_type": "subcontrol", "control_text": "Segregation of duties for cloud administration to prevent a single person from performing conflicting privileged actions.", "source_page": 16},
+                {"control_code": "2-2-P-1-8", "control_type": "subcontrol", "control_text": "Enforcement of least-privilege principles for all cloud service accounts and roles.", "source_page": 16},
+                {"control_code": "2-2-P-1-9", "control_type": "subcontrol", "control_text": "Role-based access control (RBAC) aligned with job functions and the principle of least privilege.", "source_page": 16},
+                {"control_code": "2-2-P-1-10", "control_type": "subcontrol", "control_text": "Audit trail for all access provisioning and deprovisioning activities.", "source_page": 16},
+                {"control_code": "2-2-P-1-11", "control_type": "subcontrol", "control_text": "Prohibition of sharing cloud administrative credentials among multiple users.", "source_page": 16},
+                {"control_code": "2-2-P-1-12", "control_type": "subcontrol", "control_text": "Password and credential policies for cloud accounts that meet or exceed NCA requirements.", "source_page": 16}
+              ]
+            },
+            {
+              "control_code": "2-2-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement federated identity management and single sign-on (SSO) for cloud services where technically feasible, using approved authentication protocols.",
+              "ecc_references": ["2-2-1"],
+              "source_page": 16,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-2-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-2, the CST shall implement access management controls for cloud service accounts. These shall include:",
+              "ecc_references": ["2-2-1"],
+              "source_page": 16,
+              "subcontrols": [
+                {"control_code": "2-2-T-1-1", "control_type": "subcontrol", "control_text": "Mandatory MFA for all accounts with administrative access to cloud management consoles.", "source_page": 16},
+                {"control_code": "2-2-T-1-2", "control_type": "subcontrol", "control_text": "Periodic access reviews for cloud service user accounts conducted at least semi-annually.", "source_page": 16},
+                {"control_code": "2-2-T-1-3", "control_type": "subcontrol", "control_text": "Prompt deprovisioning of cloud service accounts upon user departure or role change.", "source_page": 16}
+              ]
+            },
+            {
+              "control_code": "2-2-T-2",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall enforce least-privilege access for all cloud service accounts and prohibit the use of shared accounts for cloud service administration.",
+              "ecc_references": ["2-2-2"],
+              "source_page": 16,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-3",
+          "subdomain_name": "Infrastructure and Virtualization Security",
+          "objective": "To ensure that cloud infrastructure, virtualization platforms, and container environments are secured and tenant isolation is maintained.",
+          "controls": [
+            {
+              "control_code": "2-3-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-3, the CSP shall implement security controls for virtualization and cloud infrastructure. The following controls shall be implemented:",
+              "ecc_references": ["2-3-1"],
+              "source_page": 17,
+              "subcontrols": [
+                {"control_code": "2-3-P-1-1", "control_type": "subcontrol", "control_text": "Hypervisor hardening based on vendor security guidelines and recognized industry best practices.", "source_page": 17},
+                {"control_code": "2-3-P-1-2", "control_type": "subcontrol", "control_text": "Logical isolation of tenant environments to prevent cross-tenant access or data leakage.", "source_page": 17},
+                {"control_code": "2-3-P-1-3", "control_type": "subcontrol", "control_text": "Secure lifecycle management for virtual machines, including provisioning, snapshot management, live migration, and decommissioning.", "source_page": 17},
+                {"control_code": "2-3-P-1-4", "control_type": "subcontrol", "control_text": "Security controls for container environments, including container image scanning, runtime protection, and orchestration platform security.", "source_page": 17},
+                {"control_code": "2-3-P-1-5", "control_type": "subcontrol", "control_text": "Micro-segmentation to isolate workloads and minimize the blast radius of security incidents.", "source_page": 17},
+                {"control_code": "2-3-P-1-6", "control_type": "subcontrol", "control_text": "Secure cloud API gateway implementation with authentication, authorization, rate limiting, and monitoring.", "source_page": 17},
+                {"control_code": "2-3-P-1-7", "control_type": "subcontrol", "control_text": "Implementation of infrastructure-as-code (IaC) security scanning prior to deployment.", "source_page": 17},
+                {"control_code": "2-3-P-1-8", "control_type": "subcontrol", "control_text": "Cloud storage security controls including server-side encryption, access controls, and versioning for critical data.", "source_page": 17},
+                {"control_code": "2-3-P-1-9", "control_type": "subcontrol", "control_text": "Regular security baseline compliance assessments for all cloud infrastructure components.", "source_page": 17},
+                {"control_code": "2-3-P-1-10", "control_type": "subcontrol", "control_text": "Immutable infrastructure practices for production cloud workloads where technically feasible.", "source_page": 17}
+              ]
+            },
+            {
+              "control_code": "2-3-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall establish, document, and enforce security baselines for all cloud infrastructure components and verify compliance with these baselines at regular intervals.",
+              "ecc_references": ["2-3-1"],
+              "source_page": 17,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-3-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall configure cloud-hosted workloads in accordance with the CSP's security recommendations and applicable NCA cybersecurity controls. The CST shall:",
+              "ecc_references": ["2-3-1"],
+              "source_page": 17,
+              "subcontrols": [
+                {"control_code": "2-3-T-1-1", "control_type": "subcontrol", "control_text": "Apply approved security baseline configurations to all cloud-hosted virtual machines and containers.", "source_page": 17},
+                {"control_code": "2-3-T-1-2", "control_type": "subcontrol", "control_text": "Implement workload isolation and network segmentation for cloud-hosted applications.", "source_page": 17}
+              ]
+            },
+            {
+              "control_code": "2-3-T-2",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall implement controls to prevent unauthorized access to cloud management interfaces, including restricting access to approved IP addresses and enforcing encrypted management protocols.",
+              "ecc_references": ["2-3-1"],
+              "source_page": 17,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-4",
+          "subdomain_name": "Network Security",
+          "objective": "To ensure that cloud network environments are protected against unauthorized access, attacks, and data interception.",
+          "controls": [
+            {
+              "control_code": "2-4-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-4, the CSP shall implement cloud network security controls that include:",
+              "ecc_references": ["2-4-1"],
+              "source_page": 18,
+              "subcontrols": [
+                {"control_code": "2-4-P-1-1", "control_type": "subcontrol", "control_text": "Virtual network segmentation and isolation for tenant environments.", "source_page": 18},
+                {"control_code": "2-4-P-1-2", "control_type": "subcontrol", "control_text": "DDoS protection mechanisms for cloud-hosted services and management interfaces.", "source_page": 18},
+                {"control_code": "2-4-P-1-3", "control_type": "subcontrol", "control_text": "Network traffic monitoring and anomaly detection across all cloud environment tiers.", "source_page": 18}
+              ]
+            },
+            {
+              "control_code": "2-4-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement perimeter security controls including web application firewalls (WAF), intrusion detection and prevention systems (IDS/IPS), and next-generation firewalls for cloud-hosted services.",
+              "ecc_references": ["2-4-1"],
+              "source_page": 18,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-4-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall implement virtual network security controls for cloud-hosted workloads. These shall include:",
+              "ecc_references": ["2-4-1"],
+              "source_page": 18,
+              "subcontrols": [
+                {"control_code": "2-4-T-1-1", "control_type": "subcontrol", "control_text": "Virtual firewalls and network access control lists (ACLs) for cloud network environments.", "source_page": 18},
+                {"control_code": "2-4-T-1-2", "control_type": "subcontrol", "control_text": "Encrypted communication channels for all data transmitted to and from cloud services.", "source_page": 18},
+                {"control_code": "2-4-T-1-3", "control_type": "subcontrol", "control_text": "Monitoring of network traffic for anomalies and security events in cloud environments.", "source_page": 18}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-5",
+          "subdomain_name": "Endpoint Security",
+          "objective": "To ensure that endpoints used to manage cloud infrastructure and access cloud services are secured against compromise.",
+          "controls": [
+            {
+              "control_code": "2-5-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-5, the CSP shall implement endpoint security for systems used to manage cloud infrastructure. These shall include:",
+              "ecc_references": ["2-5-1"],
+              "source_page": 19,
+              "subcontrols": [
+                {"control_code": "2-5-P-1-1", "control_type": "subcontrol", "control_text": "Endpoint Detection and Response (EDR) solutions on all cloud management workstations and servers.", "source_page": 19},
+                {"control_code": "2-5-P-1-2", "control_type": "subcontrol", "control_text": "Application control and whitelisting on cloud administrative workstations.", "source_page": 19}
+              ]
+            },
+            {
+              "control_code": "2-5-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement security controls for cloud API clients and management tools, including regular patch management and configuration hardening.",
+              "ecc_references": ["2-5-1"],
+              "source_page": 19,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-5-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall implement security controls on endpoints used to access cloud management consoles, including MFA enforcement, device health verification, and up-to-date security software.",
+              "ecc_references": ["2-5-1"],
+              "source_page": 19,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-6",
+          "subdomain_name": "Application Security",
+          "objective": "To ensure that cloud-hosted applications and cloud-native services are developed, deployed, and maintained securely.",
+          "controls": [
+            {
+              "control_code": "2-6-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-6, the CSP shall implement a secure software development lifecycle (SSDLC) for cloud services and applications. The SSDLC shall include:",
+              "ecc_references": ["2-6-1"],
+              "source_page": 20,
+              "subcontrols": [
+                {"control_code": "2-6-P-1-1", "control_type": "subcontrol", "control_text": "Security requirements analysis and threat modeling in the design phase.", "source_page": 20},
+                {"control_code": "2-6-P-1-2", "control_type": "subcontrol", "control_text": "Automated static and dynamic application security testing prior to production deployment.", "source_page": 20},
+                {"control_code": "2-6-P-1-3", "control_type": "subcontrol", "control_text": "Software composition analysis (SCA) for third-party and open-source components.", "source_page": 20}
+              ]
+            },
+            {
+              "control_code": "2-6-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall conduct regular security testing of cloud APIs and service interfaces, including authentication and authorization testing.",
+              "ecc_references": ["2-6-1"],
+              "source_page": 20,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-6-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall include cloud-hosted applications in the entity's application security program and ensure security assessments are conducted prior to deployment and after significant changes.",
+              "ecc_references": ["2-6-1"],
+              "source_page": 20,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-7",
+          "subdomain_name": "Data and Information Security",
+          "objective": "To ensure that data stored, processed, or transmitted through cloud services is protected from unauthorized access, modification, or loss.",
+          "controls": [
+            {
+              "control_code": "2-7-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-7, the CSP shall implement data security controls for cloud environments. These shall include:",
+              "ecc_references": ["2-7-1"],
+              "source_page": 21,
+              "subcontrols": [
+                {"control_code": "2-7-P-1-1", "control_type": "subcontrol", "control_text": "Data classification and labeling for all data stored, processed, or transmitted through cloud services.", "source_page": 21},
+                {"control_code": "2-7-P-1-2", "control_type": "subcontrol", "control_text": "Encryption of data at rest using NCA-approved encryption algorithms and minimum key lengths.", "source_page": 21},
+                {"control_code": "2-7-P-1-3", "control_type": "subcontrol", "control_text": "Encryption of data in transit using approved protocols (TLS 1.2 or higher).", "source_page": 21},
+                {"control_code": "2-7-P-1-4", "control_type": "subcontrol", "control_text": "Data Loss Prevention (DLP) controls to detect and prevent unauthorized exfiltration of sensitive data.", "source_page": 21}
+              ]
+            },
+            {
+              "control_code": "2-7-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement controls to ensure tenant data isolation, preventing unauthorized cross-tenant data access through logical separation, dedicated encryption keys, and access controls.",
+              "ecc_references": ["2-7-1"],
+              "source_page": 21,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-7-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall implement data security controls for data stored and processed in cloud environments. These shall include:",
+              "ecc_references": ["2-7-1"],
+              "source_page": 21,
+              "subcontrols": [
+                {"control_code": "2-7-T-1-1", "control_type": "subcontrol", "control_text": "Classification and inventory of all data stored in cloud services.", "source_page": 21},
+                {"control_code": "2-7-T-1-2", "control_type": "subcontrol", "control_text": "Verification that encryption is enabled for data at rest and in transit for all cloud-hosted data.", "source_page": 21},
+                {"control_code": "2-7-T-1-3", "control_type": "subcontrol", "control_text": "Procedures for secure deletion and sanitization of data upon cloud service termination or migration.", "source_page": 21}
+              ]
+            },
+            {
+              "control_code": "2-7-T-2",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall include data residency requirements in cloud service contracts, ensuring that classified data is stored and processed within Saudi Arabia or in jurisdictions approved by applicable Saudi regulations.",
+              "ecc_references": ["2-7-1"],
+              "source_page": 21,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-8",
+          "subdomain_name": "Cryptography and Key Management",
+          "objective": "To ensure that cryptographic controls and key management processes protect the confidentiality and integrity of cloud-hosted data.",
+          "controls": [
+            {
+              "control_code": "2-8-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-8, the CSP shall implement a key management program for cloud services. The program shall include:",
+              "ecc_references": ["2-8-1"],
+              "source_page": 22,
+              "subcontrols": [
+                {"control_code": "2-8-P-1-1", "control_type": "subcontrol", "control_text": "Use of Hardware Security Modules (HSMs) for the generation, storage, and protection of cryptographic keys.", "source_page": 22},
+                {"control_code": "2-8-P-1-2", "control_type": "subcontrol", "control_text": "A key lifecycle management process covering key generation, distribution, storage, rotation, revocation, and destruction.", "source_page": 22},
+                {"control_code": "2-8-P-1-3", "control_type": "subcontrol", "control_text": "Customer-managed encryption key (CMEK) options allowing tenants to control their own encryption keys.", "source_page": 22},
+                {"control_code": "2-8-P-1-4", "control_type": "subcontrol", "control_text": "Cryptographic separation of keys from the data they protect.", "source_page": 22},
+                {"control_code": "2-8-P-1-5", "control_type": "subcontrol", "control_text": "Compliance with NCA-approved cryptographic algorithms and minimum key lengths.", "source_page": 22}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-9",
+          "subdomain_name": "Security Monitoring and Logging",
+          "objective": "To ensure that security events across cloud environments are continuously monitored, logged, and responded to in a timely manner.",
+          "controls": [
+            {
+              "control_code": "2-9-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-9, the CSP shall implement a cloud security monitoring and logging capability. This shall include:",
+              "ecc_references": ["2-9-1"],
+              "source_page": 23,
+              "subcontrols": [
+                {"control_code": "2-9-P-1-1", "control_type": "subcontrol", "control_text": "Centralized log aggregation from all cloud components including management plane, data plane, and network layers.", "source_page": 23},
+                {"control_code": "2-9-P-1-2", "control_type": "subcontrol", "control_text": "Real-time monitoring of cloud management and control plane activities with automated alerting for anomalous behavior.", "source_page": 23}
+              ]
+            },
+            {
+              "control_code": "2-9-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall provide cloud tenants with access to security logs relevant to their services and data, enabling tenant-side security monitoring and compliance reporting.",
+              "ecc_references": ["2-9-1"],
+              "source_page": 23,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-9-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall configure and monitor security logs from cloud services. This shall include:",
+              "ecc_references": ["2-9-1"],
+              "source_page": 23,
+              "subcontrols": [
+                {"control_code": "2-9-T-1-1", "control_type": "subcontrol", "control_text": "Enabling logging for all cloud service management activities and user actions.", "source_page": 23},
+                {"control_code": "2-9-T-1-2", "control_type": "subcontrol", "control_text": "Integrating cloud security logs into the entity's security information and event management (SIEM) system.", "source_page": 23},
+                {"control_code": "2-9-T-1-3", "control_type": "subcontrol", "control_text": "Establishing alert thresholds and defined response procedures for security events from cloud logs.", "source_page": 23}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-10",
+          "subdomain_name": "Vulnerability Management",
+          "objective": "To ensure that vulnerabilities in cloud infrastructure and services are systematically identified, prioritized, and remediated.",
+          "controls": [
+            {
+              "control_code": "2-10-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-10, the CSP shall implement a vulnerability management program for cloud services. The program shall include:",
+              "ecc_references": ["2-10-1"],
+              "source_page": 24,
+              "subcontrols": [
+                {"control_code": "2-10-P-1-1", "control_type": "subcontrol", "control_text": "Automated vulnerability scanning of cloud infrastructure components at regular intervals.", "source_page": 24},
+                {"control_code": "2-10-P-1-2", "control_type": "subcontrol", "control_text": "A patch management process with defined SLAs based on vulnerability severity classification.", "source_page": 24},
+                {"control_code": "2-10-P-1-3", "control_type": "subcontrol", "control_text": "Documented procedures for responding to zero-day vulnerabilities affecting cloud services.", "source_page": 24}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-11",
+          "subdomain_name": "Change Management",
+          "objective": "To ensure that changes to cloud infrastructure, services, and configurations are controlled, tested, and approved to prevent unintended security impacts.",
+          "controls": [
+            {
+              "control_code": "2-11-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-11, the CSP shall implement a change management process for cloud infrastructure and services. The process shall include:",
+              "ecc_references": ["2-11-1"],
+              "source_page": 25,
+              "subcontrols": [
+                {"control_code": "2-11-P-1-1", "control_type": "subcontrol", "control_text": "Security impact assessment for all changes to cloud infrastructure, configurations, or services.", "source_page": 25},
+                {"control_code": "2-11-P-1-2", "control_type": "subcontrol", "control_text": "Testing changes in an isolated non-production environment prior to deployment in production.", "source_page": 25},
+                {"control_code": "2-11-P-1-3", "control_type": "subcontrol", "control_text": "Rollback procedures that are tested and validated for all significant changes.", "source_page": 25},
+                {"control_code": "2-11-P-1-4", "control_type": "subcontrol", "control_text": "Change freeze periods for critical cloud services during peak business periods.", "source_page": 25},
+                {"control_code": "2-11-P-1-5", "control_type": "subcontrol", "control_text": "Emergency change procedures with mandatory post-implementation security review.", "source_page": 25},
+                {"control_code": "2-11-P-1-6", "control_type": "subcontrol", "control_text": "Change Advisory Board (CAB) or equivalent approval for significant changes affecting security.", "source_page": 25},
+                {"control_code": "2-11-P-1-7", "control_type": "subcontrol", "control_text": "Advance notification to tenants for changes that may impact service availability or security posture.", "source_page": 25},
+                {"control_code": "2-11-P-1-8", "control_type": "subcontrol", "control_text": "Integration of security gates in automated deployment pipelines (DevSecOps).", "source_page": 25}
+              ]
+            },
+            {
+              "control_code": "2-11-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall maintain a change management process for changes to cloud-hosted workloads and configurations, including security review and approval for significant changes.",
+              "ecc_references": ["2-11-1"],
+              "source_page": 25,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-12",
+          "subdomain_name": "Penetration Testing",
+          "objective": "To ensure that cloud infrastructure and services are periodically tested by qualified security professionals to identify and remediate vulnerabilities.",
+          "controls": [
+            {
+              "control_code": "2-12-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall conduct periodic penetration testing of cloud infrastructure and services. The testing shall:",
+              "ecc_references": ["2-12-1"],
+              "source_page": 26,
+              "subcontrols": [
+                {"control_code": "2-12-P-1-1", "control_type": "subcontrol", "control_text": "Cover cloud management interfaces, administrative APIs, and customer-facing services.", "source_page": 26},
+                {"control_code": "2-12-P-1-2", "control_type": "subcontrol", "control_text": "Be performed by qualified and independent security professionals.", "source_page": 26},
+                {"control_code": "2-12-P-1-3", "control_type": "subcontrol", "control_text": "Include testing of tenant isolation mechanisms and cross-tenant access prevention controls.", "source_page": 26},
+                {"control_code": "2-12-P-1-4", "control_type": "subcontrol", "control_text": "Include testing of authentication, authorization, and session management controls.", "source_page": 26},
+                {"control_code": "2-12-P-1-5", "control_type": "subcontrol", "control_text": "Be conducted at least annually or following significant changes to cloud services.", "source_page": 26},
+                {"control_code": "2-12-P-1-6", "control_type": "subcontrol", "control_text": "Result in a remediation plan with prioritized findings and defined timelines for each finding.", "source_page": 26},
+                {"control_code": "2-12-P-1-7", "control_type": "subcontrol", "control_text": "Include red team exercises for critical cloud services at least every two years.", "source_page": 26},
+                {"control_code": "2-12-P-1-8", "control_type": "subcontrol", "control_text": "Have results reported to senior management and the Authorizing Official.", "source_page": 26}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-13",
+          "subdomain_name": "Cloud Configuration Management",
+          "objective": "To ensure that cloud infrastructure components are configured securely and that deviations from approved baselines are detected and remediated.",
+          "controls": [
+            {
+              "control_code": "2-13-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement a cloud security configuration management program. The program shall include:",
+              "ecc_references": ["2-11-1"],
+              "source_page": 27,
+              "subcontrols": [
+                {"control_code": "2-13-P-1-1", "control_type": "subcontrol", "control_text": "Security baselines for all cloud infrastructure components based on CIS Benchmarks, vendor hardening guides, or equivalent standards.", "source_page": 27},
+                {"control_code": "2-13-P-1-2", "control_type": "subcontrol", "control_text": "Automated configuration compliance scanning with deviation alerting and remediation workflows.", "source_page": 27},
+                {"control_code": "2-13-P-1-3", "control_type": "subcontrol", "control_text": "Configuration change tracking with approval workflows for all security-relevant configuration changes.", "source_page": 27}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-14",
+          "subdomain_name": "Physical and Environmental Security",
+          "objective": "To ensure that cloud data centers are physically protected against unauthorized access, environmental hazards, and service disruption.",
+          "controls": [
+            {
+              "control_code": "2-14-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-15, the CSP shall implement physical security controls for cloud data centers. These shall include:",
+              "ecc_references": ["2-15-1"],
+              "source_page": 28,
+              "subcontrols": [
+                {"control_code": "2-14-P-1-1", "control_type": "subcontrol", "control_text": "Multi-layer physical access controls including perimeter, building, data hall, and equipment cabinet levels.", "source_page": 28},
+                {"control_code": "2-14-P-1-2", "control_type": "subcontrol", "control_text": "24/7 physical security monitoring with CCTV coverage of all access points and critical areas.", "source_page": 28},
+                {"control_code": "2-14-P-1-3", "control_type": "subcontrol", "control_text": "Environmental controls including fire suppression, temperature and humidity regulation, and power redundancy to ensure continuous availability.", "source_page": 28}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-15",
+          "subdomain_name": "Incident Management",
+          "objective": "To ensure that cloud cybersecurity incidents are detected, contained, investigated, and resolved in a timely and coordinated manner.",
+          "controls": [
+            {
+              "control_code": "2-15-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 2-13, the CSP shall implement a cloud cybersecurity incident management program. The program shall include:",
+              "ecc_references": ["2-13-1"],
+              "source_page": 29,
+              "subcontrols": [
+                {"control_code": "2-15-P-1-1", "control_type": "subcontrol", "control_text": "A Cloud Cybersecurity Incident Response Plan (CIRP) covering detection, containment, eradication, recovery, and lessons learned phases.", "source_page": 29},
+                {"control_code": "2-15-P-1-2", "control_type": "subcontrol", "control_text": "Defined notification procedures for informing affected tenants of security incidents within the timeframe required by applicable Saudi regulations.", "source_page": 29},
+                {"control_code": "2-15-P-1-3", "control_type": "subcontrol", "control_text": "Coordination with the National Cybersecurity Authority (NCA) for major incidents as required by applicable regulations.", "source_page": 29},
+                {"control_code": "2-15-P-1-4", "control_type": "subcontrol", "control_text": "Regular testing of the CIRP through tabletop exercises and simulations at least annually.", "source_page": 29}
+              ]
+            },
+            {
+              "control_code": "2-15-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall maintain a dedicated cloud security incident response capability with clear escalation procedures and defined roles and responsibilities.",
+              "ecc_references": ["2-13-1"],
+              "source_page": 29,
+              "subcontrols": []
+            },
+            {
+              "control_code": "2-15-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall include cloud service incidents in the entity's cybersecurity incident management program. The program shall include:",
+              "ecc_references": ["2-13-1"],
+              "source_page": 29,
+              "subcontrols": [
+                {"control_code": "2-15-T-1-1", "control_type": "subcontrol", "control_text": "Procedures for reporting cloud security incidents to the CSP and to the NCA as required by applicable regulations.", "source_page": 29},
+                {"control_code": "2-15-T-1-2", "control_type": "subcontrol", "control_text": "Integration of cloud service security events into the entity's SIEM and incident response workflows.", "source_page": 29},
+                {"control_code": "2-15-T-1-3", "control_type": "subcontrol", "control_text": "Regular testing of incident response procedures involving cloud services at least annually.", "source_page": 29}
+              ]
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-16",
+          "subdomain_name": "Threat Intelligence",
+          "objective": "To ensure that cloud service providers proactively identify and respond to emerging threats through structured threat intelligence programs.",
+          "controls": [
+            {
+              "control_code": "2-16-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement a threat intelligence program to proactively identify and respond to emerging threats to cloud services. The program shall include subscribing to relevant threat intelligence feeds, participating in information sharing communities, and integrating threat intelligence into security monitoring and incident response processes.",
+              "ecc_references": ["2-14-1"],
+              "source_page": 30,
+              "subcontrols": []
+            }
+          ]
+        },
+        {
+          "subdomain_code": "2-17",
+          "subdomain_name": "Digital Forensics",
+          "objective": "To ensure that cloud service providers have the capabilities to conduct digital forensic investigations while preserving evidence integrity.",
+          "controls": [
+            {
+              "control_code": "2-17-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall establish digital forensics capabilities for cloud environments, including log preservation procedures, forensic evidence collection, and chain of custody processes to support cybersecurity investigations and legal proceedings.",
+              "ecc_references": ["2-13-1"],
+              "source_page": 31,
+              "subcontrols": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_code": "3",
+      "domain_name": "Cloud Cybersecurity Resilience",
+      "subdomains": [
+        {
+          "subdomain_code": "3-1",
+          "subdomain_name": "Business Continuity and Disaster Recovery",
+          "objective": "To ensure that cloud services are resilient to disruptions and can be recovered in a timely manner, maintaining service availability and data integrity.",
+          "controls": [
+            {
+              "control_code": "3-1-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "In addition to ECC controls in section 3-1, the CSP shall implement business continuity and disaster recovery controls for cloud services. These shall include:",
+              "ecc_references": ["3-1-1"],
+              "source_page": 33,
+              "subcontrols": [
+                {"control_code": "3-1-P-1-1", "control_type": "subcontrol", "control_text": "Recovery Time Objectives (RTO) and Recovery Point Objectives (RPO) defined and documented for each cloud service category.", "source_page": 33},
+                {"control_code": "3-1-P-1-2", "control_type": "subcontrol", "control_text": "Annual testing of disaster recovery procedures with results documented and remediated.", "source_page": 33}
+              ]
+            },
+            {
+              "control_code": "3-1-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement geographic redundancy for critical cloud services, ensuring data and service recovery from an alternate site in the event of a major disaster affecting the primary site.",
+              "ecc_references": ["3-1-1"],
+              "source_page": 33,
+              "subcontrols": []
+            },
+            {
+              "control_code": "3-1-P-3",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall provide tenants with transparent information on the CSP's business continuity and disaster recovery capabilities, including service availability guarantees as defined in the service level agreement (SLA).",
+              "ecc_references": ["3-1-1"],
+              "source_page": 33,
+              "subcontrols": []
+            },
+            {
+              "control_code": "3-1-T-1",
+              "applicability_type": "CST",
+              "control_type": "main_control",
+              "control_text": "The CST shall include cloud services in the entity's business continuity and disaster recovery plans. The plans shall include:",
+              "ecc_references": ["3-1-1"],
+              "source_page": 34,
+              "subcontrols": [
+                {"control_code": "3-1-T-1-1", "control_type": "subcontrol", "control_text": "Recovery procedures for critical business processes that depend on cloud services.", "source_page": 34},
+                {"control_code": "3-1-T-1-2", "control_type": "subcontrol", "control_text": "Data backup and recovery procedures for cloud-hosted data, including regular testing of restore procedures.", "source_page": 34},
+                {"control_code": "3-1-T-1-3", "control_type": "subcontrol", "control_text": "Exit and migration procedures for critical cloud services in the event of CSP failure or contract termination.", "source_page": 34}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "domain_code": "4",
+      "domain_name": "Cloud Third-Party and Supply Chain Security",
+      "subdomains": [
+        {
+          "subdomain_code": "4-1",
+          "subdomain_name": "Third-Party and Supply Chain Management",
+          "objective": "To ensure that cybersecurity risks arising from third-party cloud suppliers and the cloud supply chain are identified, assessed, and managed throughout the service lifecycle.",
+          "controls": [
+            {
+              "control_code": "4-1-P-1",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall implement a third-party and supply chain cybersecurity management program. The program shall include:",
+              "ecc_references": ["2-16-1"],
+              "source_page": 37,
+              "subcontrols": [
+                {"control_code": "4-1-P-1-1", "control_type": "subcontrol", "control_text": "Security assessment of critical cloud infrastructure suppliers and sub-processors prior to engagement and at least annually thereafter.", "source_page": 37},
+                {"control_code": "4-1-P-1-2", "control_type": "subcontrol", "control_text": "Contractual cybersecurity requirements for all suppliers with access to cloud infrastructure or tenant data.", "source_page": 37},
+                {"control_code": "4-1-P-1-3", "control_type": "subcontrol", "control_text": "Ongoing monitoring of supplier cybersecurity posture and compliance with contractual requirements.", "source_page": 37},
+                {"control_code": "4-1-P-1-4", "control_type": "subcontrol", "control_text": "Incident notification requirements for suppliers in the event of a cybersecurity incident that may affect cloud services or tenant data.", "source_page": 37}
+              ]
+            },
+            {
+              "control_code": "4-1-P-2",
+              "applicability_type": "CSP",
+              "control_type": "main_control",
+              "control_text": "The CSP shall maintain a register of critical suppliers and third parties with access to cloud infrastructure or tenant data and shall assess the cybersecurity risk of each supplier at least annually.",
+              "ecc_references": ["2-16-1"],
+              "source_page": 37,
+              "subcontrols": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
