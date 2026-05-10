@@ -410,12 +410,18 @@ async def run_full_analysis(db, policy_id, frameworks):
         print(f"  Insights warning: {e}")
 
     # Audit log
+    # Schema column is `actor_id uuid` (FK users.id, ON DELETE SET NULL).
+    # This code path is system-initiated (called from the admin reanalyse
+    # endpoint without an actor argument), so actor_id is NULL — matches
+    # the column's nullable contract and the FK's SET NULL semantics.
     try:
         db.execute(sql_text("""
-            INSERT INTO audit_logs (id, actor, action, target_type, target_id, details, timestamp)
-            VALUES (:id,'system','analyze_policy','policy',:tid,:det,:ts)
+            INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, details, timestamp)
+            VALUES (:id,:actor_id,'analyze_policy','policy',:tid,:det,:ts)
         """), {
-            "id": str(uuid.uuid4()), "tid": policy_id,
+            "id": str(uuid.uuid4()),
+            "actor_id": None,
+            "tid": policy_id,
             "det": json.dumps({
                 "frameworks": frameworks,
                 "scores": {f: r.get("score", 0) for f, r in all_results.items()
