@@ -79,9 +79,11 @@ function handleUnauthorized() {
   window.location.href = "/login";
 }
 
+const ADMIN_API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 async function adminFetch(path, options = {}) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${ADMIN_API_BASE}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -857,7 +859,7 @@ function FrameworksSection() {
       form.append('framework', targetName);
       form.append('description', uploadForm.description || '');
       form.append('version', uploadForm.version || '');
-      const res = await fetch('/api/functions/upload_framework_doc', {
+      const res = await fetch(`${ADMIN_API_BASE}/functions/upload_framework_doc`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: form,

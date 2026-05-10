@@ -1,5 +1,9 @@
 import jsPDF from "jspdf";
 
+// Match apiClient.js: in prod VITE_API_URL points at the Render backend,
+// in dev it falls back to "/api" (Vite proxy handles it).
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+
 const BRAND = {
   emerald: [16, 185, 129],
   emeraldLight: [52, 211, 153],
@@ -619,7 +623,7 @@ export function downloadFromUrl(url, filename) {
 
 export async function fetchPolicyReportData(policyId) {
   const token = localStorage.getItem("token");
-  const res = await fetch(`/api/functions/policy_report_data/${policyId}`, {
+  const res = await fetch(`${API_BASE}/functions/policy_report_data/${policyId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -635,7 +639,7 @@ export async function persistReport({ blob, filename, mime, policyId, format }) 
   form.append("file", new File([blob], filename, { type: mime }));
   form.append("policy_id", policyId);
   form.append("format", format);
-  const res = await fetch("/api/functions/save_report", {
+  const res = await fetch(`${API_BASE}/functions/save_report`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,

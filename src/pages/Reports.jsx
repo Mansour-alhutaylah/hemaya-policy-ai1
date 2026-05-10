@@ -54,9 +54,11 @@ import {
 // ── Compliance Package download helper ───────────────────────────────────────
 // Calls POST /api/reports/export and triggers a browser file download.
 // Returns true on success, throws on error.
+const REPORTS_API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 async function downloadCompliancePackage(policyId, includeDraftText = true) {
   const token = localStorage.getItem('token');
-  const res = await fetch('/api/reports/export', {
+  const res = await fetch(`${REPORTS_API_BASE}/reports/export`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
