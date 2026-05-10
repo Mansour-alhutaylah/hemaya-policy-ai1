@@ -359,7 +359,8 @@ export default function Dashboard() {
   });
 
   // ── Derived metrics ───────────────────────────────────────────────────────
-  const frameworkCount = 3;
+  // Phase D-3: derive from real backend data (was hardcoded to 3).
+  const frameworkCount = stats?.framework_scores?.length ?? 0;
   const avgScore      = stats?.security_score || 0;
   const openGaps      = stats?.open_gaps      || 0;
   // Prefer the new `controls_total` field (covered + partial + missing).
@@ -553,13 +554,13 @@ export default function Dashboard() {
           accentColor="#10b981"
         />
 
-        {/* Stats-dependent — show skeleton during load / file switch */}
+        {/* Phase D-3: trend chips removed — the API returns no period-
+            over-period delta, so the previous '+5%' / '-3%' / '+12' / '-2'
+            values were fabricated. KpiCard renders cleanly without them. */}
         <KpiCard
           title="Security Score"
           value={`${avgScore}%`}
           icon={TrendingUp}
-          trend={avgScore >= 70 ? 'up' : 'down'}
-          trendValue={avgScore >= 70 ? '+5%' : '-3%'}
           accentColor="#3b82f6"
           isLoading={statsSkeletons}
         />
@@ -567,8 +568,6 @@ export default function Dashboard() {
           title="Controls Mapped"
           value={totalControls}
           icon={FileCheck}
-          trend="up"
-          trendValue="+12"
           accentColor="#8b5cf6"
           isLoading={statsSkeletons}
         />
@@ -576,18 +575,17 @@ export default function Dashboard() {
           title="Open Gaps"
           value={openGaps}
           icon={AlertTriangle}
-          trend="down"
-          trendValue="-2"
           accentColor={openGaps > 10 ? SEVERITY_COLORS.Critical : SEVERITY_COLORS.High}
           isLoading={statsSkeletons}
         />
 
-        {/* Derived from policy list, not stats */}
+        {/* Phase D-3: subtitle was 'This month' but the value is lifetime —
+            relabelled honestly. */}
         <KpiCard
           title="Policies Analyzed"
           value={policies.length}
           icon={FileText}
-          subtitle="This month"
+          subtitle="All time"
           accentColor="#06b6d4"
           isLoading={policiesLoading}
         />
