@@ -39,7 +39,7 @@ FRAMEWORK_DISPLAY = "Saudi Aramco Third Party Cybersecurity Standard (SACS-002)"
 # coverage logic, the L3 ratio thresholds, or any other scoring rule
 # in this module changes. Bumping invalidates every cached row, so the
 # next analysis re-runs through GPT and writes fresh entries.
-SACS002_PROMPT_VERSION = "v1"
+SACS002_PROMPT_VERSION = "v3"  # bumped: Phase 3 reranking + neighbor expansion + section boost
 SACS002_MODEL = "gpt-4o-mini"
 
 SACS002_VERIFIER_PROMPT = """You assess whether a policy document complies with SACS-002 (Saudi Aramco Third Party Cybersecurity Standard, Feb 2022).
@@ -108,6 +108,410 @@ ACTION_VERBS: dict[str, set[str]] = {
     "update":       {"update", "updat", "revis", "amend", "refresh"},
     "identify":     {"identif", "discover", "detect", "recogniz", "list", "inventori"},
 }
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# SACS-002 dedicated retrieval pipeline (Phase 1+2).
+# Uses synonym expansion + top_k=15 + hybrid BM25/vector RRF.
+# Completely isolated from the ECC-2 analysis path.
+# ──────────────────────────────────────────────────────────────────────────
+
+SACS002_SYNONYMS: dict[str, list[str]] = {
+    "mfa":              ["multi-factor authentication", "two-factor", "multifactor", "2fa"],
+    "2fa":              ["multi-factor authentication", "mfa", "two-factor"],
+    "siem":             ["security information and event management", "centralized logging",
+                         "log aggregation", "log management", "event management"],
+    "waf":              ["web application firewall", "application firewall"],
+    "iam":              ["identity and access management", "access control", "identity management"],
+    "dlp":              ["data loss prevention", "data leakage prevention"],
+    "ids":              ["intrusion detection system", "intrusion prevention system", "ips"],
+    "ips":              ["intrusion prevention system", "intrusion detection", "ids"],
+    "vpn":              ["virtual private network", "secure tunnel", "encrypted connection"],
+    "soc":              ["security operations center", "security operations"],
+    "pki":              ["public key infrastructure", "certificate authority", "digital certificate"],
+    "rbac":             ["role-based access control", "role based access control", "permissions"],
+    "patch":            ["vulnerability management", "software update", "security update", "patching"],
+    "backup":           ["data backup", "business continuity", "disaster recovery", "data recovery"],
+    "encrypt":          ["encryption", "cryptography", "aes", "tls", "ssl", "https"],
+    "encryption":       ["encrypt", "cryptography", "aes", "tls", "ssl"],
+    "firewall":         ["network firewall", "perimeter security", "packet filtering"],
+    "pentest":          ["penetration test", "penetration testing", "vulnerability assessment"],
+    "incident":         ["incident response", "security incident", "breach response"],
+    "audit":            ["audit log", "audit trail", "activity log", "event log", "logging"],
+    "password":         ["passphrase", "credential", "authentication credential"],
+    "privileged":       ["privileged access", "admin access", "elevated privilege", "superuser"],
+    "vulnerability":    ["cve", "security weakness", "security exposure", "risk assessment"],
+    "monitoring":       ["monitor", "surveillance", "detection", "alerting", "siem"],
+    "malware":          ["antivirus", "anti-malware", "endpoint protection", "edr"],
+    "classification":   ["data sensitivity", "information classification", "data labeling", "data tier"],
+    "access control":   ["rbac", "authorization", "permissions", "access rights", "least privilege"],
+    "third party":      ["vendor", "supplier", "contractor", "subcontractor", "outsourced"],
+    "awareness":        ["training", "education", "security training", "user awareness"],
+    "configuration":    ["hardening", "baseline", "secure configuration", "config management"],
+    "asset":            ["inventory", "asset management", "asset register", "hardware inventory"],
+}
+
+
+def _sacs002_expand_query(keywords: list[str], control_text: str) -> list[str]:
+    """Expand BM25 query keywords with SACS-002 cybersecurity synonyms."""
+    text_lower = control_text.lower()
+    expanded = list(keywords)
+    seen = set(k.lower() for k in keywords)
+    for key, synonyms in SACS002_SYNONYMS.items():
+        if key in text_lower or any(s in text_lower for s in synonyms[:2]):
+            for s in synonyms:
+                if s not in seen:
+                    expanded.append(s)
+                    seen.add(s)
+    return expanded
+
+
+def _sacs002_retrieve(
+    chunks: list[dict],
+    control_text: str,
+    expanded_kw: list[str],
+    bm25,
+    top_k: int = 15,
+) -> tuple:
+    """BM25+keyword retrieval with expanded synonyms and configurable top_k."""
+    if not chunks:
+        return "", 0.0, []
+
+    kw_scores = []
+    for c in chunks:
+        score = 0
+        text_lower = c["text"].lower()
+        for kw in expanded_kw:
+            if kw.lower() in text_lower:
+                score += 3
+        if c.get("classification") == "mandatory":
+            score += 4
+        elif c.get("classification") == "advisory":
+            score += 1
+        kw_scores.append(score)
+
+    query_tokens = (control_text + " " + " ".join(expanded_kw)).lower().split()
+    bm25_raw = bm25.get_scores(query_tokens)
+
+    max_kw = max(kw_scores) or 1
+    max_bm25 = max(bm25_raw) or 1
+    scored = [
+        (0.5 * kw_scores[i] / max_kw + 0.5 * bm25_raw[i] / max_bm25, chunks[i])
+        for i in range(len(chunks))
+    ]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = scored[:top_k]
+    quality = selected[0][0] if selected else 0.0
+    selected_chunks = [s[1] for s in selected]
+    return "\n---\n".join(c["text"] for c in selected_chunks), quality, selected_chunks
+
+
+def _sacs002_vector_search(db, embedding, policy_id, policy_version_id=None, top_k=20):
+    """pgvector cosine search scoped to a policy (or specific version)."""
+    import json as _json
+    emb_str = _json.dumps(embedding)
+    if policy_version_id:
+        sql = (
+            "SELECT chunk_index, 1-(embedding<=>cast(:emb as vector)) AS sim "
+            "FROM policy_chunks "
+            "WHERE embedding IS NOT NULL AND policy_version_id = :vid "
+            "ORDER BY embedding <=> cast(:emb as vector) LIMIT :top_k"
+        )
+        params = {"emb": emb_str, "vid": policy_version_id, "top_k": top_k}
+    else:
+        sql = (
+            "SELECT chunk_index, 1-(embedding<=>cast(:emb as vector)) AS sim "
+            "FROM policy_chunks "
+            "WHERE embedding IS NOT NULL AND policy_id = :pid "
+            "ORDER BY embedding <=> cast(:emb as vector) LIMIT :top_k"
+        )
+        params = {"emb": emb_str, "pid": policy_id, "top_k": top_k}
+    rows = db.execute(sql_text(sql), params).fetchall()
+    return [{"chunk_index": int(r[0]), "similarity": float(r[1])} for r in rows]
+
+
+def _sacs002_hybrid_retrieve(
+    chunks: list[dict],
+    control_text: str,
+    expanded_kw: list[str],
+    bm25,
+    vec_results: list[dict],
+    top_k: int = 15,
+    rrf_k: int = 60,
+) -> tuple:
+    """Reciprocal Rank Fusion over BM25 and pgvector results."""
+    if not chunks:
+        return "", 0.0, []
+
+    kw_scores = []
+    for c in chunks:
+        score = 0
+        text_lower = c["text"].lower()
+        for kw in expanded_kw:
+            if kw.lower() in text_lower:
+                score += 3
+        if c.get("classification") == "mandatory":
+            score += 4
+        kw_scores.append(score)
+
+    query_tokens = (control_text + " " + " ".join(expanded_kw)).lower().split()
+    bm25_raw = bm25.get_scores(query_tokens)
+
+    max_kw = max(kw_scores) or 1
+    max_bm25 = max(bm25_raw) or 1
+    bm25_combined = [
+        0.5 * kw_scores[i] / max_kw + 0.5 * bm25_raw[i] / max_bm25
+        for i in range(len(chunks))
+    ]
+    bm25_order = sorted(range(len(chunks)), key=lambda i: bm25_combined[i], reverse=True)
+    bm25_rank = {idx: rank for rank, idx in enumerate(bm25_order)}
+
+    # Map vec_results chunk_index back to list position
+    cidx_to_pos = {c.get("chunk_index", -1): i for i, c in enumerate(chunks)}
+    vec_rank: dict[int, int] = {}
+    for v_rank, vr in enumerate(vec_results):
+        pos = cidx_to_pos.get(vr.get("chunk_index", -1))
+        if pos is not None:
+            vec_rank[pos] = v_rank
+
+    n = len(chunks)
+    rrf_scores = []
+    for i in range(n):
+        b_r = bm25_rank.get(i, n)
+        v_r = vec_rank.get(i, n)
+        rrf = 1.0 / (rrf_k + b_r) + 1.0 / (rrf_k + v_r)
+        rrf_scores.append((rrf, chunks[i]))
+
+    rrf_scores.sort(key=lambda x: x[0], reverse=True)
+    selected = rrf_scores[:top_k]
+    quality = min(1.0, selected[0][0] * rrf_k / 2.0) if selected else 0.0
+    selected_chunks = [s[1] for s in selected]
+    return "\n---\n".join(c["text"] for c in selected_chunks), quality, selected_chunks
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 3: SACS-002 reranking + neighbor expansion + section-aware boosting.
+# Completely isolated from ECC-2. Zero new hard dependencies — BAAI model
+# is optional and gated by SACS002_USE_RERANKER_MODEL=true env var.
+# Default reranker: single GPT-4o-mini call that scores all 20 candidates.
+# ──────────────────────────────────────────────────────────────────────────
+
+import os as _os
+
+# Reranking on/off. Disable in prod if cost matters: SACS002_RERANK_ENABLED=false
+SACS002_RERANK_ENABLED = _os.getenv("SACS002_RERANK_ENABLED", "true").lower() == "true"
+# Skip rerank when hybrid quality already exceeds this (obviously good retrieval)
+_RERANK_SKIP_THRESHOLD = 0.85
+
+# Lazy-loaded BAAI cross-encoder (requires `sentence-transformers`).
+# Enable via: SACS002_USE_RERANKER_MODEL=true
+_RERANKER_MODEL = None
+_RERANKER_ATTEMPTED = False
+
+# Control code → section-heading keywords for chunk boosting.
+# Rules that keep false-positive rate low:
+#   1. Every entry has a non-empty control_codes set — no broad "fire for all" entries.
+#   2. Keywords are multi-word phrases, not single words. Single words like "monitoring",
+#      "incident", "encryption" appear in almost every security-policy chunk and would
+#      cause section_boost=Y for the majority of controls, defeating the purpose.
+#   3. Boost value is +0.10 (additive, not multiplicative) — a nudge, not a takeover.
+SACS002_SECTION_MAP: list[tuple[list[str], frozenset]] = [
+    (
+        ["incident response", "incident management", "security incident",
+         "breach response", "forensic investigation", "incident reporting procedure",
+         "incident handling"],
+        frozenset({"TPC-23", "TPC-88", "TPC-89", "TPC-90"}),
+    ),
+    (
+        ["siem", "centralized logging", "log management system", "audit log retention",
+         "security event monitoring", "log review procedure", "log aggregation",
+         "security operations center monitoring"],
+        frozenset(f"TPC-{n}" for n in range(75, 88)),
+    ),
+    (
+        ["identity and access management", "privileged access management",
+         "role-based access control", "account lifecycle management",
+         "access review procedure", "least privilege policy",
+         "multi-factor authentication policy", "user provisioning"],
+        frozenset({f"TPC-{n}" for n in range(2, 7)} | {f"TPC-{n}" for n in range(32, 46)}),
+    ),
+    (
+        ["data encryption policy", "encryption key management", "data classification policy",
+         "data at rest encryption", "transport layer security policy",
+         "cryptographic controls", "sensitive data handling procedure"],
+        frozenset(f"TPC-{n}" for n in range(50, 60)),
+    ),
+    (
+        ["vulnerability management program", "penetration testing policy",
+         "patch management procedure", "security assessment schedule",
+         "cve remediation process", "vulnerability scanning procedure"],
+        frozenset({"TPC-27", "TPC-28", "TPC-29", "TPC-85", "TPC-91"}),
+    ),
+    (
+        ["business continuity plan", "disaster recovery plan", "backup procedure",
+         "recovery time objective", "data backup policy", "rto", "rpo",
+         "business continuity management", "backup and recovery"],
+        frozenset(f"TPC-{n}" for n in range(64, 71)),
+    ),
+    (
+        ["email security policy", "anti-phishing controls", "email filtering policy",
+         "email gateway configuration", "phishing prevention", "spam filtering policy"],
+        frozenset(f"TPC-{n}" for n in range(13, 18)),
+    ),
+    (
+        ["application security policy", "secure development lifecycle",
+         "cloud security policy", "api security controls", "web application firewall policy",
+         "secure coding standard", "sdlc security"],
+        frozenset(
+            {f"TPC-{n}" for n in range(60, 64)} |
+            {f"TPC-{n}" for n in range(72, 75)} |
+            {"TPC-79", "TPC-92"}
+        ),
+    ),
+]
+
+# Boost magnitude: additive nudge to the combined score, not a takeover.
+_SECTION_BOOST_VALUE = 0.10
+
+
+def _sacs002_section_boost(chunk_text: str, control_code: str) -> tuple[float, str]:
+    """Return (boost, triggering_keyword).
+
+    Boost is +0.10 when the chunk content contains a section-specific phrase
+    AND the control belongs to that section's mapped code set.
+    Returns (0.0, "") when no match — callers must unpack both values.
+    """
+    text_sample = chunk_text.lower()[:800]
+    for section_kws, control_codes in SACS002_SECTION_MAP:
+        if control_code not in control_codes:
+            continue
+        for kw in section_kws:
+            if kw in text_sample:
+                return _SECTION_BOOST_VALUE, kw
+    return 0.0, ""
+
+
+def _sacs002_expand_neighbors(
+    selected_chunks: list[dict],
+    all_chunks: list[dict],
+    window: int = 1,
+) -> list[dict]:
+    """Add preceding and following chunks to avoid evidence split across boundaries.
+
+    For each selected chunk at index i, includes chunks i-window … i+window.
+    Result is sorted by chunk_index (document order) and deduplicated.
+    """
+    chunk_by_idx = {c.get("chunk_index", -1): c for c in all_chunks}
+    seen: set[int] = set()
+    result: list[tuple[int, dict]] = []
+    for c in selected_chunks:
+        base_idx = c.get("chunk_index", -1)
+        for offset in range(-window, window + 1):
+            idx = base_idx + offset
+            if idx >= 0 and idx not in seen:
+                neighbor = chunk_by_idx.get(idx)
+                if neighbor:
+                    seen.add(idx)
+                    result.append((idx, neighbor))
+    result.sort(key=lambda x: x[0])
+    return [c for _, c in result]
+
+
+_SACS002_RERANKER_PROMPT = """\
+You are a compliance evidence reranker for SACS-002 (Saudi Aramco Third Party Cybersecurity Standard).
+
+Given a control requirement and numbered candidate policy chunks, rank by how well each chunk supports the control.
+
+Score each chunk on:
+1. Direct evidence of the control requirement (implementation, not just mention)
+2. Operational wording — the organization DOES this, not just says it will
+3. Monitoring / review cadence (annual, quarterly, periodic)
+4. Ownership / responsibility (who owns this control)
+5. Semantic match even when exact wording differs (e.g. "two-factor" = "MFA")
+
+Return ONLY valid JSON — no markdown, no explanation:
+{"top": [<0-based indices of best 8 chunks, most relevant first>]}"""
+
+
+async def _sacs002_llm_rerank(
+    control_text: str,
+    candidates: list[dict],
+    control_code: str = "",
+) -> list[dict]:
+    """Rerank up to 20 candidate chunks with one GPT call.
+
+    Sends truncated chunk previews (200 chars each) to keep token cost low.
+    Returns candidates reordered by GPT relevance score.
+    On any failure, returns the original order unchanged.
+    """
+    if not candidates:
+        return candidates
+
+    chunk_lines = "\n".join(
+        f"[{i}] {c['text'][:200].strip()}"
+        for i, c in enumerate(candidates)
+    )
+    user_msg = (
+        f"Control {control_code}: {control_text[:300]}\n\n"
+        f"CANDIDATE CHUNKS:\n{chunk_lines}"
+    )
+    try:
+        raw = await call_llm(_SACS002_RERANKER_PROMPT, user_msg)
+        data = json.loads(raw)
+        indices = data.get("top", [])
+        if not isinstance(indices, list):
+            return candidates
+        # Rebuild ordered list: ranked first, then any remainder
+        seen: set[int] = set()
+        reranked: list[dict] = []
+        for idx in indices:
+            if isinstance(idx, int) and 0 <= idx < len(candidates) and idx not in seen:
+                reranked.append(candidates[idx])
+                seen.add(idx)
+        for i, c in enumerate(candidates):
+            if i not in seen:
+                reranked.append(c)
+        return reranked
+    except Exception as _e:
+        return candidates  # silent fallback: keep original order
+
+
+def _sacs002_try_model_rerank(
+    control_text: str,
+    candidates: list[dict],
+) -> list[dict] | None:
+    """Attempt BAAI/bge-reranker-v2-m3 cross-encoder reranking.
+
+    Returns reordered candidates, or None if the model is unavailable.
+    Requires: pip install sentence-transformers
+    Enable:   SACS002_USE_RERANKER_MODEL=true env var
+    """
+    global _RERANKER_MODEL, _RERANKER_ATTEMPTED
+    if not _os.getenv("SACS002_USE_RERANKER_MODEL", "false").lower() == "true":
+        return None
+    if not _RERANKER_ATTEMPTED:
+        _RERANKER_ATTEMPTED = True
+        try:
+            from sentence_transformers import CrossEncoder  # type: ignore
+            _RERANKER_MODEL = CrossEncoder(
+                "BAAI/bge-reranker-v2-m3",
+                max_length=512,
+                device="cpu",
+            )
+            print("  [SACS002] BAAI/bge-reranker-v2-m3 loaded")
+        except Exception as _load_err:
+            print(f"  [SACS002] BAAI reranker unavailable: {_load_err}")
+            _RERANKER_MODEL = None
+    if _RERANKER_MODEL is None:
+        return None
+    try:
+        pairs = [(control_text, c["text"][:400]) for c in candidates]
+        scores = _RERANKER_MODEL.predict(pairs)
+        reranked = [c for _, c in sorted(zip(scores, candidates), key=lambda x: x[0], reverse=True)]
+        return reranked
+    except Exception as _score_err:
+        print(f"  [SACS002] BAAI rerank scoring failed: {_score_err}")
+        return None
 
 
 def _extract_required_actions(control_text: str) -> set[str]:
@@ -377,17 +781,18 @@ async def _assess_control(
     diag: bool = False,
     db=None,
     policy_hash: str | None = None,
+    control_embedding=None,
+    policy_id: str | None = None,
+    policy_version_id: str | None = None,
 ) -> dict:
     """
-    bm25_index: pre-built BM25Okapi over policy_chunks — caller should build
-                once and pass in to avoid rebuilding the index 92× per run.
-    diag:       when True, log focused_text preview and raw GPT response.
-    db, policy_hash: when both provided, read/write the
-                sacs002_verification_cache. Cache key bundles the prompt
-                version, model, retrieval floor, and grounding invariants
-                so any change to those automatically invalidates entries.
+    bm25_index:        pre-built BM25Okapi — build once, pass to avoid 92× rebuilds.
+    diag:              log focused_text preview and raw GPT response for first controls.
+    db, policy_hash:   cache read/write via sacs002_verification_cache.
+    control_embedding: pre-computed OpenAI embedding for this control's text.
+                       When provided, enables hybrid BM25+vector RRF retrieval (Phase 2).
+    policy_id, policy_version_id: used for pgvector scoped search.
     """
-    from backend.checkpoint_analyzer import _find_relevant_sections
     from rank_bm25 import BM25Okapi
 
     control_code = control["control_code"]
@@ -418,18 +823,91 @@ async def _assess_control(
         tokenized = [c["text"].lower().split() for c in policy_chunks]
         bm25_index = BM25Okapi(tokenized)
 
-    # Phase 11: capture selected_chunks for post-hoc source attribution.
-    focused_text, retrieval_quality, selected_chunks = _find_relevant_sections(
-        policy_chunks, control_text, keywords, bm25=bm25_index, offset=0,
-        return_selected=True,
-    )
-
-    if diag:
-        print(
-            f"    [SACS002][DIAG][{control_code}] "
-            f"focused_text={len(focused_text)} chars | "
-            f"retrieval_quality={retrieval_quality:.3f}"
+    # ── Phase 1+2: hybrid retrieval with 20 raw candidates ──────────────────
+    # Retrieve 20 candidates to give Phase 3 reranker room to work.
+    expanded_kw = _sacs002_expand_query(keywords, control_text)
+    _retrieval_mode = "bm25"
+    if control_embedding is not None and db is not None and policy_id is not None:
+        try:
+            vec_results = _sacs002_vector_search(
+                db, control_embedding, policy_id, policy_version_id, top_k=25
+            )
+            _, retrieval_quality, selected_chunks = _sacs002_hybrid_retrieve(
+                policy_chunks, control_text, expanded_kw, bm25_index, vec_results, top_k=20
+            )
+            _retrieval_mode = "hybrid_rrf"
+        except Exception as _vec_err:
+            print(f"    [SACS002][{control_code}] vector search failed ({_vec_err}); BM25 fallback")
+            _, retrieval_quality, selected_chunks = _sacs002_retrieve(
+                policy_chunks, control_text, expanded_kw, bm25_index, top_k=20
+            )
+    else:
+        _, retrieval_quality, selected_chunks = _sacs002_retrieve(
+            policy_chunks, control_text, expanded_kw, bm25_index, top_k=20
         )
+
+    # ── Phase 3a: section-aware boost ───────────────────────────────────────
+    # Reorder candidates using section-category alignment as a tiebreaker.
+    # _sacs002_section_boost returns (float, str) — unpack both to log the keyword.
+    # Stable on equal boost: original retrieval rank preserved via -i tiebreaker.
+    _boost_pairs = [_sacs002_section_boost(c["text"], control_code) for c in selected_chunks]
+    _section_boosts = [b for b, _ in _boost_pairs]
+    _any_section_boost = any(b > 0 for b in _section_boosts)
+    if _any_section_boost:
+        selected_chunks = [
+            c for _, _, c in sorted(
+                zip(_section_boosts, range(len(selected_chunks)), selected_chunks),
+                key=lambda x: (x[0], -x[1]),
+                reverse=True,
+            )
+        ]
+        _triggered_kws = [kw for b, kw in _boost_pairs if b > 0]
+        print(
+            f"    [SACS002][BOOST][{control_code}] "
+            f"+{_SECTION_BOOST_VALUE} via: {_triggered_kws[:3]}"
+        )
+
+    # ── Phase 3b: reranking ─────────────────────────────────────────────────
+    _reranked = False
+    _rerank_method = "none"
+    if SACS002_RERANK_ENABLED:
+        # Try BAAI cross-encoder first (requires sentence-transformers + env flag)
+        _model_result = _sacs002_try_model_rerank(control_text, selected_chunks)
+        if _model_result is not None:
+            selected_chunks = _model_result
+            _reranked = True
+            _rerank_method = "baai_bge"
+        else:
+            # LLM reranker: one GPT-4o-mini call re-orders all 20 candidates
+            selected_chunks = await _sacs002_llm_rerank(
+                control_text, selected_chunks, control_code
+            )
+            _reranked = True
+            _rerank_method = "llm"
+
+    # Top 5 after reranking — keeps context focused; neighbors add back ~2-4 more
+    final_chunks = selected_chunks[:5]
+
+    # ── Phase 3c: neighbor expansion ────────────────────────────────────────
+    # Add prev/next chunks to avoid evidence cut at chunk boundaries.
+    _pre_expand_count = len(final_chunks)
+    final_chunks = _sacs002_expand_neighbors(final_chunks, policy_chunks, window=1)
+
+    focused_text = "\n---\n".join(c["text"] for c in final_chunks)
+    focused_text = focused_text[:9000]  # hard cap: keep GPT context manageable
+
+    # ── Phase 3 retrieval log (every control) ───────────────────────────────
+    _top_preview = (final_chunks[0]["text"][:80].replace("\n", " ") if final_chunks else "")
+    print(
+        f"    [SACS002][RETR][{control_code}] "
+        f"mode={_retrieval_mode} rerank={_rerank_method} "
+        f"section_boost={'Y' if _any_section_boost else 'N'} "
+        f"neighbors_added={len(final_chunks) - _pre_expand_count} "
+        f"chunks={len(final_chunks)} chars={len(focused_text)} "
+        f"quality={retrieval_quality:.3f}"
+    )
+    if diag:
+        print(f"    [SACS002][DIAG][{control_code}] top_chunk: {_top_preview!r}")
         print(f"    [SACS002][DIAG][{control_code}] focused_text[:300]: {focused_text[:300]!r}")
 
     checkpoints = [
@@ -891,6 +1369,19 @@ async def run_sacs002_analysis(
     else:
         global_bm25 = None
 
+    # Phase 2: pre-compute control text embeddings in one batch call.
+    # This enables hybrid BM25+vector RRF retrieval for every control without
+    # N individual embedding requests inside the control loop.
+    ctrl_embedding_map: dict[str, list] = {}
+    try:
+        ctrl_texts = [c["control_text"][:500] for c in controls]
+        print(f"  [SACS002] Pre-computing embeddings for {len(controls)} controls...")
+        ctrl_embs = await get_embeddings(ctrl_texts)
+        ctrl_embedding_map = {c["control_code"]: emb for c, emb in zip(controls, ctrl_embs)}
+        print(f"  [SACS002] Control embeddings ready ({len(ctrl_embedding_map)} total)")
+    except Exception as _emb_err:
+        print(f"  [SACS002] WARNING: embedding pre-computation failed ({_emb_err}); BM25-only mode")
+
     legacy_fw_id = _ensure_framework_row(db)
 
     sem = asyncio.Semaphore(8)
@@ -901,9 +1392,12 @@ async def run_sacs002_analysis(
             return await _assess_control(
                 ctrl, policy_chunks, policy_text,
                 bm25_index=global_bm25,
-                diag=(ctrl_idx < 3),  # detailed logs for first 3 controls only
+                diag=(ctrl_idx < 3),
                 db=db,
                 policy_hash=policy_hash,
+                control_embedding=ctrl_embedding_map.get(ctrl["control_code"]),
+                policy_id=policy_id,
+                policy_version_id=policy_version_id,
             )
 
     total_ctrl = len(controls)
