@@ -37,7 +37,7 @@ const navigationItems = [
   { name: 'Reports', icon: FileBarChart, page: 'Reports' },
   { name: 'AI Insights', icon: Lightbulb, page: 'AIInsights', badge: 'NEW' },
   { name: 'Explainability', icon: Brain, page: 'Explainability' },
-  { name: 'Simulation', icon: FlaskConical, page: 'Simulation', badge: 'BETA', adminOnly: true },
+  { name: 'Simulation', icon: FlaskConical, page: 'Simulation' },
   { name: 'AI Assistant', icon: MessageSquare, page: 'AIAssistant' },
   { name: 'Settings', icon: Settings, page: 'Settings' },
 ];

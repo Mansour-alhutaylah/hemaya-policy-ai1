@@ -220,12 +220,6 @@ export default function Simulation() {
     <PageContainer
       title="Compliance Simulation"
       subtitle="Estimate the impact of fixing open gaps on your compliance score"
-      actions={
-        <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 gap-1">
-          <FlaskConical className="w-3 h-3" />
-          BETA
-        </Badge>
-      }
     >
       {/* Info banner */}
       <Card className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 dark:from-amber-500/10 dark:to-orange-500/10 dark:border-amber-500/30">

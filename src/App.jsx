@@ -39,8 +39,11 @@ const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 // Phase C: gate admin access on the backend-provided is_admin flag
 // (honours both ADMIN_EMAIL env and role='admin'). Reusable when admin-only
 // user-app pages are added in future (Audit Trail now lives in /admin only).
-// Phase C: Simulation is BETA, hidden from regular users until productised.
-const ADMIN_ONLY_PAGES = new Set(['Simulation']);
+// Phase HOTFIX: Simulation is now visible to all users — the page is
+// owner-scoped (Gap.filter / ComplianceResult.list both filter by the
+// caller's policies on the backend) and shows a transparent client-side
+// estimate with a clear disclaimer.
+const ADMIN_ONLY_PAGES = new Set();
 
 const LayoutWrapper = ({ children, currentPageName }) =>
   Layout ? <Layout currentPageName={currentPageName}>{children}</Layout> : <>{children}</>;
