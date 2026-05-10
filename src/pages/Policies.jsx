@@ -53,6 +53,7 @@ import {
   PauseCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
@@ -508,7 +509,7 @@ export default function Policies() {
       cell: (row) => (
         <div>
           <p className="text-sm text-foreground">
-            {row.created_at ? format(new Date(row.created_at), 'MMM d, yyyy') : '-'}
+            {formatDate(row.created_at, 'MMM d, yyyy', '—')}
           </p>
           <p className="text-xs text-muted-foreground">
             {row.uploaded_by || '—'}
@@ -521,9 +522,7 @@ export default function Policies() {
       accessor: 'last_analyzed_at',
       cell: (row) => (
         <span className="text-sm text-muted-foreground">
-          {row.last_analyzed_at
-            ? format(new Date(row.last_analyzed_at), 'MMM d, yyyy HH:mm')
-            : 'Never'}
+          {formatDateTime(row.last_analyzed_at, 'Never')}
         </span>
       ),
     },
@@ -1121,9 +1120,7 @@ export default function Policies() {
                 <div>
                   <p className="text-sm text-muted-foreground">Upload Date</p>
                   <p className="font-medium text-foreground">
-                    {selectedPolicy.created_at
-                      ? format(new Date(selectedPolicy.created_at), 'MMM d, yyyy HH:mm')
-                      : '-'}
+                    {formatDateTime(selectedPolicy.created_at)}
                   </p>
                 </div>
               </div>

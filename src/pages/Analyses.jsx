@@ -37,6 +37,7 @@ import {
   Brain
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/format';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import {
@@ -178,7 +179,7 @@ export default function Analyses() {
       accessor: 'analyzed_at',
       cell: (row) => (
         <span className="text-sm text-muted-foreground">
-          {row.analyzed_at ? format(new Date(row.analyzed_at), 'MMM d, yyyy HH:mm') : '-'}
+          {formatDateTime(row.analyzed_at)}
         </span>
       ),
     },
