@@ -881,7 +881,11 @@ async def upload_policy(
     from sqlalchemy import text as _sql
 
     policy_id = str(uuid.uuid4())
-    original_name = file.filename or "upload"
+    # Phase SYS-1: strip path components from the user-supplied filename
+    # before we ever join it onto a filesystem path. file.filename can
+    # contain '../' or absolute prefixes; Path().name returns just the
+    # basename and is the standard sanitization for this case.
+    original_name = Path(file.filename or "upload").name or "upload"
     ext = Path(original_name).suffix.lower()
 
     if ext not in ALLOWED_EXTENSIONS:
@@ -1588,6 +1592,15 @@ def accept_mapping(
      ai_rationale, evidence_snippet,
      control_title, control_code, severity_if_missing) = row
 
+    # Phase SYS-1: ownership check. Without this gate, any authenticated
+    # user could accept any mapping by mapping_id alone (cross-tenant write).
+    # Mirrors the established pattern used by /api/entities/MappingReview.
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Mapping not found")
+
     # Mark mapping accepted (idempotent: re-running with same mapping_id is fine).
     db.execute(_t("""
         UPDATE mapping_reviews
@@ -1641,9 +1654,18 @@ def reject_mapping(
     if not review_notes:
         raise HTTPException(status_code=422, detail="Justification required to override AI")
 
-    row = db.execute(_t("SELECT id FROM mapping_reviews WHERE id = :mid"),
-                     {"mid": mapping_id}).fetchone()
+    # Phase SYS-1: fetch policy_id alongside so we can ownership-check.
+    row = db.execute(_t(
+        "SELECT id, policy_id FROM mapping_reviews WHERE id = :mid"
+    ), {"mid": mapping_id}).fetchone()
     if not row:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    _, policy_id = row
+
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
         raise HTTPException(status_code=404, detail="Mapping not found")
 
     db.execute(_t("""
@@ -2450,7 +2472,9 @@ async def upload_framework_doc(
     import hashlib
     from sqlalchemy import text as _sql
 
-    original_name = file.filename or "upload"
+    # Phase SYS-1: strip path components — same as the policy upload path.
+    # Admin-only endpoint, but the path-traversal class is still real.
+    original_name = Path(file.filename or "upload").name or "upload"
     ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -2674,6 +2698,14 @@ async def get_ai_insights(
     current_user: models.User = Depends(get_current_user),
 ):
     """Return AI insights for a policy. Powers the AI Insights page."""
+    # Phase SYS-1: ownership check. Without it, any authenticated user
+    # could enumerate other users' AI insights by guessing policy_id.
+    policy = db.query(models.Policy).filter(models.Policy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if not is_admin(current_user) and str(policy.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Policy not found")
+
     insights = (
         db.query(models.AIInsight)
         .filter(models.AIInsight.policy_id == policy_id)
