@@ -1342,13 +1342,21 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
               f"({comp} ok, {part} partial, {miss} missing) in {dur}s")
 
         # ── Save ComplianceResult ────────────────────────────────────────
+        # Phase HOTFIX: status must satisfy chk_compliance_results_status
+        # ('Compliant' | 'Partial' | 'Non-Compliant'). Derive from score
+        # so the row actually lands.
+        verdict = (
+            "Compliant" if score >= 80
+            else "Partial" if score >= 50
+            else "Non-Compliant"
+        )
         db.execute(sql_text("""
             INSERT INTO compliance_results
             (id, policy_id, framework_id, compliance_score,
              controls_covered, controls_partial, controls_missing,
              status, analyzed_at, analysis_duration, details)
             VALUES (:id,:pid,:fwid,:sc,:cov,:par,:mis,
-                    'completed',:at,:dur,:det)
+                    :st,:at,:dur,:det)
             ON CONFLICT (policy_id, framework_id) DO UPDATE SET
                 compliance_score  = EXCLUDED.compliance_score,
                 controls_covered  = EXCLUDED.controls_covered,
@@ -1360,6 +1368,7 @@ async def run_checkpoint_analysis(db, policy_id, frameworks, progress_cb=None, r
                 details           = EXCLUDED.details
         """), {
             "id": str(uuid.uuid4()), "pid": policy_id, "fwid": framework_id,
+            "st": verdict,
             "sc": round(score, 1), "cov": comp, "par": part, "mis": miss,
             "at": datetime.now(timezone.utc), "dur": round(dur, 2),
             "det": json.dumps(results_list),

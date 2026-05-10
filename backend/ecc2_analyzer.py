@@ -962,6 +962,16 @@ async def run_ecc2_analysis(
         print(f"  [ECC2] Continuing with compliance_results save...")
 
     # ── Save summary to compliance_results (legacy frontend table) ────────
+    # Phase HOTFIX: status must satisfy the chk_compliance_results_status
+    # CHECK constraint ('Compliant' | 'Partial' | 'Non-Compliant'). The old
+    # 'completed' literal was rejected, every INSERT silently failed, and
+    # the Analyses page never saw analyzed policies. Derive verdict from
+    # the already-computed score; no scoring/grounding/prompt change.
+    verdict = (
+        "Compliant" if score >= 80
+        else "Partial" if score >= 50
+        else "Non-Compliant"
+    )
     try:
         db.execute(sql_text("""
             INSERT INTO compliance_results
@@ -970,12 +980,13 @@ async def run_ecc2_analysis(
                  status, analyzed_at, analysis_duration, details)
             VALUES
                 (:id, :pid, :fwid, :sc, :cov, :par, :mis,
-                 'completed', :at, :dur, :det)
+                 :st, :at, :dur, :det)
             ON CONFLICT DO NOTHING
         """), {
             "id": str(uuid.uuid4()),
             "pid": policy_id,
             "fwid": legacy_fw_id,
+            "st": verdict,
             "sc": round(score, 1),
             "cov": comp,
             "par": part,

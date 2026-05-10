@@ -985,6 +985,14 @@ async def run_sacs002_analysis(
     sec_a = [r for r in results_list if r.get("section") == "A"]
     sec_b = [r for r in results_list if r.get("section") == "B"]
 
+    # Phase HOTFIX: status must satisfy chk_compliance_results_status
+    # ('Compliant' | 'Partial' | 'Non-Compliant'). Derive from score so
+    # the row actually lands in compliance_results.
+    verdict = (
+        "Compliant" if score >= 80
+        else "Partial" if score >= 50
+        else "Non-Compliant"
+    )
     try:
         db.execute(sql_text("""
             INSERT INTO compliance_results
@@ -993,12 +1001,13 @@ async def run_sacs002_analysis(
                  status, analyzed_at, analysis_duration, details)
             VALUES
                 (:id, :pid, :fwid, :sc, :cov, :par, :mis,
-                 'completed', :at, :dur, :det)
+                 :st, :at, :dur, :det)
             ON CONFLICT DO NOTHING
         """), {
             "id": str(uuid.uuid4()),
             "pid": policy_id,
             "fwid": legacy_fw_id,
+            "st": verdict,
             "sc": round(score, 1),
             "cov": comp,
             "par": part,
