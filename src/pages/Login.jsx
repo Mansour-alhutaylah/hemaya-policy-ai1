@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Mail, ShieldCheck } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import ThemeToggle from "@/components/ThemeToggle";
 import StatusAlert from "@/components/ui/StatusAlert";
@@ -15,6 +15,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Unverified-email interstitial
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
   const [notice, setNotice] = useState(() => {
     try {
       const reason = sessionStorage.getItem("logout_reason");
@@ -66,6 +68,13 @@ export default function Login() {
 
       const data = await safeJson(res);
 
+      // Structured unverified-email error — show the recovery modal instead of
+      // a generic error string.
+      if (res.status === 403 && data?.error === "EMAIL_NOT_VERIFIED") {
+        setUnverifiedEmail(data.email || email);
+        return;
+      }
+
       if (!res.ok) {
         throw new Error(
           data?.detail || data?.error || data?.message || "Login failed"
@@ -99,6 +108,65 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // ── Unverified-email interstitial ─────────────────────────────────────────
+  if (unverifiedEmail) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground px-4 py-10 overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-40"
+          style={{
+            background:
+              'radial-gradient(60% 40% at 50% 0%, rgba(16,185,129,0.15), transparent 65%),' +
+              'radial-gradient(45% 35% at 90% 100%, rgba(20,184,166,0.10), transparent 70%)',
+          }}
+        />
+        <ThemeToggle />
+        <div className="w-full max-w-md relative">
+          <div className="rounded-2xl bg-card text-card-foreground border border-border shadow-sm p-6">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-sm shadow-emerald-500/20">
+                <Mail className="w-5 h-5 text-white" />
+              </div>
+              <div className="leading-tight">
+                <p className="text-sm font-semibold tracking-tight">Himaya</p>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  AI Compliance
+                </p>
+              </div>
+            </div>
+
+            <h1 className="text-2xl font-semibold tracking-tight">Verify your email</h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Your account exists but your email has not been verified yet.
+            </p>
+
+            <div className="mt-3 rounded-xl border border-border bg-muted/40 px-4 py-2.5 text-sm text-muted-foreground break-all">
+              {unverifiedEmail}
+            </div>
+
+            <div className="mt-6">
+              <Link
+                to={`/verify-otp?email=${encodeURIComponent(unverifiedEmail)}`}
+                className="block w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 font-medium text-sm text-center shadow-sm shadow-emerald-500/20 transition-colors"
+              >
+                Enter verification code
+              </Link>
+            </div>
+
+            <button
+              onClick={() => setUnverifiedEmail("")}
+              className="mt-5 w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Back to login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -194,22 +262,21 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-4 text-right">
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link
+                className="font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
+                to="/signup"
+              >
+                Sign up
+              </Link>
+            </p>
             <Link
-              className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+              className="text-sm font-medium text-green-400 hover:text-green-300 transition-colors whitespace-nowrap"
               to="/forgot-password"
             >
               Forgot password?
-            </Link>
-          </div>
-
-          <div className="mt-3 text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link
-              className="font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
-              to="/signup"
-            >
-              Sign up
             </Link>
           </div>
         </div>

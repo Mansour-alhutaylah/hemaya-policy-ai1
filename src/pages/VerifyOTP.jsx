@@ -8,20 +8,23 @@ import {
 } from "@/components/ui/input-otp";
 import StatusAlert from "@/components/ui/StatusAlert";
 import ThemeToggle from "@/components/ThemeToggle";
+import { useAuth } from "@/lib/AuthContext";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
 export default function VerifyOTP() {
   const nav = useNavigate();
+  const { login } = useAuth();
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email") || "";
-
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  // 60-second cooldown mirrors the server-side rate limit.
-  const [cooldown, setCooldown] = useState(60);
+  // Cooldown starts at 0 — the OTP was already sent during login/signup,
+  // so the user should be able to enter it immediately. The timer only
+  // starts after the user explicitly clicks "Resend code".
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -42,8 +45,24 @@ export default function VerifyOTP() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || "Verification failed");
-      setSuccess("Email verified! Redirecting to login…");
-      setTimeout(() => nav("/login"), 1500);
+
+      // Backend returns a JWT + user object — auto-login without a second
+      // password prompt.
+      const token = data?.access_token || data?.token;
+      const userData = data?.user || null;
+
+      if (token) {
+        // Call login() then navigate in the same tick so React batches both
+        // the AuthContext state update and the route change into a single
+        // render. This prevents the 800ms window where the authenticated
+        // Routes block renders at /verify-otp and shows <PageNotFound>.
+        login({ token, user: userData });
+        nav(userData?.is_admin ? "/admin" : "/Dashboard", { replace: true });
+      } else {
+        // Fallback: backend didn't issue a token (e.g. older deploy).
+        setSuccess("Email verified! Redirecting to login…");
+        setTimeout(() => nav("/login", { replace: true }), 1000);
+      }
     } catch (err) {
       setError(err.message || "Verification failed");
       setOtp("");

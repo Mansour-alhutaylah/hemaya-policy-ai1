@@ -30,6 +30,20 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
     settings = Column(JSON, nullable=True)
 
+    # Auth token relationships — passive_deletes=True defers cascade to the DB
+    # (FKs already carry ON DELETE CASCADE so SQLAlchemy need not emit extra
+    # DELETEs on the Python side). Existing direct-query code is unaffected.
+    otp_tokens = relationship(
+        "OTPToken",
+        back_populates="user",
+        passive_deletes=True,
+    )
+    password_reset_tokens = relationship(
+        "PasswordResetToken",
+        back_populates="user",
+        passive_deletes=True,
+    )
+
     # Remediation relationships (lazy-evaluated string refs avoid forward-ref issues)
     created_drafts  = relationship(
         "RemediationDraft",
@@ -61,6 +75,8 @@ class OTPToken(Base):
     failed_attempts = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
 
+    user = relationship("User", back_populates="otp_tokens")
+
 
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
@@ -71,6 +87,8 @@ class PasswordResetToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     failed_attempts = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    user = relationship("User", back_populates="password_reset_tokens")
 
 
 class Policy(Base):

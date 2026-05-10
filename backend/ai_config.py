@@ -8,3 +8,10 @@ if not OPENAI_API_KEY:
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
+TOP_K_RETRIEVAL = 20
+TOP_K_RERANK = 10
+
+MODELS = {
+    "embedding": "text-embedding-3-small",
+    "chat": "gpt-4o-mini",
+}

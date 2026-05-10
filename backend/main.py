@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import traceback
@@ -42,6 +43,8 @@ from backend.routers.remediation import router as remediation_router
 from backend.routers.reports_export import router as export_router
 from backend.routers.explainability import router as explainability_router
 
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 @app.get("/health")
@@ -437,9 +440,12 @@ async def register(user: schemas.RegisterRequest, db: Session = Depends(get_db))
     db.add(token)
     db.commit()
 
+    logger.info("[auth] OTP created for new user  user=%s  expires_in=10min", new_user.email)
     try:
         await send_otp_email(new_user.email, otp)
+        logger.info("[auth] OTP email sent  user=%s", new_user.email)
     except EmailDeliveryError as e:
+        logger.error("[auth] OTP email failed  user=%s  err=%s", new_user.email, e)
         raise HTTPException(status_code=503, detail=e.public_message)
 
     return {"message": "Registration successful. Please check your email for the verification code."}
@@ -462,7 +468,7 @@ def _get_setting(db, key: str, default: str) -> str:
 
 
 @app.post("/api/auth/login")
-def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
+async def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     from sqlalchemy import text as _t
     from datetime import timedelta
 
@@ -520,9 +526,50 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not db_user.is_verified:
-        raise HTTPException(
+        logger.info("[auth] login blocked — email not verified  user=%s", db_user.email)
+
+        # Issue a fresh OTP immediately so the user can verify without pressing
+        # "Resend first". No cooldown applies here — this path bypasses the
+        # resend-otp rate limit intentionally (different endpoint, different
+        # purpose: the user just proved they know the correct password).
+        try:
+            db.query(models.OTPToken).filter(
+                models.OTPToken.user_id == db_user.id
+            ).delete()
+            _otp = auth.generate_otp()
+            _otp_token = models.OTPToken(
+                user_id=db_user.id,
+                otp_hash=auth.hash_otp(_otp),
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            )
+            db.add(_otp_token)
+            db.commit()
+            logger.info("[auth] login-triggered OTP created  user=%s  expires_in=10min", db_user.email)
+            await send_otp_email(db_user.email, _otp)
+            logger.info("[auth] login-triggered OTP email sent  user=%s", db_user.email)
+        except Exception as _otp_err:
+            logger.error("[auth] login-triggered OTP failed  user=%s  err=%s", db_user.email, _otp_err)
+            # db.commit() already ran, so rollback is a no-op.  Delete the
+            # committed OTP token instead so resend-otp can issue a fresh one
+            # immediately (without hitting the 60-second cooldown).
+            try:
+                db.query(models.OTPToken).filter(
+                    models.OTPToken.user_id == db_user.id
+                ).delete()
+                db.commit()
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
+        return JSONResponse(
             status_code=403,
-            detail="Email not verified. Please check your inbox for the verification code.",
+            content={
+                "error": "EMAIL_NOT_VERIFIED",
+                "message": "Email not verified. A new verification code has been sent to your email.",
+                "email": db_user.email,
+            },
         )
 
     # Successful login — reset lockout counters
@@ -604,21 +651,40 @@ def verify_otp(req: schemas.OTPVerifyRequest, db: Session = Depends(get_db)):
             detail=f"Incorrect verification code. {remaining} attempt(s) remaining.",
         )
 
-    # OTP is valid — mark user as verified and delete the token
+    # OTP is valid — mark user as verified, delete the token, issue JWT for auto-login
     user.is_verified = True
     db.delete(token)
     db.commit()
-    return {"message": "Email verified successfully. You can now log in."}
+
+    logger.info("[auth] email verified + auto-login JWT issued  user=%s", user.email)
+    access_token = auth.create_access_token(data={"sub": user.email})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone": user.phone,
+            "is_admin": is_admin(user),
+        },
+    }
 
 
 @app.post("/api/auth/resend-otp")
 async def resend_otp(req: schemas.ResendOTPRequest, db: Session = Depends(get_db)):
+    _generic_ok = {"message": "If this email is registered and unverified, a new code has been sent."}
+
     user = db.query(models.User).filter(models.User.email == req.email.lower()).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Do not reveal whether the address is registered (prevents enumeration).
+        logger.info("[auth] resend-otp — unknown email  email=%s", req.email)
+        return _generic_ok
 
     if user.is_verified:
-        raise HTTPException(status_code=400, detail="This email address is already verified.")
+        logger.info("[auth] resend-otp — already verified  user=%s", user.email)
+        return {"message": "This email is already verified. You can log in."}
 
     # Enforce 60-second cooldown based on the most recent token's created_at
     existing = (
@@ -648,9 +714,12 @@ async def resend_otp(req: schemas.ResendOTPRequest, db: Session = Depends(get_db
     db.add(new_token)
     db.commit()
 
+    logger.info("[auth] OTP refreshed  user=%s  expires_in=10min", user.email)
     try:
         await send_otp_email(user.email, otp)
+        logger.info("[auth] resend OTP email sent  user=%s", user.email)
     except EmailDeliveryError as e:
+        logger.error("[auth] resend OTP email failed  user=%s  err=%s", user.email, e)
         # Roll the token back so the user can request again immediately.
         try:
             db.query(models.OTPToken).filter(
