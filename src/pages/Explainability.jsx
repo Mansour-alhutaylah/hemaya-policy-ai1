@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -29,8 +29,7 @@ import {
   FileText,
   Shield,
   Info,
-  Sparkles,
-  ExternalLink
+  ExternalLink,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -44,29 +43,60 @@ export default function Explainability() {
   const [searchQuery, setSearchQuery] = useState('');
   const [frameworkFilter, setFrameworkFilter] = useState('all');
   const [confidenceFilter, setConfidenceFilter] = useState('all');
-
-  const { data: mappings = [], isLoading } = useQuery({
-    queryKey: ['mappingReviews'],
-    queryFn: () => MappingReview.list('-created_at'),
-  });
+  const [policyId, setPolicyId] = useState('all');
 
   const { data: policies = [] } = useQuery({
     queryKey: ['policies'],
-    queryFn: () => Policy.list(),
+    queryFn: () => Policy.list('-last_analyzed_at'),
   });
 
-  const policyMap = policies.reduce((acc, p) => {
-    acc[p.id] = p;
-    return acc;
-  }, {});
+  // Default selection: most recent analyzed policy. Skipped if the user
+  // has already picked something — including 'all'.
+  const [hasInitedSelection, setHasInitedSelection] = useState(false);
+  useEffect(() => {
+    if (hasInitedSelection) return;
+    if (policies.length === 0) return;
+    const analyzed = policies.find(p => p.status === 'analyzed');
+    if (analyzed) {
+      setPolicyId(analyzed.id);
+    }
+    setHasInitedSelection(true);
+  }, [policies, hasInitedSelection]);
 
-  // Phase C: removed sample-data fallback. Real mappings only — the empty
-  // state below kicks in when there are none, so reviewers never see
-  // fabricated evidence in production.
-  const displayMappings = mappings;
+  const selectedPolicy = useMemo(
+    () => policies.find(p => p.id === policyId),
+    [policies, policyId],
+  );
 
-  const filteredMappings = displayMappings.filter(mapping => {
-    const matchesSearch = mapping.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const { data: mappings = [], isLoading } = useQuery({
+    queryKey: ['mappingReviews', policyId],
+    queryFn: () => MappingReview.list('-created_at'),
+  });
+
+  const policyMap = useMemo(
+    () => policies.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}),
+    [policies],
+  );
+
+  // Mappings scoped to the selected policy (if any). 'all' shows everything.
+  const scopedMappings = useMemo(() => {
+    if (policyId === 'all') return mappings;
+    return mappings.filter(m => m.policy_id === policyId);
+  }, [mappings, policyId]);
+
+  // Build the framework filter options dynamically from real data so the
+  // dropdown matches what the user actually has — earlier this was hardcoded
+  // to NCA ECC / ISO 27001 / NIST 800-53, which never matches ECC-2 or SACS-002.
+  const frameworkOptions = useMemo(() => {
+    const set = new Set();
+    scopedMappings.forEach(m => { if (m.framework) set.add(m.framework); });
+    return Array.from(set).sort();
+  }, [scopedMappings]);
+
+  const filteredMappings = scopedMappings.filter(mapping => {
+    const matchesSearch =
+      !searchQuery ||
+      mapping.control_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       mapping.evidence_snippet?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFramework = frameworkFilter === 'all' || mapping.framework === frameworkFilter;
     const matchesConfidence = confidenceFilter === 'all' ||
@@ -79,19 +109,49 @@ export default function Explainability() {
     if (score >= 0.8) return {
       bg: 'bg-emerald-100 dark:bg-emerald-500/15',
       text: 'text-emerald-700 dark:text-emerald-300',
-      bar: 'bg-emerald-500'
+      bar: 'bg-emerald-500',
     };
     if (score >= 0.6) return {
       bg: 'bg-amber-100 dark:bg-amber-500/15',
       text: 'text-amber-700 dark:text-amber-300',
-      bar: 'bg-amber-500'
+      bar: 'bg-amber-500',
     };
     return {
       bg: 'bg-red-100 dark:bg-red-500/15',
       text: 'text-red-700 dark:text-red-300',
-      bar: 'bg-red-500'
+      bar: 'bg-red-500',
     };
   };
+
+  // Empty-state copy chosen based on what the user is actually looking at,
+  // so they know whether to upload a policy, run an analysis, or just pick
+  // a different filter.
+  const emptyState = (() => {
+    if (policies.length === 0) {
+      return {
+        title: 'No policies yet',
+        body: 'Upload a policy and run a compliance analysis to generate AI mappings with explanations.',
+      };
+    }
+    if (policyId !== 'all' && selectedPolicy && selectedPolicy.status !== 'analyzed') {
+      return {
+        title: 'This policy has not been analysed yet',
+        body: 'Run an analysis from the Policies page first to generate explanations.',
+      };
+    }
+    if (filteredMappings.length === 0 && scopedMappings.length > 0) {
+      return {
+        title: 'No mappings match the current filters',
+        body: 'Clear the search box or change the framework / confidence filters above.',
+      };
+    }
+    return {
+      title: 'No mappings found',
+      body: policyId === 'all'
+        ? 'Run a compliance analysis on any policy to generate AI mappings with explanations.'
+        : 'No mappings have been generated for this policy yet.',
+    };
+  })();
 
   return (
     <PageContainer
@@ -122,7 +182,22 @@ export default function Explainability() {
       </Card>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+      <div className="flex flex-col lg:flex-row gap-4 mb-6">
+        <Select value={policyId} onValueChange={setPolicyId}>
+          <SelectTrigger className="w-full lg:w-72">
+            <FileText className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Policy" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All policies</SelectItem>
+            {policies.map(p => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.file_name || p.id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -132,27 +207,29 @@ export default function Explainability() {
             className="pl-10"
           />
         </div>
+
         <Select value={frameworkFilter} onValueChange={setFrameworkFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-44">
             <Filter className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Framework" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Frameworks</SelectItem>
-            <SelectItem value="NCA ECC">NCA ECC</SelectItem>
-            <SelectItem value="ISO 27001">ISO 27001</SelectItem>
-            <SelectItem value="NIST 800-53">NIST 800-53</SelectItem>
+            <SelectItem value="all">All frameworks</SelectItem>
+            {frameworkOptions.map(fw => (
+              <SelectItem key={fw} value={fw}>{fw}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
+
         <Select value={confidenceFilter} onValueChange={setConfidenceFilter}>
           <SelectTrigger className="w-44">
             <Brain className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Confidence" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Confidence</SelectItem>
-            <SelectItem value="low">Low Confidence</SelectItem>
-            <SelectItem value="high">High Confidence</SelectItem>
+            <SelectItem value="all">All confidence</SelectItem>
+            <SelectItem value="low">Low confidence</SelectItem>
+            <SelectItem value="high">High confidence</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -163,6 +240,17 @@ export default function Explainability() {
           const confidence = mapping.confidence_score || 0;
           const colors = getConfidenceColor(confidence);
           const isLowConfidence = confidence < CONFIDENCE_THRESHOLD;
+          const policy = policyMap[mapping.policy_id];
+          const policyName = mapping.policy_file_name || policy?.file_name || '—';
+          const controlCode = mapping.control_id || '—';
+          const reviewLinkParams = new URLSearchParams();
+          if (mapping.policy_id) reviewLinkParams.set('policy_id', mapping.policy_id);
+          if (mapping.control_id) reviewLinkParams.set('control', mapping.control_id);
+          const reviewLink = createPageUrl(
+            reviewLinkParams.toString()
+              ? `MappingReview?${reviewLinkParams.toString()}`
+              : 'MappingReview',
+          );
 
           return (
             <Card key={mapping.id} className="shadow-sm overflow-hidden">
@@ -176,29 +264,36 @@ export default function Explainability() {
               )}
 
               <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="font-mono text-sm">
-                      {mapping.control_id}
-                    </Badge>
-                    <Badge className="bg-muted text-foreground border border-border">
-                      <Shield className="w-3 h-3 mr-1" />
-                      {mapping.framework}
-                    </Badge>
-                    {mapping.decision && mapping.decision !== 'Pending' && (
-                      <Badge className={
-                        mapping.decision === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' :
-                        mapping.decision === 'Rejected' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' :
-                        'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
-                      }>
-                        {mapping.decision === 'Accepted' && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                        {mapping.decision}
+                {/* Policy + framework header — replaces the previous control-only badge row */}
+                <div className="flex items-start justify-between mb-3 gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 mb-1">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span className="truncate" title={policyName}>{policyName}</span>
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="font-mono text-sm">
+                        {controlCode}
                       </Badge>
-                    )}
+                      <Badge className="bg-muted text-foreground border border-border">
+                        <Shield className="w-3 h-3 mr-1" />
+                        {mapping.framework || 'Unknown framework'}
+                      </Badge>
+                      {mapping.decision && mapping.decision !== 'Pending' && (
+                        <Badge className={
+                          mapping.decision === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' :
+                          mapping.decision === 'Rejected' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' :
+                          'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
+                        }>
+                          {mapping.decision === 'Accepted' && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                          {mapping.decision}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  
-                  {/* Confidence Score */}
-                  <div className={`${colors.bg} ${colors.text} px-3 py-1.5 rounded-lg`}>
+
+                  {/* Confidence score */}
+                  <div className={`${colors.bg} ${colors.text} px-3 py-1.5 rounded-lg shrink-0`}>
                     <span className="text-sm font-medium">{Math.round(confidence * 100)}% Confidence</span>
                   </div>
                 </div>
@@ -213,9 +308,9 @@ export default function Explainability() {
                     </AccordionTrigger>
                     <AccordionContent>
                       <div className="bg-muted/50 border border-border rounded-lg p-4 mt-2">
-                        <p className="text-sm text-foreground italic">
-                          "{mapping.evidence_snippet}"
-                        </p>
+                        {mapping.evidence_snippet
+                          ? <p className="text-sm text-foreground italic">"{mapping.evidence_snippet}"</p>
+                          : <p className="text-sm text-muted-foreground">Evidence not available.</p>}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
@@ -229,10 +324,11 @@ export default function Explainability() {
                     </AccordionTrigger>
                     <AccordionContent>
                       <div className="bg-purple-50 rounded-lg p-4 mt-2 border border-purple-200 dark:bg-purple-500/10 dark:border-purple-500/30">
-                        <p className="text-sm text-purple-800 dark:text-purple-200">{mapping.ai_rationale}</p>
+                        {mapping.ai_rationale
+                          ? <p className="text-sm text-purple-800 dark:text-purple-200 whitespace-pre-wrap">{mapping.ai_rationale}</p>
+                          : <p className="text-sm text-muted-foreground">Rationale not available.</p>}
 
-                        {/* Matched Keywords */}
-                        {mapping.matched_keywords && (
+                        {mapping.matched_keywords && mapping.matched_keywords.length > 0 && (
                           <div className="mt-3">
                             <p className="text-xs font-medium text-purple-600 dark:text-purple-300 mb-1">Matched Keywords:</p>
                             <div className="flex flex-wrap gap-1">
@@ -245,7 +341,6 @@ export default function Explainability() {
                           </div>
                         )}
 
-                        {/* Similarity Score */}
                         {mapping.similarity_score && (
                           <div className="mt-3">
                             <p className="text-xs font-medium text-purple-600 dark:text-purple-300 mb-1">Semantic Similarity:</p>
@@ -259,7 +354,6 @@ export default function Explainability() {
                     </AccordionContent>
                   </AccordionItem>
 
-                  {/* Uncertainty Section for Low Confidence */}
                   {isLowConfidence && mapping.uncertainty_reason && (
                     <AccordionItem value="uncertainty" className="border-0">
                       <AccordionTrigger className="hover:no-underline py-2">
@@ -278,7 +372,7 @@ export default function Explainability() {
                 </Accordion>
 
                 <div className="flex justify-end mt-4">
-                  <Link to={createPageUrl(`MappingReview?control=${mapping.control_id}`)}>
+                  <Link to={reviewLink}>
                     <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400">
                       Review Mapping
                       <ExternalLink className="w-3 h-3 ml-1" />
@@ -291,14 +385,12 @@ export default function Explainability() {
         })}
       </div>
 
-      {filteredMappings.length === 0 && (
+      {filteredMappings.length === 0 && !isLoading && (
         <Card className="shadow-sm">
           <CardContent className="py-16 text-center">
             <Brain className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-1">No mappings found</h3>
-            <p className="text-sm text-muted-foreground">
-              Run a compliance analysis to generate AI mappings with explanations
-            </p>
+            <h3 className="text-lg font-semibold text-foreground mb-1">{emptyState.title}</h3>
+            <p className="text-sm text-muted-foreground">{emptyState.body}</p>
           </CardContent>
         </Card>
       )}

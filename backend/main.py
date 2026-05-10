@@ -1577,6 +1577,23 @@ def get_gaps(
     ]
 
 
+# Phase HOTFIX (Explainability): for ECC-2 / SACS-002 mapping_reviews,
+# `mr.control_id` is NULL because those analyzers don't link to control_library
+# (their controls live in ecc_framework / sacs_framework, not control_library).
+# The real control code is embedded in ai_rationale as `[ECC2][<code>] ...` or
+# `[SACS][<code>] ...`. This regex pulls it out so the FE has something
+# meaningful to render on each card without requiring a schema change.
+import re as _re
+_CONTROL_CODE_RE = _re.compile(r"\[(?:ECC2|SACS|NCA|ISO|NIST)[^\]]*\]\s*\[?([A-Z0-9][A-Z0-9._:-]*)\]?")
+
+
+def _extract_control_code(ai_rationale: Optional[str]) -> str:
+    if not ai_rationale:
+        return ""
+    m = _CONTROL_CODE_RE.search(ai_rationale)
+    return m.group(1) if m else ""
+
+
 @app.get("/api/entities/MappingReview")
 def get_mapping_reviews(
     request: Request,
@@ -1599,7 +1616,8 @@ def get_mapping_reviews(
                cl.control_code AS control_id,
                mr.evidence_snippet, mr.confidence_score,
                mr.ai_rationale, mr.decision, mr.review_notes,
-               mr.reviewed_at, mr.created_at
+               mr.reviewed_at, mr.created_at,
+               p.file_name AS policy_file_name
         FROM mapping_reviews mr
         JOIN policies p ON p.id = mr.policy_id
         LEFT JOIN frameworks f ON mr.framework_id = f.id
@@ -1610,11 +1628,13 @@ def get_mapping_reviews(
     """), {"lim": limit, "pid": policy_id, "uid": str(current_user.id)}).fetchall()
     return [
         {"id": r[0], "policy_id": r[1], "framework": r[2] or "Unknown",
-         "control_id": r[3] or "", "evidence_snippet": r[4],
+         "control_id": r[3] or _extract_control_code(r[6]),
+         "evidence_snippet": r[4],
          "confidence_score": r[5], "ai_rationale": r[6],
          "decision": r[7], "review_notes": r[8],
          "reviewed_at": r[9].isoformat() if r[9] else None,
-         "created_at": r[10].isoformat() if r[10] else None}
+         "created_at": r[10].isoformat() if r[10] else None,
+         "policy_file_name": r[11]}
         for r in rows
     ]
 

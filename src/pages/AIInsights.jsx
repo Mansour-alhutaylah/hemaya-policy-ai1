@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import StatsCard from '@/components/ui/StatsCard';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -25,55 +32,49 @@ import {
   X,
   ArrowRight,
   Brain,
-  Sparkles
+  Sparkles,
 } from 'lucide-react';
-import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 const AIInsight = api.entities.AIInsight;
-const ComplianceResult = api.entities.ComplianceResult;
-const Gap = api.entities.Gap;
+const Policy = api.entities.Policy;
 
 const insightTypeConfig = {
   gap_priority: {
     icon: AlertTriangle,
     color: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
-    bgGradient: 'from-red-500 to-rose-600'
   },
   policy_improvement: {
     icon: FileText,
     color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
-    bgGradient: 'from-blue-500 to-indigo-600'
   },
   control_recommendation: {
     icon: Shield,
     color: 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300',
-    bgGradient: 'from-purple-500 to-violet-600'
   },
   risk_alert: {
     icon: AlertTriangle,
     color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-    bgGradient: 'from-amber-500 to-orange-600'
   },
   trend_analysis: {
     icon: TrendingUp,
     color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-    bgGradient: 'from-emerald-500 to-teal-600'
   },
 };
 
 const priorityColors = {
   Critical: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30',
-  High: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
-  Medium: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
-  Low: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30',
+  High:     'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
+  Medium:   'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
+  Low:      'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30',
 };
 
 export default function AIInsightsPage() {
   const [selectedInsight, setSelectedInsight] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [policyId, setPolicyId] = useState('all');
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -83,15 +84,43 @@ export default function AIInsightsPage() {
     queryFn: () => AIInsight.list('-created_at'),
   });
 
-  const { data: results = [] } = useQuery({
-    queryKey: ['complianceResults'],
-    queryFn: () => ComplianceResult.list('-analyzed_at', 10),
+  const { data: policies = [] } = useQuery({
+    queryKey: ['policies'],
+    queryFn: () => Policy.list('-last_analyzed_at'),
   });
 
-  const { data: gaps = [] } = useQuery({
-    queryKey: ['gaps'],
-    queryFn: () => Gap.filter({ status: 'Open' }),
-  });
+  // Default selection: most recent analyzed policy. Only set once so the user
+  // can switch to "All policies" without it being overridden on the next render.
+  const [hasInitedSelection, setHasInitedSelection] = useState(false);
+  useEffect(() => {
+    if (hasInitedSelection) return;
+    if (policies.length === 0) return;
+    const analyzed = policies.find(p => p.status === 'analyzed');
+    if (analyzed) {
+      setPolicyId(analyzed.id);
+    }
+    setHasInitedSelection(true);
+  }, [policies, hasInitedSelection]);
+
+  const policyMap = useMemo(
+    () => policies.reduce((acc, p) => { acc[p.id] = p; return acc; }, {}),
+    [policies],
+  );
+
+  const selectedPolicy = useMemo(
+    () => policies.find(p => p.id === policyId),
+    [policies, policyId],
+  );
+
+  // Phase HOTFIX: only real backend insights are shown. The previous
+  // generateDerivedInsights() helper fabricated cards including a hardcoded
+  // "improved by 8%" trend and a "Policy Language Enhancement Opportunity"
+  // citing fake sections "3.2, 4.1, 5.3". Per the user's spec we don't show
+  // any insight unless it came from the ai_insights table.
+  const scopedInsights = useMemo(() => {
+    if (policyId === 'all') return insights;
+    return insights.filter(i => i.policy_id === policyId);
+  }, [insights, policyId]);
 
   const updateInsightMutation = useMutation({
     mutationFn: ({ id, data }) => AIInsight.update(id, data),
@@ -100,88 +129,21 @@ export default function AIInsightsPage() {
     },
   });
 
-  // Generate derived insights if no insights exist
-  const generateDerivedInsights = () => {
-    const derived = [];
-    
-    // Gap priority insights
-    const criticalGaps = gaps.filter(g => g.severity === 'Critical');
-    if (criticalGaps.length > 0) {
-      derived.push({
-        id: 'derived-1',
-        insight_type: 'gap_priority',
-        title: `${criticalGaps.length} Critical Gaps Require Immediate Attention`,
-        description: `You have ${criticalGaps.length} critical compliance gaps that should be addressed urgently. These gaps pose significant risk to your organization's security posture.`,
-        priority: 'Critical',
-        evidence_snippet: criticalGaps.slice(0, 2).map(g => g.control_id).join(', '),
-        confidence: 0.95,
-        status: 'New',
-      });
-    }
-
-    // Low compliance framework
-    const lowScoreResults = results.filter(r => r.compliance_score < 60);
-    if (lowScoreResults.length > 0) {
-      const lowestFramework = lowScoreResults.reduce((prev, curr) => 
-        (curr.compliance_score || 0) < (prev.compliance_score || 0) ? curr : prev
-      );
-      derived.push({
-        id: 'derived-2',
-        insight_type: 'control_recommendation',
-        title: `${lowestFramework.framework} Compliance Below Target`,
-        description: `Your ${lowestFramework.framework} compliance score is ${Math.round(lowestFramework.compliance_score)}%, which is below the recommended 70% threshold. Focus on addressing ${lowestFramework.controls_missing} missing controls.`,
-        priority: 'High',
-        framework: lowestFramework.framework,
-        confidence: 0.88,
-        status: 'New',
-      });
-    }
-
-    // Policy improvement suggestions
-    if (results.length > 0) {
-      derived.push({
-        id: 'derived-3',
-        insight_type: 'policy_improvement',
-        title: 'Policy Language Enhancement Opportunity',
-        description: 'AI analysis detected areas where policy language could be strengthened to better align with control requirements. Consider adding explicit references to data classification and access review procedures.',
-        priority: 'Medium',
-        evidence_snippet: 'Sections 3.2, 4.1, and 5.3 could benefit from more specific control language.',
-        confidence: 0.75,
-        status: 'New',
-      });
-    }
-
-    // Trend analysis
-    derived.push({
-      id: 'derived-4',
-      insight_type: 'trend_analysis',
-      title: 'Compliance Improvement Trend Detected',
-      description: 'Over the past month, your overall compliance posture has improved by approximately 8%. Continue focusing on access control and incident response controls for further gains.',
-      priority: 'Low',
-      confidence: 0.82,
-      status: 'New',
-    });
-
-    return derived;
-  };
-
-  const displayInsights = insights.length > 0 ? insights : generateDerivedInsights();
-
-  const filteredInsights = displayInsights.filter(insight => {
+  const filteredInsights = scopedInsights.filter(insight => {
     if (activeTab === 'all') return true;
     if (activeTab === 'new') return insight.status === 'New';
     if (activeTab === 'actioned') return insight.status === 'Actioned';
     return insight.insight_type === activeTab;
   });
 
-  const newCount = displayInsights.filter(i => i.status === 'New').length;
-  const criticalCount = displayInsights.filter(i => i.priority === 'Critical').length;
-  const highCount = displayInsights.filter(i => i.priority === 'High').length;
+  const newCount      = scopedInsights.filter(i => i.status === 'New').length;
+  const criticalCount = scopedInsights.filter(i => i.priority === 'Critical').length;
+  const highCount     = scopedInsights.filter(i => i.priority === 'High').length;
 
   const handleViewInsight = (insight) => {
     setSelectedInsight(insight);
     setShowDetailDialog(true);
-    if (insight.status === 'New' && insight.id && !insight.id.startsWith('derived')) {
+    if (insight.status === 'New' && insight.id) {
       updateInsightMutation.mutate({
         id: insight.id,
         data: { status: 'Viewed' },
@@ -190,7 +152,7 @@ export default function AIInsightsPage() {
   };
 
   const handleActionInsight = (insight, action) => {
-    if (insight.id && !insight.id.startsWith('derived')) {
+    if (insight?.id) {
       updateInsightMutation.mutate({
         id: insight.id,
         data: { status: action },
@@ -198,12 +160,40 @@ export default function AIInsightsPage() {
     }
     toast({
       title: action === 'Actioned' ? 'Insight Actioned' : 'Insight Dismissed',
-      description: action === 'Actioned' 
+      description: action === 'Actioned'
         ? 'This insight has been marked as actioned.'
         : 'This insight has been dismissed.',
     });
     setShowDetailDialog(false);
   };
+
+  // Empty-state copy reflects the real reason there are no insights:
+  // no policies / selected policy not analysed / analysed but nothing
+  // generated yet / matched filter is empty. Never claims fabricated data.
+  const emptyState = (() => {
+    if (policies.length === 0) {
+      return {
+        title: 'No policies yet',
+        body: 'Upload a policy and run a compliance analysis to generate AI insights.',
+      };
+    }
+    if (policyId !== 'all' && selectedPolicy && selectedPolicy.status !== 'analyzed') {
+      return {
+        title: 'This policy has not been analysed yet',
+        body: 'Run an analysis from the Policies page first to generate insights.',
+      };
+    }
+    if (filteredInsights.length === 0 && scopedInsights.length > 0) {
+      return {
+        title: 'No insights match the current filter',
+        body: 'Switch to a different tab or change the policy selector above.',
+      };
+    }
+    return {
+      title: 'No insights generated yet',
+      body: 'Once analysis writes insights for a policy they will appear here. In the meantime, review the Gaps & Risks and Mapping Review pages for actionable items.',
+    };
+  })();
 
   return (
     <PageContainer
@@ -216,31 +206,30 @@ export default function AIInsightsPage() {
         </Badge>
       }
     >
-      {/* Stats */}
+      {/* Policy selector */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <Select value={policyId} onValueChange={setPolicyId}>
+          <SelectTrigger className="w-full sm:w-80">
+            <FileText className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Policy" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All policies</SelectItem>
+            {policies.map(p => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.file_name || p.id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Stats — every count comes straight from the scoped insights array */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <StatsCard
-          title="New Insights"
-          value={newCount}
-          icon={Lightbulb}
-          variant="emerald"
-        />
-        <StatsCard
-          title="Critical Priority"
-          value={criticalCount}
-          icon={AlertTriangle}
-          variant={criticalCount > 0 ? 'red' : 'default'}
-        />
-        <StatsCard
-          title="High Priority"
-          value={highCount}
-          icon={AlertTriangle}
-          variant={highCount > 0 ? 'amber' : 'default'}
-        />
-        <StatsCard
-          title="Total Insights"
-          value={displayInsights.length}
-          icon={Brain}
-        />
+        <StatsCard title="New Insights"      value={newCount}              icon={Lightbulb}     variant="emerald" />
+        <StatsCard title="Critical Priority" value={criticalCount}         icon={AlertTriangle} variant={criticalCount > 0 ? 'red'   : 'default'} />
+        <StatsCard title="High Priority"     value={highCount}             icon={AlertTriangle} variant={highCount > 0     ? 'amber' : 'default'} />
+        <StatsCard title="Total Insights"    value={scopedInsights.length} icon={Brain} />
       </div>
 
       {/* Tabs */}
@@ -267,10 +256,8 @@ export default function AIInsightsPage() {
         <Card className="shadow-sm">
           <CardContent className="py-16 text-center">
             <Brain className="w-12 h-12 text-muted-foreground/60 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-1">No insights available</h3>
-            <p className="text-sm text-muted-foreground">
-              Run a compliance analysis to generate AI-powered insights
-            </p>
+            <h3 className="text-lg font-semibold text-foreground mb-1">{emptyState.title}</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">{emptyState.body}</p>
           </CardContent>
         </Card>
       ) : (
@@ -278,6 +265,7 @@ export default function AIInsightsPage() {
           {filteredInsights.map((insight) => {
             const config = insightTypeConfig[insight.insight_type] || insightTypeConfig.trend_analysis;
             const Icon = config.icon;
+            const policy = policyMap[insight.policy_id];
 
             return (
               <Card
@@ -292,8 +280,8 @@ export default function AIInsightsPage() {
                         <Icon className="w-5 h-5" />
                       </div>
                       <div>
-                        <Badge className={`${priorityColors[insight.priority]} border text-xs`}>
-                          {insight.priority}
+                        <Badge className={`${priorityColors[insight.priority] || ''} border text-xs`}>
+                          {insight.priority || 'Medium'}
                         </Badge>
                         {insight.status === 'New' && (
                           <Badge className="ml-2 bg-emerald-500 text-white text-xs">New</Badge>
@@ -306,6 +294,12 @@ export default function AIInsightsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {policy && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 mb-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span className="truncate" title={policy.file_name}>{policy.file_name}</span>
+                    </p>
+                  )}
                   <h3 className="font-semibold text-foreground mb-2 line-clamp-2">
                     {insight.title}
                   </h3>
@@ -319,7 +313,7 @@ export default function AIInsightsPage() {
                         {insight.framework}
                       </Badge>
                     )}
-                    {insight.confidence && (
+                    {typeof insight.confidence === 'number' && (
                       <span className="text-xs text-muted-foreground">
                         {Math.round(insight.confidence * 100)}% confidence
                       </span>
@@ -344,7 +338,6 @@ export default function AIInsightsPage() {
 
           {selectedInsight && (
             <div className="space-y-6 py-4">
-              {/* Header */}
               <div className="flex items-start gap-4">
                 <div className={`w-12 h-12 rounded-xl ${insightTypeConfig[selectedInsight.insight_type]?.color || 'bg-muted text-muted-foreground'} flex items-center justify-center`}>
                   {(() => {
@@ -353,9 +346,9 @@ export default function AIInsightsPage() {
                   })()}
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge className={`${priorityColors[selectedInsight.priority]} border`}>
-                      {selectedInsight.priority} Priority
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <Badge className={`${priorityColors[selectedInsight.priority] || ''} border`}>
+                      {selectedInsight.priority || 'Medium'} Priority
                     </Badge>
                     {selectedInsight.framework && (
                       <Badge variant="outline">
@@ -365,15 +358,19 @@ export default function AIInsightsPage() {
                     )}
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">{selectedInsight.title}</h3>
+                  {policyMap[selectedInsight.policy_id] && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" />
+                      {policyMap[selectedInsight.policy_id].file_name}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Description */}
               <div className="bg-muted/50 border border-border rounded-lg p-4">
                 <p className="text-foreground">{selectedInsight.description}</p>
               </div>
 
-              {/* Evidence */}
               {selectedInsight.evidence_snippet && (
                 <div>
                   <p className="text-sm font-medium text-muted-foreground mb-2">Evidence Reference</p>
@@ -383,7 +380,6 @@ export default function AIInsightsPage() {
                 </div>
               )}
 
-              {/* Control Reference */}
               {selectedInsight.control_reference && (
                 <div>
                   <p className="text-sm font-medium text-muted-foreground mb-2">Control Reference</p>
@@ -393,8 +389,7 @@ export default function AIInsightsPage() {
                 </div>
               )}
 
-              {/* Confidence */}
-              {selectedInsight.confidence && (
+              {typeof selectedInsight.confidence === 'number' && (
                 <div className="flex items-center gap-2">
                   <Brain className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
@@ -423,7 +418,7 @@ export default function AIInsightsPage() {
                   </Button>
                 </Link>
               )}
-              <Button 
+              <Button
                 onClick={() => handleActionInsight(selectedInsight, 'Actioned')}
                 className="bg-emerald-600 hover:bg-emerald-700"
               >
