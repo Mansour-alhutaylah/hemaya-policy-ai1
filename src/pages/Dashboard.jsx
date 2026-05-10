@@ -19,6 +19,7 @@ import {
   FileText,
   Filter,
   ChevronDown,
+  ChevronRight,
   Activity,
   Check,
   Loader2,
@@ -220,7 +221,7 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, accent
   if (isLoading) {
     return (
       <div
-        className="bg-card rounded-2xl border border-border shadow-sm p-5 flex flex-col gap-4"
+        className="bg-card rounded-2xl border border-border shadow-sm p-4 sm:p-6 flex flex-col gap-4"
         style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
       >
         <div className="flex items-start justify-between">
@@ -228,8 +229,9 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, accent
           <Skeleton className="w-14 h-5 rounded-full" />
         </div>
         <div className="space-y-2">
-          <Skeleton className="h-7 w-20 rounded-lg" />
-          <Skeleton className="h-4 w-28 rounded" />
+          <Skeleton className="h-8 w-20 rounded-lg" />
+          <Skeleton className="h-3 w-24 rounded" />
+          <Skeleton className="h-3 w-32 rounded" />
         </div>
       </div>
     );
@@ -261,9 +263,9 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, accent
         )}
       </div>
       <div>
-        <p className="text-2xl font-bold tracking-tight text-foreground leading-none">{value}</p>
-        <p className="text-sm font-medium text-muted-foreground mt-1.5">{title}</p>
-        {subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{subtitle}</p>}
+        <p className="text-3xl font-semibold tracking-tight tabular-nums text-foreground leading-none">{value}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mt-2">{title}</p>
+        {subtitle && <p className="text-xs text-muted-foreground/70 mt-1 leading-snug">{subtitle}</p>}
       </div>
     </div>
   );
@@ -273,6 +275,62 @@ function CardIcon({ children, bg }) {
   return (
     <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${bg}`}>
       {children}
+    </div>
+  );
+}
+
+// Designed empty state for charts. Reused across the framework chart,
+// controls-distribution chart, and risky-controls list. Single CTA, no
+// fabricated copy — the message explains what the user has to do for
+// the chart to populate, e.g. "Run an analysis...".
+function ChartEmptyState({ icon: Icon, title, body, ctaLabel, ctaTo }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
+        <Icon className="w-6 h-6 text-muted-foreground/60" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {body && <p className="text-xs text-muted-foreground/70 mt-1 max-w-[260px]">{body}</p>}
+      {ctaLabel && ctaTo && (
+        <Link to={ctaTo} className="mt-3">
+          <Button size="sm" variant="outline" className="text-xs">
+            {ctaLabel}
+          </Button>
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// Score-tinted summary tile for a single framework. Used when there are
+// only 1-2 frameworks (a sparse bar chart looks broken in that case).
+// All values come straight from a /dashboard/stats framework_scores row.
+function FrameworkSummaryCard({ framework, score, covered, partial, missing }) {
+  const total = covered + partial + missing;
+  // Score-to-color is a *presentational* mapping — not severity. We reuse
+  // the same green/yellow/red Status tokens the rest of the page uses so
+  // the eye is consistent.
+  const tone =
+    score >= 80 ? { text: 'text-emerald-600 dark:text-emerald-400', bar: '#22C55E', tint: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'border-emerald-200 dark:border-emerald-500/30' }
+    : score >= 50 ? { text: 'text-amber-600 dark:text-amber-400',     bar: '#EAB308', tint: 'bg-amber-50 dark:bg-amber-500/10',     border: 'border-amber-200 dark:border-amber-500/30' }
+    :              { text: 'text-red-600 dark:text-red-400',        bar: '#EF4444', tint: 'bg-red-50 dark:bg-red-500/10',         border: 'border-red-200 dark:border-red-500/30' };
+  return (
+    <div className={`rounded-xl border ${tone.border} ${tone.tint} p-4 flex flex-col gap-3`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{framework}</p>
+          <p className="text-xs text-muted-foreground/80 mt-0.5 tabular-nums">{total} control{total === 1 ? '' : 's'}</p>
+        </div>
+        <p className={`text-3xl font-semibold tracking-tight tabular-nums ${tone.text} leading-none`}>{score}%</p>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(0, Math.min(100, score))}%`, backgroundColor: tone.bar }} />
+      </div>
+      <div className="flex items-center justify-between text-[11px] tabular-nums">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS.Covered }} /><span className="text-muted-foreground">Compliant</span><span className="text-foreground font-semibold ml-1">{covered}</span></span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS.Partial }} /><span className="text-muted-foreground">Partial</span><span className="text-foreground font-semibold ml-1">{partial}</span></span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS.Missing }} /><span className="text-muted-foreground">Missing</span><span className="text-foreground font-semibold ml-1">{missing}</span></span>
+      </div>
     </div>
   );
 }
@@ -387,13 +445,26 @@ export default function Dashboard() {
   const totalGaps = riskData.reduce((sum, r) => sum + r.value, 0);
 
   const controlsData = useMemo(() =>
+    // Use the full framework name on the X-axis. The previous .split(' ')[0]
+    // turned "NCA ECC" -> "NCA" and "ISO 27001" -> "ISO" silently, dropping
+    // identifying detail. Full name fits because the tooltip shows the same.
     complianceByFramework.map(item => ({
-      name:    item.framework.split(' ')[0],
+      name:    item.framework,
       Covered: item.covered,
       Partial: item.partial,
       Missing: item.missing,
     })),
   [complianceByFramework]);
+
+  // KPI context lines — all derived from data already loaded above. Strict
+  // rule: never invent a metric. If we can't compute it from the existing
+  // payload, the line stays empty.
+  const kpiCovered = complianceByFramework.reduce((s, f) => s + f.covered, 0);
+  const kpiPartial = complianceByFramework.reduce((s, f) => s + f.partial, 0);
+  const kpiMissing = complianceByFramework.reduce((s, f) => s + f.missing, 0);
+  const selectedPolicy = selectedFile === 'all'
+    ? null
+    : policies.find(p => p.id === selectedFile);
 
   // Phase D: status donut data (covered / partial / missing across frameworks)
   const statusOverview = stats?.status_overview || {};
@@ -545,22 +616,34 @@ export default function Dashboard() {
       {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
 
-        {/* Static — not affected by file filter */}
+        {/* Phase D-3: trend chips removed — the API returns no period-
+            over-period delta, so the previous '+5%' / '-3%' / '+12' / '-2'
+            values were fabricated. Subtitles are computed from already-loaded
+            data only — no invented metrics. */}
         <KpiCard
           title="Compliance Frameworks"
           value={frameworkCount}
           icon={Shield}
-          subtitle="Active frameworks"
+          subtitle={
+            frameworkCount === 0
+              ? 'Run an analysis to populate'
+              : `Across ${policies.length} policy${policies.length === 1 ? '' : 'ies'}`
+          }
           accentColor="#10b981"
+          isLoading={statsSkeletons || policiesLoading}
         />
 
-        {/* Phase D-3: trend chips removed — the API returns no period-
-            over-period delta, so the previous '+5%' / '-3%' / '+12' / '-2'
-            values were fabricated. KpiCard renders cleanly without them. */}
         <KpiCard
           title="Security Score"
           value={`${avgScore}%`}
           icon={TrendingUp}
+          subtitle={
+            selectedPolicy
+              ? `For ${selectedPolicy.file_name}`
+              : frameworkCount > 0
+                ? `Average across ${frameworkCount} framework${frameworkCount === 1 ? '' : 's'}`
+                : 'No analyses yet'
+          }
           accentColor="#3b82f6"
           isLoading={statsSkeletons}
         />
@@ -568,6 +651,11 @@ export default function Dashboard() {
           title="Controls Mapped"
           value={totalControls}
           icon={FileCheck}
+          subtitle={
+            totalControls === 0
+              ? 'No controls mapped yet'
+              : `${kpiCovered} compliant · ${kpiPartial} partial · ${kpiMissing} missing`
+          }
           accentColor="#8b5cf6"
           isLoading={statsSkeletons}
         />
@@ -575,17 +663,20 @@ export default function Dashboard() {
           title="Open Gaps"
           value={openGaps}
           icon={AlertTriangle}
+          subtitle={
+            openGaps === 0
+              ? frameworkCount === 0 ? 'No analyses yet' : 'All controls compliant'
+              : `Across ${frameworkCount} framework${frameworkCount === 1 ? '' : 's'}`
+          }
           accentColor={openGaps > 10 ? SEVERITY_COLORS.Critical : SEVERITY_COLORS.High}
           isLoading={statsSkeletons}
         />
 
-        {/* Phase D-3: subtitle was 'This month' but the value is lifetime —
-            relabelled honestly. */}
         <KpiCard
           title="Policies Analyzed"
           value={policies.length}
           icon={FileText}
-          subtitle="All time"
+          subtitle={policies.length === 0 ? 'Upload your first policy' : 'All time'}
           accentColor="#06b6d4"
           isLoading={policiesLoading}
         />
@@ -607,9 +698,33 @@ export default function Dashboard() {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-5">
+          <CardContent className="p-4 sm:p-6">
             {statsSkeletons ? (
               <Skeleton className="h-60 w-full rounded-xl" />
+            ) : complianceByFramework.length === 0 ? (
+              <ChartEmptyState
+                icon={Shield}
+                title="No framework scores yet"
+                body="Run a compliance analysis on a policy to populate framework scores."
+                ctaLabel="Open Policies"
+                ctaTo={createPageUrl('Policies')}
+              />
+            ) : complianceByFramework.length <= 2 ? (
+              // Sparse-data treatment: a single 80%-tall bar against an empty
+              // grid reads as broken. Per-framework summary cards convey the
+              // same information richly without looking unfinished.
+              <div className={`grid gap-3 ${complianceByFramework.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                {complianceByFramework.map(f => (
+                  <FrameworkSummaryCard
+                    key={f.framework}
+                    framework={f.framework}
+                    score={f.score}
+                    covered={f.covered}
+                    partial={f.partial}
+                    missing={f.missing}
+                  />
+                ))}
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height={256}>
                 <BarChart
@@ -631,12 +746,6 @@ export default function Dashboard() {
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={v => `${v}%`}
-                    label={{
-                      value: 'Compliance %',
-                      angle: -90,
-                      position: 'insideLeft',
-                      style: { fontSize: 11, fill: 'currentColor', opacity: 0.6 },
-                    }}
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
                   <Bar dataKey="score" fill="#10b981" radius={[4, 4, 0, 0]} name="Compliance" unit="%" />
@@ -659,7 +768,7 @@ export default function Dashboard() {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-5">
+          <CardContent className="p-4 sm:p-6">
             {statsSkeletons ? (
               <Skeleton className="h-60 w-full rounded-xl" />
             ) : (
@@ -691,8 +800,9 @@ export default function Dashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-bold text-foreground leading-none">{totalGaps}</span>
-                    <span className="text-xs text-muted-foreground mt-1 font-medium">Total Gaps</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">Risk</span>
+                    <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground leading-none mt-1">{totalGaps}</span>
+                    <span className="text-[11px] text-muted-foreground/70 mt-1">Total gaps</span>
                   </div>
                 </div>
 
@@ -739,7 +849,7 @@ export default function Dashboard() {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-5">
+          <CardContent className="p-4 sm:p-6">
             {statsSkeletons ? (
               <Skeleton className="h-60 w-full rounded-xl" />
             ) : totalAssessed === 0 ? (
@@ -775,8 +885,9 @@ export default function Dashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-bold text-foreground leading-none">{compliancePct}%</span>
-                    <span className="text-xs text-muted-foreground mt-1 font-medium">Compliant</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">Compliance</span>
+                    <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground leading-none mt-1">{compliancePct}%</span>
+                    <span className="text-[11px] text-muted-foreground/70 mt-1">Compliant</span>
                   </div>
                 </div>
                 <div className="flex-1 space-y-3">
@@ -817,40 +928,68 @@ export default function Dashboard() {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-5">
+          <CardContent className="p-4 sm:p-6">
             {statsSkeletons ? (
-              <Skeleton className="h-60 w-full rounded-xl" />
+              <div className="space-y-2.5">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                ))}
+              </div>
             ) : topRiskyData.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-500/60" />
+                <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mb-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-500/70" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">No open gaps</p>
+                <p className="text-sm font-medium text-foreground">No open gaps</p>
                 <p className="text-xs text-muted-foreground/70 mt-1">All controls are compliant</p>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={Math.max(220, topRiskyData.length * 28)}>
-                <BarChart
-                  data={topRiskyData}
-                  layout="vertical"
-                  margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
-                  barSize={16}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={170}
-                    tick={{ fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)' }} />
-                  <Bar dataKey="score" fill={SEVERITY_COLORS.High} radius={[0, 4, 4, 0]} name="Risk score" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            ) : (() => {
+              // List layout. The previous horizontal bar chart truncated each
+              // control name to 36 chars + ellipsis, hiding the most useful
+              // identifying text. We render the full name (line-clamped to 2
+              // for visual rhythm), the open-gap count, and an intensity bar
+              // sized relative to the highest risk_score in the list.
+              // top_risky_controls[] gives only {control_name, gap_count,
+              // risk_score} — no severity, no control_id — so we don't
+              // fabricate either. Rows link to /GapsRisks (existing route).
+              const maxScore = Math.max(...topRiskyData.map(r => r.score), 1);
+              return (
+                <ul className="space-y-2">
+                  {topRiskyData.map((row, idx) => {
+                    const widthPct = Math.round((row.score / maxScore) * 100);
+                    return (
+                      <li key={idx}>
+                        <Link
+                          to={createPageUrl('GapsRisks')}
+                          className="group flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 hover:bg-muted/50 hover:border-border transition-colors"
+                        >
+                          <span className="w-5 text-[11px] font-semibold tabular-nums text-muted-foreground/70 flex-shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug" title={row.fullName}>
+                              {row.fullName}
+                            </p>
+                            <div className="mt-1.5 flex items-center gap-3">
+                              <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                                {row.gap_count} open gap{row.gap_count === 1 ? '' : 's'}
+                              </span>
+                              <div className="h-1 flex-1 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{ width: `${widthPct}%`, backgroundColor: SEVERITY_COLORS.High }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors flex-shrink-0" />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
@@ -871,9 +1010,51 @@ export default function Dashboard() {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-5">
+          <CardContent className="p-4 sm:p-6">
             {statsSkeletons ? (
               <Skeleton className="h-60 w-full rounded-xl" />
+            ) : controlsData.length === 0 ? (
+              <ChartEmptyState
+                icon={BarChart3}
+                title="No control data yet"
+                body="Run a compliance analysis to see how each framework's controls are covered."
+                ctaLabel="Open Policies"
+                ctaTo={createPageUrl('Policies')}
+              />
+            ) : controlsData.length <= 2 ? (
+              // Sparse-data treatment: a stacked bar with one column reads as
+              // a thermometer, not a distribution. Show per-framework rows
+              // with three counters instead, sharing the page's status palette.
+              <div className="space-y-3">
+                {controlsData.map(row => {
+                  const total = row.Covered + row.Partial + row.Missing;
+                  const widths = total
+                    ? {
+                        c: (row.Covered / total) * 100,
+                        p: (row.Partial / total) * 100,
+                        m: (row.Missing / total) * 100,
+                      }
+                    : { c: 0, p: 0, m: 0 };
+                  return (
+                    <div key={row.name} className="rounded-xl border border-border bg-card p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <p className="text-sm font-semibold text-foreground truncate" title={row.name}>{row.name}</p>
+                        <p className="text-xs text-muted-foreground tabular-nums flex-shrink-0">{total} control{total === 1 ? '' : 's'}</p>
+                      </div>
+                      <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                        <div style={{ width: `${widths.c}%`, backgroundColor: STATUS_COLORS.Covered }} />
+                        <div style={{ width: `${widths.p}%`, backgroundColor: STATUS_COLORS.Partial }} />
+                        <div style={{ width: `${widths.m}%`, backgroundColor: STATUS_COLORS.Missing }} />
+                      </div>
+                      <div className="mt-3 flex items-center gap-4 text-xs tabular-nums flex-wrap">
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS.Covered }} /><span className="text-muted-foreground">Compliant</span><span className="text-foreground font-semibold ml-0.5">{row.Covered}</span></span>
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS.Partial }} /><span className="text-muted-foreground">Partial</span><span className="text-foreground font-semibold ml-0.5">{row.Partial}</span></span>
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS.Missing }} /><span className="text-muted-foreground">Missing</span><span className="text-foreground font-semibold ml-0.5">{row.Missing}</span></span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height={256}>
                 <BarChart
@@ -893,12 +1074,6 @@ export default function Dashboard() {
                     tick={{ fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
-                    label={{
-                      value: 'Controls',
-                      angle: -90,
-                      position: 'insideLeft',
-                      style: { fontSize: 11, fill: 'currentColor', opacity: 0.6 },
-                    }}
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
                   <Legend
@@ -906,9 +1081,12 @@ export default function Dashboard() {
                     iconSize={8}
                     formatter={v => <span className="text-muted-foreground" style={{ fontSize: 12 }}>{v}</span>}
                   />
-                  <Bar dataKey="Covered" stackId="a" fill={SEVERITY_COLORS.Low}      radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="Partial"  stackId="a" fill={SEVERITY_COLORS.Medium} />
-                  <Bar dataKey="Missing"  stackId="a" fill={SEVERITY_COLORS.Critical} radius={[4, 4, 0, 0]} />
+                  {/* Phase HOTFIX: use STATUS_COLORS (not SEVERITY_COLORS) on
+                      compliance categories. Same green/yellow/red hexes today,
+                      but semantically a Compliant control isn't "Low severity". */}
+                  <Bar dataKey="Covered" stackId="a" fill={STATUS_COLORS.Covered} />
+                  <Bar dataKey="Partial" stackId="a" fill={STATUS_COLORS.Partial} />
+                  <Bar dataKey="Missing" stackId="a" fill={STATUS_COLORS.Missing} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -925,7 +1103,7 @@ export default function Dashboard() {
               Recent Activity
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-5">
+          <CardContent className="p-4 sm:p-6">
             {logsLoading ? (
               <div className="space-y-3">
                 {[...Array(5)].map((_, i) => (
@@ -933,20 +1111,19 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : displayActivity.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 text-center">
-                <div className="relative mb-4">
-                  <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-                    <Activity className="w-6 h-6 text-muted-foreground/60" />
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-card border border-border shadow-sm flex items-center justify-center">
-                    <Clock className="w-3 h-3 text-muted-foreground/60" />
-                  </div>
+              // Compact empty state — the previous version stacked a 14x14
+              // icon bowl, a duplicate clock badge, and two paragraphs of
+              // helper text, taking over half the card. This is one row.
+              <div className="flex items-center gap-3 py-2">
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                  <Activity className="w-4 h-4 text-muted-foreground/60" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">No recent activity to show</p>
-                <p className="text-xs text-muted-foreground/70 mt-1 max-w-[160px]">Events will appear here as they occur</p>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  No activity yet — events appear as you upload, analyse, and review.
+                </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {displayActivity.map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3 group">
                     <div className="w-8 h-8 rounded-lg bg-muted/60 border border-border/60 flex items-center justify-center flex-shrink-0 group-hover:border-border transition-colors">
@@ -960,7 +1137,7 @@ export default function Dashboard() {
                         {activity.target || activity.actor}
                       </p>
                     </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                    <span className="text-[11px] text-muted-foreground flex-shrink-0 tabular-nums mt-1">
                       {activity.time ? format(new Date(activity.time), 'HH:mm') : 'Now'}
                     </span>
                   </div>
