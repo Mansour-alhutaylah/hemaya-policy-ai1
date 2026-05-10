@@ -25,10 +25,18 @@ import { api } from '@/api/apiClient';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
+// Phase HOTFIX: in production the SPA is on Vercel and the API on Render.
+// Call sites pass paths like "/api/policy-versions/..."; resolve() rewrites
+// the leading "/api" to the absolute Render base read from VITE_API_URL.
+// In local dev VITE_API_URL is unset, so the path stays "/api/..." and the
+// Vite proxy handles it.
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const resolve = (url) => `${API_BASE}${url.replace(/^\/api/, '')}`;
+
 const token = () => localStorage.getItem('token');
 
 async function authFetch(url) {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token()}` } });
+  const res = await fetch(resolve(url), { headers: { Authorization: `Bearer ${token()}` } });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ detail: 'Request failed' }));
     throw new Error(e.detail || 'Request failed');
@@ -37,7 +45,7 @@ async function authFetch(url) {
 }
 
 async function authPost(url, body) {
-  const res = await fetch(url, {
+  const res = await fetch(resolve(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -55,7 +63,7 @@ async function authPost(url, body) {
  * The default filename is read from the Content-Disposition header.
  */
 async function authDownloadPdf(url, fallbackName) {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token()}` } });
+  const res = await fetch(resolve(url), { headers: { Authorization: `Bearer ${token()}` } });
   if (!res.ok) {
     let detail = 'PDF generation failed. Please try again.';
     try {
