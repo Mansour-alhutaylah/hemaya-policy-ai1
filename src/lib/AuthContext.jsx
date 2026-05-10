@@ -74,14 +74,40 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    // Token + cached user — use the cache, skip the backend call.
-    // If the token is expired, the next API call from any page will
-    // return 401 and the user will be redirected to login at that point.
+    // Phase D-1: cached-first + background refresh.
+    // Show the cached user immediately (no spinner), then verify against
+    // the backend in the background. This picks up `is_admin` for users
+    // logged in before Phase C (whose cache lacks the field) and reflects
+    // server-side role changes without forcing logout/login.
     const cached = getCachedUser();
     if (cached) {
       setUser(cached);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
+      // Background refresh — non-blocking. apiClient handles 401 redirect
+      // for us; any other failure leaves the cached user intact.
+      try {
+        const fresh = await api.auth.me();
+        if (fresh) {
+          // Only update state when something actually changed, to avoid
+          // a no-op re-render of every consumer of useAuth().
+          const changed =
+            !!fresh.is_admin !== !!cached.is_admin ||
+            (fresh.role || "") !== (cached.role || "") ||
+            (fresh.email || "") !== (cached.email || "");
+          if (changed) {
+            setUser(fresh);
+          }
+          // Always update the cache so subsequent loads have the new shape.
+          localStorage.setItem("user", JSON.stringify(fresh));
+        }
+      } catch (e) {
+        // Non-fatal — keep the cached user. apiClient already redirects on 401.
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.log("[auth] background refresh failed:", e?.message);
+        }
+      }
       return;
     }
 
