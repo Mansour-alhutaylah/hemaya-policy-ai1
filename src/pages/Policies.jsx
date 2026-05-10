@@ -66,6 +66,30 @@ const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
 const Framework = api.entities.Framework;
 
+// Phase D-2: parse the analyzer's progress_stage label into structured
+// control-progress numbers so the row can render an honest "X of Y · Z%"
+// alongside the pipeline %. The analyzers (ECC-2 / SACS-002) write labels
+// like "ECC-2: 104/200 controls" — this regex tolerates either order
+// (label before or after the counts) and gracefully returns null on a
+// non-matching string. Returns null until the controls phase actually
+// starts, so the secondary bar simply doesn't render before then.
+function parseControlProgress(stage) {
+  if (!stage || typeof stage !== 'string') return null;
+  // Match "<framework>: <n>/<m> controls" OR "<n>/<m> controls" anywhere.
+  const m = stage.match(/(?:^([^:]+?):\s*)?(\d+)\s*\/\s*(\d+)\s*controls?/i);
+  if (!m) return null;
+  const completed = parseInt(m[2], 10);
+  const total = parseInt(m[3], 10);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  const percent = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+  return {
+    completed,
+    total,
+    percent,
+    frameworkLabel: m[1] ? `Assessing ${m[1].trim()} controls` : 'Assessing controls',
+  };
+}
+
 export default function Policies() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
@@ -506,9 +530,22 @@ export default function Policies() {
     {
       header: 'Status',
       accessor: 'status',
+      // Phase D-2: dual-progress redesign. The backend stores two
+      // independent values:
+      //   - row.progress (0–100): pipeline milestone written by
+      //     set_policy_progress (15/30/45/60/85). This is "how far
+      //     through the overall pipeline are we" — it is NOT the ratio
+      //     of controls assessed.
+      //   - row.progress_stage: a label like "ECC-2: 104/200 controls".
+      //     Information-rich but a different unit entirely.
+      // Showing both side-by-side as a single "55% / 104 of 200" reads
+      // as contradictory because 104/200 = 52%, not 55%. The fix: label
+      // each clearly and, when the stage label has parsable counts,
+      // render a separate Controls progress bar with its own honest %.
       cell: (row) => {
         const pct = Math.max(0, Math.min(100, Number(row.progress) || 0));
         const stage = row.progress_stage || '';
+        const ctrl = parseControlProgress(stage);
 
         if (row.status === 'processing') {
           const pausing = !!row.pause_requested;
@@ -518,46 +555,92 @@ export default function Policies() {
             ? 'bg-gradient-to-r from-slate-400 to-slate-500'
             : 'bg-gradient-to-r from-amber-400 to-emerald-500';
           return (
-            <div className="min-w-[160px] max-w-[220px]">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${labelColor}`}>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  {pausing ? 'Pausing…' : 'Processing'}
-                </span>
-                <span className={`text-xs font-semibold tabular-nums ${labelColor}`}>{pct}%</span>
+            <div className="min-w-[180px] max-w-[240px] space-y-2">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${labelColor}`}>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {pausing ? 'Pausing…' : 'Processing'}
+                  </span>
+                  <span className={`text-[10px] tabular-nums ${labelColor}`} title="Pipeline milestone — extraction → embedding → analysis → save">
+                    Overall {pct}%
+                  </span>
+                </div>
+                <div className={`h-1.5 w-full rounded-full overflow-hidden ${trackColor}`}>
+                  <div
+                    className={`h-full transition-all duration-500 ${fillColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground truncate mt-1" title={stage}>
+                  {pausing
+                    ? 'Pause will take effect at the next safe checkpoint.'
+                    : (ctrl ? (ctrl.frameworkLabel || 'Assessing controls') : (stage || 'Working…'))}
+                </p>
               </div>
-              <div className={`h-1.5 w-full rounded-full overflow-hidden ${trackColor}`}>
-                <div
-                  className={`h-full transition-all duration-500 ${fillColor}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground truncate mt-1" title={stage}>
-                {pausing ? 'Pause will take effect at the next safe checkpoint.' : stage}
-              </p>
+              {ctrl && !pausing && (
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      Controls assessed
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      {ctrl.completed} / {ctrl.total} · {ctrl.percent}%
+                    </span>
+                  </div>
+                  <div className="h-1 w-full rounded-full overflow-hidden bg-muted">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-500"
+                      style={{ width: `${ctrl.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           );
         }
 
         if (row.status === 'paused') {
           return (
-            <div className="min-w-[160px] max-w-[220px]">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
-                  <PauseCircle className="w-3.5 h-3.5" />
-                  Paused
-                </span>
-                <span className="text-xs font-semibold tabular-nums text-foreground">{pct}%</span>
+            <div className="min-w-[180px] max-w-[240px] space-y-2">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    <PauseCircle className="w-3.5 h-3.5" />
+                    Paused
+                  </span>
+                  <span className="text-[10px] tabular-nums text-muted-foreground">
+                    Overall {pct}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-slate-400 dark:bg-slate-500 transition-all duration-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground truncate mt-1">
+                  {ctrl ? (ctrl.frameworkLabel || 'Paused mid-analysis') : (stage || 'Resume to continue analysis')}
+                </p>
               </div>
-              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-slate-400 dark:bg-slate-500 transition-all duration-500"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground truncate mt-1">
-                {stage || 'Resume to continue analysis'}
-              </p>
+              {ctrl && (
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      Controls assessed
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      {ctrl.completed} / {ctrl.total} · {ctrl.percent}%
+                    </span>
+                  </div>
+                  <div className="h-1 w-full rounded-full overflow-hidden bg-muted">
+                    <div
+                      className="h-full bg-slate-400 dark:bg-slate-500 transition-all duration-500"
+                      style={{ width: `${ctrl.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           );
         }
