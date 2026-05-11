@@ -280,53 +280,6 @@ export default function Frameworks() {
           : 'Review the loaded framework reference documents and your analysis results.'
       }
     >
-      {/* ── Knowledge Base banner ── */}
-      <div className={`flex items-start gap-4 p-4 rounded-lg border mb-6 ${
-        allLoaded
-          ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30'
-          : 'bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30'
-      }`}>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-          allLoaded
-            ? 'bg-emerald-100 dark:bg-emerald-500/20'
-            : 'bg-amber-100 dark:bg-amber-500/20'
-        }`}>
-          {allLoaded
-            ? <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            : <Info className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
-        </div>
-        <div>
-          <p className={`font-semibold ${
-            allLoaded
-              ? 'text-emerald-800 dark:text-emerald-200'
-              : 'text-amber-800 dark:text-amber-200'
-          }`}>
-            {fwLoading
-              ? 'Loading frameworks…'
-              : frameworks.length === 0
-                ? 'No frameworks in the system yet'
-                : allLoaded
-                  ? 'Framework Knowledge Base Ready'
-                  : 'Some Framework Documents Are Missing'}
-          </p>
-          <p className={`text-sm mt-0.5 ${
-            allLoaded
-              ? 'text-emerald-700 dark:text-emerald-300'
-              : 'text-amber-700 dark:text-amber-300'
-          }`}>
-            {frameworks.length === 0
-              ? isAdmin
-                ? 'Upload your first framework reference document from the Admin panel to get started.'
-                : 'Frameworks are managed by the platform administrator.'
-              : allLoaded
-                ? 'All listed frameworks have a reference document loaded for deep AI analysis.'
-                : isAdmin
-                  ? 'Some frameworks need a reference document. Upload one from the Admin panel.'
-                  : 'An administrator needs to upload reference documents for the missing frameworks.'}
-          </p>
-        </div>
-      </div>
-
       {/* ── Read-only notice for non-admins ── */}
       {!isAdmin && (
         <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-muted/40 mb-8">
