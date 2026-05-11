@@ -3458,11 +3458,22 @@ def setup_policy_owner_column():
     from sqlalchemy import text as _t
     db = database.SessionLocal()
     try:
-        db.execute(_t(
-            "ALTER TABLE policies ADD COLUMN IF NOT EXISTS owner_id UUID "
-            "REFERENCES users(id) ON DELETE SET NULL"
-        ))
-        db.commit()
+        # Check existence before ALTER to avoid acquiring AccessExclusiveLock
+        # when the column is already present. ALTER TABLE IF NOT EXISTS still
+        # takes a full table lock on startup even when the column exists, which
+        # causes a statement_timeout when any other connection holds a row lock.
+        exists = db.execute(_t("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'policies' AND column_name = 'owner_id'
+        """)).fetchone()
+
+        if not exists:
+            db.execute(_t(
+                "ALTER TABLE policies ADD COLUMN owner_id UUID "
+                "REFERENCES users(id) ON DELETE SET NULL"
+            ))
+            db.commit()
+
         # Back-fill: policies already uploaded without an owner_id get the admin's id.
         # Phase 13: prefer the role-based admin if ADMIN_EMAIL is unset; otherwise
         # use the env-configured email. Both paths converge on the seeded admin.
