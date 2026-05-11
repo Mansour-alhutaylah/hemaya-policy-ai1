@@ -18,7 +18,12 @@ import {
   TrendingUp,
   FileText,
   ChevronRight,
+  Mail,
 } from 'lucide-react';
+
+function scrollTo(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+}
 
 const features = [
   {
@@ -131,21 +136,31 @@ function PublicNav() {
         <nav className="hidden md:flex items-center gap-8">
           <a
             href="#features"
+            onClick={(e) => { e.preventDefault(); scrollTo('features'); }}
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Features
           </a>
           <a
             href="#how"
+            onClick={(e) => { e.preventDefault(); scrollTo('how'); }}
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             How it works
           </a>
           <a
             href="#frameworks"
+            onClick={(e) => { e.preventDefault(); scrollTo('frameworks'); }}
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Frameworks
+          </a>
+          <a
+            href="#contact"
+            onClick={(e) => { e.preventDefault(); scrollTo('contact'); }}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Contact Us
           </a>
         </nav>
 
@@ -622,6 +637,45 @@ function HowItWorks() {
   );
 }
 
+function ContactUs() {
+  return (
+    <section id="contact" className="py-20 lg:py-24 bg-muted/30 border-y border-border">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+            Get in touch
+          </p>
+          <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight text-foreground">
+            Contact Us
+          </h2>
+          <p className="mt-4 text-muted-foreground text-base lg:text-lg leading-relaxed">
+            For inquiries, partnerships, or support regarding Himaya AI Compliance Platform.
+          </p>
+        </div>
+
+        <div className="mt-10 flex justify-center">
+          <a
+            href="mailto:info@ai-himaya.site"
+            className="group flex items-center gap-4 rounded-2xl border border-border bg-card px-8 py-6 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-200 dark:hover:border-emerald-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm shadow-emerald-500/20 flex-shrink-0">
+              <Mail className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Email
+              </p>
+              <p className="mt-0.5 font-semibold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                info@ai-himaya.site
+              </p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function FinalCTA() {
   return (
     <section className="py-20 lg:py-24">
@@ -674,9 +728,18 @@ function Footer() {
     <footer className="border-t border-border bg-card">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <Logo />
-        <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Himaya · AI Compliance
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+          <a
+            href="mailto:info@ai-himaya.site"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5"
+          >
+            <Mail className="w-3 h-3" />
+            info@ai-himaya.site
+          </a>
+          <p className="text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Himaya · AI Compliance
+          </p>
+        </div>
       </div>
     </footer>
   );
@@ -726,6 +789,7 @@ export default function Landing() {
         <Frameworks />
         <Features />
         <HowItWorks />
+        <ContactUs />
         <FinalCTA />
       </main>
       <Footer />
