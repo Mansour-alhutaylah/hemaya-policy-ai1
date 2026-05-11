@@ -57,7 +57,7 @@ export default function VerifyOTP() {
         // render. This prevents the 800ms window where the authenticated
         // Routes block renders at /verify-otp and shows <PageNotFound>.
         login({ token, user: userData });
-        nav(userData?.is_admin ? "/admin" : "/Dashboard", { replace: true });
+        nav(userData?.is_admin ? "/admin" : "/Home", { replace: true });
       } else {
         // Fallback: backend didn't issue a token (e.g. older deploy).
         setSuccess("Email verified! Redirecting to login…");

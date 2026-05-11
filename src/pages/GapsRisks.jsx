@@ -46,6 +46,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { SEVERITY_COLORS, getSeverityColor } from '@/components/charts/severityColors';
+import { usePolicies } from '@/hooks/usePolicies';
 import {
   Tooltip as UiTooltip,
   TooltipTrigger as UiTooltipTrigger,
@@ -66,7 +67,6 @@ import {
 } from 'recharts';
 
 const Gap = api.entities.Gap;
-const Policy = api.entities.Policy;
 const AuditLog = api.entities.AuditLog;
 
 // Severity tints — text/border tints stay here (badge styling); chart and
@@ -166,6 +166,7 @@ export default function GapsRisks() {
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [policyFilter, setPolicyFilter] = useState('all');
   const [sortBy, setSortBy] = useState('priority'); // priority | severity | recent
   const [selectedGap, setSelectedGap] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -178,13 +179,14 @@ export default function GapsRisks() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // ── Phase 4: read severity from URL (?severity=High etc.) ────────────────
+  // ── Phase 4: read severity / policy from URL (?severity=High&policy_id=…) ─
   const [searchParams] = useSearchParams();
-  const policyIdFilter = searchParams.get('policy_id');
 
   useEffect(() => {
     const sv = searchParams.get('severity');
     if (sv) setSeverityFilter(sv);
+    const pid = searchParams.get('policy_id');
+    if (pid) setPolicyFilter(pid);
   }, [searchParams]);
 
   const { data: gaps = [], isLoading } = useQuery({
@@ -192,10 +194,23 @@ export default function GapsRisks() {
     queryFn: () => Gap.list('-created_at'),
   });
 
-  const { data: policies = [] } = useQuery({
-    queryKey: ['policies'],
-    queryFn: () => Policy.list(),
-  });
+  const { data: policies = [] } = usePolicies();
+
+  // Policy dropdown options — derived from policies that actually have gaps
+  // in the loaded dataset. No hardcoding, no API change.
+  const policyOptions = useMemo(() => {
+    const idsWithGaps = new Set(gaps.map(g => g.policy_id).filter(Boolean));
+    return policies.filter(p => idsWithGaps.has(p.id));
+  }, [gaps, policies]);
+
+  // Guard: if the selected policy is no longer in the option list (e.g. gaps
+  // were resolved, or filter was seeded from a stale URL param), fall back
+  // to "all" so the table doesn't render empty without explanation.
+  useEffect(() => {
+    if (policyFilter !== 'all' && !policyOptions.some(p => p.id === policyFilter)) {
+      setPolicyFilter('all');
+    }
+  }, [policyOptions, policyFilter]);
 
   // Phase UI-4: memoised so the map only rebuilds when the policies array
   // changes, not on every parent re-render (filter typing, etc.).
@@ -257,8 +272,8 @@ export default function GapsRisks() {
         gap.description?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesSeverity = severityFilter === 'all' || gap.severity === severityFilter;
       const matchesStatus = statusFilter === 'all' || gap.status === statusFilter;
-      const matchesPolicyId = !policyIdFilter || gap.policy_id === policyIdFilter;
-      return matchesSearch && matchesSeverity && matchesStatus && matchesPolicyId;
+      const matchesPolicy = policyFilter === 'all' || gap.policy_id === policyFilter;
+      return matchesSearch && matchesSeverity && matchesStatus && matchesPolicy;
     })
     .map(g => ({ ...g, _priority: computePriority(g) }))
     .sort((a, b) => {
@@ -668,6 +683,18 @@ export default function GapsRisks() {
             <SelectItem value="In Progress">In Progress</SelectItem>
             <SelectItem value="Resolved">Resolved</SelectItem>
             <SelectItem value="Deferred">Deferred</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={policyFilter} onValueChange={setPolicyFilter}>
+          <SelectTrigger className="w-48">
+            <Filter className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Policy" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Policies</SelectItem>
+            {policyOptions.map(p => (
+              <SelectItem key={p.id} value={p.id}>{p.file_name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={sortBy} onValueChange={setSortBy}>

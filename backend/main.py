@@ -322,8 +322,90 @@ def startup_seed():
             print("[startup] CCC-2:2024 framework row ensured")
         except Exception as e:
             print(f"[startup] CCC-2:2024 row warning: {e}")
+
+        # Seed additional Saudi cybersecurity frameworks as "Not Loaded" rows
+        # (no reference document, no chunks). They appear on the Frameworks
+        # page only — every other selector filters them out automatically via
+        # the chunks > 0 rule in /api/entities/Framework. Uploading a doc to
+        # any of these flips it into the active dropdown without code change.
+        try:
+            _seed_additional_frameworks(db)
+        except Exception as e:
+            print(f"[startup] additional frameworks warning: {e}")
     finally:
         db.close()
+
+
+def _seed_additional_frameworks(db):
+    """Insert Saudi framework rows that have no reference document yet.
+
+    Idempotent — ON CONFLICT (name) DO NOTHING means re-runs are a no-op.
+    None of these names are in _STRUCTURED_NAMES, so they will not surface
+    in other pages' selectors until a reference document is uploaded
+    (which creates framework_chunks and flips the visibility rule).
+    """
+    import uuid as _uuid
+    from sqlalchemy import text as _t
+
+    _ADDITIONAL_FRAMEWORKS = [
+        # ── NCA — National Cybersecurity Authority ─────────────────────────
+        ("NCNICC-1:2025", "2025", "Non-CNI Private Sector Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("CSCC-1:2019",   "2019", "Critical Systems Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("OTCC-1:2022",   "2022", "Operational Technology Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("DCC-1:2022",    "2022", "Data Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("TCC-1:2021",    "2021", "Telework Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("OSMACC-1:2021", "2021", "Social Media Accounts Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("NCS-1:2020",    "2020", "National Cryptographic Standards — NCA, Saudi Arabia."),
+        ("SCyWF",         None,   "Saudi Cybersecurity Workforce Framework — NCA, Saudi Arabia."),
+        ("SCyber-Edu",    None,   "Cybersecurity Higher Education Framework — NCA, Saudi Arabia."),
+        ("MSOC Policy",   None,   "National Policy for Managed Security Operations Centers — NCA, Saudi Arabia."),
+        ("MSOC Licensing", None,  "Regulatory Framework for Licensing MSOC Services — NCA, Saudi Arabia."),
+        ("e-Commerce",    None,   "Cybersecurity Guidelines for e-Commerce — NCA, Saudi Arabia."),
+
+        # ── SAMA — Saudi Central Bank ─────────────────────────────────────
+        ("CSF-1:2017",       "2017", "Cyber Security Framework — Saudi Central Bank (SAMA)."),
+        ("FEER",             None,   "Financial Entities Ethical Red Teaming Guidelines — SAMA."),
+        ("BCM",              None,   "Business Continuity Management Framework — SAMA."),
+        ("IT Governance",    None,   "IT Governance Framework — SAMA."),
+        ("Outsourcing",      None,   "Outsourcing Regulations (cyber requirements) — SAMA."),
+        ("Open Banking",     None,   "Open Banking Framework (API security) — SAMA."),
+        ("SAMA Cloud Computing", None, "Cloud Computing Regulatory Framework — SAMA."),
+
+        # ── SDAIA / NDMO — Data and AI ─────────────────────────────────────
+        ("PDPL",           None, "Personal Data Protection Law — SDAIA / NDMO, Saudi Arabia."),
+        ("NDMO Standards", None, "Data Management Standards — NDMO, Saudi Arabia."),
+        ("AI Ethics",      None, "SDAIA AI Ethics Principles — Saudi Arabia."),
+
+        # ── CST — Communications, Space and Technology Commission ─────────
+        ("CRF",  None, "Cybersecurity Regulatory Framework (ICT sector) — CST, Saudi Arabia."),
+        ("CCRF", None, "Cloud Computing Regulatory Framework — CST, Saudi Arabia."),
+
+        # ── Sector-Specific ────────────────────────────────────────────────
+        ("CMA",  None, "Capital Market Authority Cybersecurity Guidelines — Saudi Arabia."),
+        ("PIF",  None, "Public Investment Fund Cybersecurity Guidelines — Saudi Arabia."),
+        ("MOH",  None, "Ministry of Health Cybersecurity Requirements — Saudi Arabia."),
+        ("GAMI", None, "Defense Industry Cybersecurity Requirements — GAMI, Saudi Arabia."),
+
+        # ── Cross-Cutting ──────────────────────────────────────────────────
+        ("Anti-Cyber Crime Law", "2007 (amended 2015)",
+            "Anti-Cyber Crime Law — Royal Decree, Saudi Arabia."),
+    ]
+
+    inserted = 0
+    for name, version, desc in _ADDITIONAL_FRAMEWORKS:
+        db.execute(_t("""
+            INSERT INTO frameworks (id, name, description, version)
+            VALUES (:id, :name, :desc, :ver)
+            ON CONFLICT (name) DO NOTHING
+        """), {
+            "id":   str(_uuid.uuid4()),
+            "name": name,
+            "desc": desc,
+            "ver":  version,
+        })
+        inserted += 1
+    db.commit()
+    print(f"[startup] {inserted} additional framework rows ensured")
 
 
 @app.exception_handler(Exception)
@@ -1598,6 +1680,185 @@ def get_gaps(
          "owner_name": r[10], "mapping_id": r[11]}
         for r in rows
     ]
+
+
+# Confidence threshold for "human review recommended" — mirrors the canonical
+# UI value in src/lib/confidence.js. Keep these in sync.
+_INSIGHTS_CONFIDENCE_THRESHOLD = 0.6
+_INSIGHTS_HIGH_GAP_COUNT = 10
+_INSIGHTS_LOW_AVG_CONFIDENCE = 0.5
+
+
+@app.get("/api/insights")
+def list_insights(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Deterministic AI Insights derived on read from gaps + mapping assessments.
+
+    No LLM call, no persistence — every insight traces back to a concrete row
+    (gap.id or policy_ecc_assessments composite key) so re-renders are stable.
+    Scoped to the current user's policies (admins see all).
+
+    Rules:
+      - gap_priority         — one per open Critical/High gap
+      - control_recommendation — one per low-confidence assessment
+      - policy_improvement   — one per policy with ≥10 open gaps or avg
+                                confidence < 0.5
+    """
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    policy_id_filter = params.get("policy_id")
+    _is_admin = is_admin(current_user)
+
+    policy_where = []
+    sql_params: dict = {}
+    if policy_id_filter and policy_id_filter != "all":
+        policy_where.append("p.id = :pid")
+        sql_params["pid"] = policy_id_filter
+    if not _is_admin:
+        policy_where.append("p.owner_id = :uid")
+        sql_params["uid"] = str(current_user.id)
+    policy_where_sql = ("WHERE " + " AND ".join(policy_where)) if policy_where else ""
+
+    # 1. Open Critical/High gaps → gap_priority insights
+    gap_rows = db.execute(_t(f"""
+        SELECT g.id, g.policy_id, g.control_name, g.severity, g.status,
+               g.description, g.created_at, f.name AS framework_name,
+               cl.control_code, p.file_name
+        FROM gaps g
+        JOIN policies p ON p.id = g.policy_id
+        LEFT JOIN frameworks f ON g.framework_id = f.id
+        LEFT JOIN control_library cl ON g.control_id = cl.id
+        {policy_where_sql}
+        {"AND" if policy_where_sql else "WHERE"} g.severity IN ('Critical','High')
+          AND COALESCE(g.status, 'Open') <> 'Resolved'
+        ORDER BY g.created_at DESC
+    """), sql_params).fetchall()
+
+    insights: list[dict] = []
+    for r in gap_rows:
+        gid, pid, ctrl_name, severity, _g_status, desc, created, fw_name, ctrl_code, p_name = r
+        insights.append({
+            "id": f"gap:{gid}",
+            "insight_type": "gap_priority",
+            "priority": severity,
+            "status": "New",
+            "title": ctrl_name or f"Open {severity.lower()} gap",
+            "description": (desc or
+                f"A {severity.lower()}-severity gap is open"
+                f" in {p_name or 'this policy'}."),
+            "policy_id": pid,
+            "framework": fw_name,
+            "control_reference": ctrl_code or None,
+            "confidence": None,
+            "evidence_snippet": None,
+            "created_at": created.isoformat() if created else None,
+        })
+
+    # 2. Low-confidence assessments → control_recommendation
+    assess_rows = db.execute(_t(f"""
+        SELECT a.policy_id::text, a.framework_id::text, a.control_code,
+               a.confidence_score, a.evidence_text, a.assessed_at,
+               p.file_name
+        FROM policy_ecc_assessments a
+        JOIN policies p ON p.id::text = a.policy_id::text
+        {policy_where_sql}
+        {"AND" if policy_where_sql else "WHERE"} a.confidence_score IS NOT NULL
+          AND a.confidence_score < :thresh
+        ORDER BY a.confidence_score ASC
+    """), {**sql_params, "thresh": _INSIGHTS_CONFIDENCE_THRESHOLD}).fetchall()
+
+    for r in assess_rows:
+        a_pid, a_fwid, a_code, a_conf, a_evidence, a_at, p_name = r
+        pct = int(round((a_conf or 0) * 100))
+        insights.append({
+            "id": f"lowconf:{a_pid}:{a_fwid}:{a_code}",
+            "insight_type": "control_recommendation",
+            "priority": "Medium",
+            "status": "New",
+            "title": f"Human review recommended — {a_code or 'control'}",
+            "description": (
+                f"Mapping confidence is {pct}% "
+                f"(below the {int(_INSIGHTS_CONFIDENCE_THRESHOLD * 100)}% threshold). "
+                f"Recommend manual review of {p_name or 'the policy'} "
+                f"against this control."
+            ),
+            "policy_id": a_pid,
+            "framework": a_fwid,
+            "control_reference": a_code,
+            "confidence": round(float(a_conf or 0.0), 3),
+            "evidence_snippet": (a_evidence or "")[:280] or None,
+            "created_at": a_at.isoformat() if a_at else None,
+        })
+
+    # 3. Policy-level summaries → policy_improvement
+    policy_stats_rows = db.execute(_t(f"""
+        SELECT p.id, p.file_name,
+               (SELECT COUNT(*)
+                  FROM gaps g
+                 WHERE g.policy_id = p.id
+                   AND COALESCE(g.status, 'Open') <> 'Resolved') AS open_gap_count,
+               (SELECT AVG(a.confidence_score)
+                  FROM policy_ecc_assessments a
+                 WHERE a.policy_id::text = p.id::text
+                   AND a.confidence_score IS NOT NULL) AS avg_conf
+        FROM policies p
+        {policy_where_sql}
+    """), sql_params).fetchall()
+
+    for r in policy_stats_rows:
+        p_id, p_name, open_gaps, avg_conf = r
+        open_gaps = int(open_gaps or 0)
+        if open_gaps >= _INSIGHTS_HIGH_GAP_COUNT:
+            insights.append({
+                "id": f"policy_gaps:{p_id}",
+                "insight_type": "policy_improvement",
+                "priority": "High",
+                "status": "New",
+                "title": f"{p_name}: high gap volume",
+                "description": (
+                    f"{open_gaps} open gaps across mapped controls. "
+                    "Prioritise remediation, or split this policy into "
+                    "focused documents per domain."
+                ),
+                "policy_id": p_id,
+                "framework": None,
+                "control_reference": None,
+                "confidence": None,
+                "evidence_snippet": None,
+                "created_at": None,
+            })
+        if avg_conf is not None and float(avg_conf) < _INSIGHTS_LOW_AVG_CONFIDENCE:
+            pct = int(round(float(avg_conf) * 100))
+            insights.append({
+                "id": f"policy_lowconf:{p_id}",
+                "insight_type": "policy_improvement",
+                "priority": "High",
+                "status": "New",
+                "title": f"{p_name}: low overall confidence",
+                "description": (
+                    f"Average mapping confidence is {pct}%. "
+                    "Consider clarifying policy language or adding "
+                    "control-specific sections to raise evidence strength."
+                ),
+                "policy_id": p_id,
+                "framework": None,
+                "control_reference": None,
+                "confidence": round(float(avg_conf), 3),
+                "evidence_snippet": None,
+                "created_at": None,
+            })
+
+    # Sort: Critical > High > Medium > Low, then by created_at desc
+    _PRIORITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    insights.sort(key=lambda i: (
+        _PRIORITY_ORDER.get(i.get("priority"), 99),
+        i.get("created_at") or "",
+    ))
+    return insights
 
 
 # Phase HOTFIX (Explainability): for ECC-2 / SACS-002 mapping_reviews,
@@ -3197,11 +3458,22 @@ def setup_policy_owner_column():
     from sqlalchemy import text as _t
     db = database.SessionLocal()
     try:
-        db.execute(_t(
-            "ALTER TABLE policies ADD COLUMN IF NOT EXISTS owner_id UUID "
-            "REFERENCES users(id) ON DELETE SET NULL"
-        ))
-        db.commit()
+        # Check existence before ALTER to avoid acquiring AccessExclusiveLock
+        # when the column is already present. ALTER TABLE IF NOT EXISTS still
+        # takes a full table lock on startup even when the column exists, which
+        # causes a statement_timeout when any other connection holds a row lock.
+        exists = db.execute(_t("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'policies' AND column_name = 'owner_id'
+        """)).fetchone()
+
+        if not exists:
+            db.execute(_t(
+                "ALTER TABLE policies ADD COLUMN owner_id UUID "
+                "REFERENCES users(id) ON DELETE SET NULL"
+            ))
+            db.commit()
+
         # Back-fill: policies already uploaded without an owner_id get the admin's id.
         # Phase 13: prefer the role-based admin if ADMIN_EMAIL is unset; otherwise
         # use the env-configured email. Both paths converge on the seeded admin.

@@ -92,6 +92,111 @@ function paletteFor(idx) {
   return PALETTE[idx % PALETTE.length];
 }
 
+// Per-authority palette for the Saudi framework families. Each authority gets
+// one consistent colour so users can scan groups quickly. Active frameworks
+// (CCC-2 / ECC-2 / SACS-002) bypass this map and keep the rotating PALETTE.
+const GROUP_PALETTES = {
+  NCA: {
+    color: 'teal',
+    bg: 'bg-teal-50 dark:bg-teal-500/10',
+    text: 'text-teal-600 dark:text-teal-400',
+    border: 'border-teal-200 dark:border-teal-500/30',
+    gradient: 'from-teal-500 to-emerald-600',
+    stroke: '#14b8a6',
+  },
+  SAMA: {
+    color: 'sky',
+    bg: 'bg-sky-50 dark:bg-sky-500/10',
+    text: 'text-sky-600 dark:text-sky-400',
+    border: 'border-sky-200 dark:border-sky-500/30',
+    gradient: 'from-sky-500 to-blue-600',
+    stroke: '#0ea5e9',
+  },
+  SDAIA: {
+    color: 'violet',
+    bg: 'bg-violet-50 dark:bg-violet-500/10',
+    text: 'text-violet-600 dark:text-violet-400',
+    border: 'border-violet-200 dark:border-violet-500/30',
+    gradient: 'from-violet-500 to-purple-600',
+    stroke: '#8b5cf6',
+  },
+  CST: {
+    color: 'orange',
+    bg: 'bg-orange-50 dark:bg-orange-500/10',
+    text: 'text-orange-600 dark:text-orange-400',
+    border: 'border-orange-200 dark:border-orange-500/30',
+    gradient: 'from-orange-500 to-red-600',
+    stroke: '#f97316',
+  },
+  SECTOR: {
+    color: 'slate',
+    bg: 'bg-slate-50 dark:bg-slate-500/10',
+    text: 'text-slate-600 dark:text-slate-300',
+    border: 'border-slate-200 dark:border-slate-500/30',
+    gradient: 'from-slate-500 to-zinc-600',
+    stroke: '#64748b',
+  },
+  CROSS: {
+    color: 'zinc',
+    bg: 'bg-zinc-50 dark:bg-zinc-500/10',
+    text: 'text-zinc-600 dark:text-zinc-300',
+    border: 'border-zinc-200 dark:border-zinc-500/30',
+    gradient: 'from-zinc-500 to-gray-600',
+    stroke: '#71717a',
+  },
+};
+
+// Framework name → issuing-authority key. Frameworks not in this map (the
+// three active structured ones) fall back to the rotating PALETTE.
+const AUTHORITY_BY_NAME = {
+  // NCA — National Cybersecurity Authority (12)
+  'NCNICC-1:2025':  'NCA',
+  'CSCC-1:2019':    'NCA',
+  'OTCC-1:2022':    'NCA',
+  'DCC-1:2022':     'NCA',
+  'TCC-1:2021':     'NCA',
+  'OSMACC-1:2021':  'NCA',
+  'NCS-1:2020':     'NCA',
+  'SCyWF':          'NCA',
+  'SCyber-Edu':     'NCA',
+  'MSOC Policy':    'NCA',
+  'MSOC Licensing': 'NCA',
+  'e-Commerce':     'NCA',
+  // SAMA — Saudi Central Bank (7)
+  'CSF-1:2017':            'SAMA',
+  'FEER':                  'SAMA',
+  'BCM':                   'SAMA',
+  'IT Governance':         'SAMA',
+  'Outsourcing':           'SAMA',
+  'Open Banking':          'SAMA',
+  'SAMA Cloud Computing':  'SAMA',
+  // SDAIA / NDMO — Data and AI (3)
+  'PDPL':           'SDAIA',
+  'NDMO Standards': 'SDAIA',
+  'AI Ethics':      'SDAIA',
+  // CST — Communications, Space and Technology Commission (2)
+  'CRF':  'CST',
+  'CCRF': 'CST',
+  // Sector-Specific (4)
+  'CMA':  'SECTOR',
+  'PIF':  'SECTOR',
+  'MOH':  'SECTOR',
+  'GAMI': 'SECTOR',
+  // Cross-Cutting (1)
+  'Anti-Cyber Crime Law': 'CROSS',
+};
+
+const AUTHORITY_LABELS = {
+  NCA:    'NCA — National Cybersecurity Authority',
+  SAMA:   'SAMA — Saudi Central Bank',
+  SDAIA:  'SDAIA / NDMO — Data and AI',
+  CST:    'CST — Communications, Space and Technology Commission',
+  SECTOR: 'Sector-Specific',
+  CROSS:  'Cross-Cutting',
+};
+
+const AUTHORITY_ORDER = ['NCA', 'SAMA', 'SDAIA', 'CST', 'SECTOR', 'CROSS'];
+
 function safeFmt(d) {
   if (!d) return '—';
   try { return format(new Date(d), 'MMM d, yyyy'); } catch { return '—'; }
@@ -103,18 +208,36 @@ export default function Frameworks() {
   const { user } = useAuth();
   const isAdmin = !!user?.is_admin;
 
-  // Real frameworks (DB-backed) — include_empty so admins can also see
-  // frameworks that exist as records but have no document yet.
+  // Real frameworks (DB-backed). Every visitor (not just admins) sees the
+  // full landscape on this page — the not-loaded ones are still filtered
+  // out of every other selector by the backend's loaded-only query.
+  // Note: `.filter()` (not `.list()`) is required so the include_empty
+  // query string is properly serialised; `.list()` only takes (sort, limit)
+  // positional args and would coerce an options object to "[object Object]".
   const { data: rawFrameworks = [], isLoading: fwLoading } = useQuery({
-    queryKey: ['frameworks', isAdmin ? 'all' : 'loaded-only'],
-    queryFn: () => Framework.list(isAdmin ? { include_empty: 'true' } : {}),
+    queryKey: ['frameworks', 'all'],
+    queryFn: () => Framework.filter({ include_empty: 'true' }),
   });
 
-  const frameworks = rawFrameworks.map((fw, idx) => ({
-    ...fw,
-    palette: paletteFor(idx),
-    isLoaded: (fw.chunks || 0) > 0,
-  }));
+  const frameworks = rawFrameworks.map((fw, idx) => {
+    const authority = AUTHORITY_BY_NAME[fw.name] || null;
+    // Active (structured) frameworks keep the rotating palette so the three
+    // loaded ones look like they always have. Non-structured ones inherit
+    // the authority's group palette so each family is visually distinct.
+    const palette = (authority && !fw.is_structured)
+      ? GROUP_PALETTES[authority]
+      : paletteFor(idx);
+    // A framework is "loaded" when it is either (a) imported via a
+    // structured catalog (dedicated DB tables like ecc_framework / ccc_control
+    // / sacs002_control) or (b) PDF-indexed into framework_chunks.
+    // CCC-2 / ECC-2 / SACS-002 are structured today and have chunks=0.
+    return {
+      ...fw,
+      palette,
+      authority,
+      isLoaded: !!fw.is_structured || (fw.chunks || 0) > 0,
+    };
+  });
 
   const allLoaded = frameworks.length > 0 && frameworks.every(fw => fw.isLoaded);
 
@@ -157,53 +280,6 @@ export default function Frameworks() {
           : 'Review the loaded framework reference documents and your analysis results.'
       }
     >
-      {/* ── Knowledge Base banner ── */}
-      <div className={`flex items-start gap-4 p-4 rounded-lg border mb-6 ${
-        allLoaded
-          ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30'
-          : 'bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30'
-      }`}>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-          allLoaded
-            ? 'bg-emerald-100 dark:bg-emerald-500/20'
-            : 'bg-amber-100 dark:bg-amber-500/20'
-        }`}>
-          {allLoaded
-            ? <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            : <Info className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
-        </div>
-        <div>
-          <p className={`font-semibold ${
-            allLoaded
-              ? 'text-emerald-800 dark:text-emerald-200'
-              : 'text-amber-800 dark:text-amber-200'
-          }`}>
-            {fwLoading
-              ? 'Loading frameworks…'
-              : frameworks.length === 0
-                ? 'No frameworks in the system yet'
-                : allLoaded
-                  ? 'Framework Knowledge Base Ready'
-                  : 'Some Framework Documents Are Missing'}
-          </p>
-          <p className={`text-sm mt-0.5 ${
-            allLoaded
-              ? 'text-emerald-700 dark:text-emerald-300'
-              : 'text-amber-700 dark:text-amber-300'
-          }`}>
-            {frameworks.length === 0
-              ? isAdmin
-                ? 'Upload your first framework reference document from the Admin panel to get started.'
-                : 'Frameworks are managed by the platform administrator.'
-              : allLoaded
-                ? 'All listed frameworks have a reference document loaded for deep AI analysis.'
-                : isAdmin
-                  ? 'Some frameworks need a reference document. Upload one from the Admin panel.'
-                  : 'An administrator needs to upload reference documents for the missing frameworks.'}
-          </p>
-        </div>
-      </div>
-
       {/* ── Read-only notice for non-admins ── */}
       {!isAdmin && (
         <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-muted/40 mb-8">
@@ -246,79 +322,137 @@ export default function Frameworks() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
-          {frameworks.map((fw) => (
-            <Card key={fw.id} className={`overflow-hidden border-2 ${fw.isLoaded ? fw.palette.border : 'border-border'}`}>
-              <div className={`h-1.5 bg-gradient-to-r ${fw.palette.gradient}`} />
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-11 h-11 rounded-xl ${fw.palette.bg} flex items-center justify-center`}>
-                    <Shield className={`w-5 h-5 ${fw.palette.text}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">{fw.name}</p>
-                    <p className="text-xs text-muted-foreground">{fw.version ? `v${fw.version}` : '—'}</p>
-                  </div>
-                  {fw.isLoaded ? (
-                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 border">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      Loaded
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground border-border">Not Loaded</Badge>
-                  )}
-                </div>
+        (() => {
+          // Split into Active (structured) + per-authority Not-Loaded groups.
+          // `is_structured` is set by the backend for CCC-2 / ECC-2 / SACS-002
+          // regardless of whether their chunks have been imported yet, so the
+          // three active frameworks always land in the Active section.
+          const active = frameworks.filter(fw => fw.is_structured);
+          const byAuthority = AUTHORITY_ORDER.reduce((acc, key) => {
+            acc[key] = frameworks.filter(fw => !fw.is_structured && fw.authority === key);
+            return acc;
+          }, {});
+          const ungrouped = frameworks.filter(fw => !fw.is_structured && !fw.authority);
 
-                <p className="text-xs text-muted-foreground mb-3 line-clamp-2 min-h-[2rem]">
-                  {fw.description || 'No description provided.'}
-                </p>
-
-                {/* Real file metadata from the DB */}
-                {fw.file_url ? (
-                  <div className="bg-muted/50 border border-border rounded-lg p-3 mb-3">
-                    <div className="flex items-center gap-2 text-xs text-foreground">
-                      <FileText className={`w-3.5 h-3.5 ${fw.palette.text} flex-shrink-0`} />
-                      <span className="truncate font-medium" title={fw.original_file_name}>
-                        {fw.original_file_name || 'Reference document'}
-                      </span>
-                      {fw.file_type && (
-                        <span className="text-[10px] bg-card border border-border px-1.5 py-0.5 rounded text-muted-foreground">{fw.file_type}</span>
+          const renderCards = (list) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {list.map((fw) => (
+                <Card key={fw.id} className={`overflow-hidden border-2 ${fw.isLoaded ? fw.palette.border : 'border-border'}`}>
+                  <div className={`h-1.5 bg-gradient-to-r ${fw.palette.gradient}`} />
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-11 h-11 rounded-xl ${fw.palette.bg} flex items-center justify-center`}>
+                        <Shield className={`w-5 h-5 ${fw.palette.text}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate" title={fw.name}>{fw.name}</p>
+                        <p className="text-xs text-muted-foreground">{fw.version ? `v${fw.version}` : '—'}</p>
+                      </div>
+                      {fw.isLoaded ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 border">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Loaded
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground border-border">Not Loaded</Badge>
                       )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      Uploaded {safeFmt(fw.uploaded_at)}
-                      {fw.uploaded_by ? ` · ${fw.uploaded_by}` : ''}
+
+                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2 min-h-[2rem]">
+                      {fw.description || 'No description provided.'}
                     </p>
-                  </div>
-                ) : (
-                  <div className="bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg p-3 mb-3 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>Awaiting reference document upload.</span>
-                  </div>
-                )}
 
-                {fw.isLoaded && (
-                  <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded mb-3">
-                    <Database className="w-3.5 h-3.5" />
-                    <span>{Number(fw.chunks || 0).toLocaleString()} indexed chunks</span>
-                  </div>
-                )}
+                    {/* File metadata block when a reference doc was uploaded */}
+                    {fw.file_url && (
+                      <div className="bg-muted/50 border border-border rounded-lg p-3 mb-3">
+                        <div className="flex items-center gap-2 text-xs text-foreground">
+                          <FileText className={`w-3.5 h-3.5 ${fw.palette.text} flex-shrink-0`} />
+                          <span className="truncate font-medium" title={fw.original_file_name}>
+                            {fw.original_file_name || 'Reference document'}
+                          </span>
+                          {fw.file_type && (
+                            <span className="text-[10px] bg-card border border-border px-1.5 py-0.5 rounded text-muted-foreground">{fw.file_type}</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          Uploaded {safeFmt(fw.uploaded_at)}
+                          {fw.uploaded_by ? ` · ${fw.uploaded_by}` : ''}
+                        </p>
+                      </div>
+                    )}
 
-                {fw.file_url && (
-                  <a
-                    href={fw.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Download reference document
-                  </a>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    {/* Only show "awaiting upload" when the framework is not yet
+                        loaded. Structured frameworks (CCC-2 / ECC-2 / SACS-002)
+                        are loaded via dedicated DB tables, not framework_chunks,
+                        so they pass isLoaded without a file_url. */}
+                    {!fw.isLoaded && (
+                      <div className="bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg p-3 mb-3 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Awaiting reference document upload.</span>
+                      </div>
+                    )}
+
+                    {fw.isLoaded && (fw.chunks || 0) > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded mb-3">
+                        <Database className="w-3.5 h-3.5" />
+                        <span>{Number(fw.chunks).toLocaleString()} indexed chunks</span>
+                      </div>
+                    )}
+
+                    {fw.file_url && (
+                      <a
+                        href={fw.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download reference document
+                      </a>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          );
+
+          return (
+            <div className="mb-10 space-y-8">
+              {active.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    Active Frameworks
+                    <span className="text-xs font-normal text-muted-foreground">({active.length})</span>
+                  </h3>
+                  {renderCards(active)}
+                </div>
+              )}
+
+              {AUTHORITY_ORDER.map(key => byAuthority[key].length > 0 && (
+                <div key={key}>
+                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Shield className={`w-3.5 h-3.5 ${GROUP_PALETTES[key].text}`} />
+                    {AUTHORITY_LABELS[key]}
+                    <span className="text-xs font-normal text-muted-foreground">({byAuthority[key].length})</span>
+                  </h3>
+                  {renderCards(byAuthority[key])}
+                </div>
+              ))}
+
+              {ungrouped.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-muted-foreground" />
+                    Other
+                    <span className="text-xs font-normal text-muted-foreground">({ungrouped.length})</span>
+                  </h3>
+                  {renderCards(ungrouped)}
+                </div>
+              )}
+            </div>
+          );
+        })()
       )}
 
       {/* ── Analysis Results by Framework ── */}

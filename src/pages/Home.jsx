@@ -37,7 +37,7 @@ const primaryActions = [
   },
   {
     label: 'Browse frameworks',
-    description: 'NCA ECC, ISO 27001 and NIST 800-53 controls',
+    description: 'NCA, SAMA, SDAIA, CST and sector-specific controls',
     page: 'Frameworks',
     icon: Shield,
     accent: 'from-violet-500 to-purple-600',
@@ -80,8 +80,9 @@ export default function Home() {
               Welcome back, {firstName}.
             </h1>
             <p className="mt-3 text-slate-300 text-sm lg:text-base max-w-xl">
-              Himaya analyses your security policies against NCA ECC, ISO 27001 and NIST 800-53,
-              maps controls automatically and surfaces the gaps that matter — so you can act on
+              Himaya analyses your security policies against the Saudi cybersecurity
+              landscape — NCA, SAMA, SDAIA/NDMO, CST and sector-specific frameworks — maps
+              controls automatically and surfaces the gaps that matter, so you can act on
               compliance instead of chasing it.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
