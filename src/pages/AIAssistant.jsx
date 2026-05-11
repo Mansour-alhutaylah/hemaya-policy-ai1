@@ -54,13 +54,17 @@ const INITIAL_MESSAGE = {
 // selected scope, or when a per-policy suggestions fetch fails. Per-policy
 // chips come from /api/assistant/suggested-questions and are seeded from
 // that policy's actual gaps.
+//
+// {label, prompt}: the chip shows the short label, the click still sends the
+// full prompt — so the assistant gets the same query text as before. The
+// network payload is unchanged; only the visible chip text is shortened.
 const PORTFOLIO_SUGGESTED_QUESTIONS = [
-  'What is my current compliance status?',
-  'What are my top compliance gaps?',
-  'Which controls should I fix first?',
-  'How can I improve my NCA ECC score?',
-  'Which policies have the highest risk?',
-  'Explain my latest analysis results.',
+  { label: 'Current compliance status', prompt: 'What is my current compliance status?' },
+  { label: 'Top compliance gaps',       prompt: 'What are my top compliance gaps?' },
+  { label: 'Controls to fix first',     prompt: 'Which controls should I fix first?' },
+  { label: 'Improve NCA ECC score',     prompt: 'How can I improve my NCA ECC score?' },
+  { label: 'Highest-risk policies',     prompt: 'Which policies have the highest risk?' },
+  { label: 'Latest analysis results',   prompt: 'Explain my latest analysis results.' },
 ];
 
 // ── Persistence helpers (sessionStorage, scoped per user) ─────────────────
@@ -236,10 +240,19 @@ export default function AIAssistant() {
     staleTime: 5 * 60 * 1000,  // gaps change rarely between chats
     retry: false,
   });
-  const suggestedQuestions =
-    (policyScope !== 'all' && Array.isArray(suggestionsResp?.questions) && suggestionsResp.questions.length > 0)
-      ? suggestionsResp.questions
-      : PORTFOLIO_SUGGESTED_QUESTIONS;
+  // Normalise both sources to {label, prompt} so the chip renderer is
+  // shape-agnostic. Backend per-policy questions are strings — for those the
+  // label and the prompt are identical (we don't shorten user-data-driven
+  // text). Portfolio fallbacks already carry shortened labels.
+  const suggestedQuestions = useMemo(() => {
+    const fromBackend = policyScope !== 'all'
+      && Array.isArray(suggestionsResp?.questions)
+      && suggestionsResp.questions.length > 0;
+    if (fromBackend) {
+      return suggestionsResp.questions.map((q) => ({ label: q, prompt: q }));
+    }
+    return PORTFOLIO_SUGGESTED_QUESTIONS;
+  }, [policyScope, suggestionsResp]);
   const selectedPolicy =
     policyScope !== 'all' ? policies.find(p => p.id === policyScope) : null;
 
@@ -433,13 +446,14 @@ export default function AIAssistant() {
     <PageContainer
       title="AI Assistant"
       subtitle="Ask about your compliance status, gaps, and remediation — grounded in your real data"
+      className="h-[calc(100vh-4rem)] flex flex-col"
       actions={
         <div className="flex items-center gap-2 flex-wrap">
           {/* Phase F: policy scope picker. Defaults to "All my policies"; pick
               one to scope the chatbot to a single document for tighter answers
               with [Page N · ¶M] citations. */}
           <Select value={policyScope} onValueChange={setPolicyScope}>
-            <SelectTrigger className="w-[220px]" disabled={isTyping}>
+            <SelectTrigger className="w-[220px] h-9" disabled={isTyping}>
               <FileText className="w-4 h-4 mr-1 shrink-0" />
               <SelectValue placeholder="All my policies" />
             </SelectTrigger>
@@ -452,7 +466,7 @@ export default function AIAssistant() {
               ))}
             </SelectContent>
           </Select>
-          <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30 gap-1">
+          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 gap-1 h-9 px-2.5">
             <Sparkles className="w-3 h-3" />
             AI Powered
           </Badge>
@@ -462,6 +476,7 @@ export default function AIAssistant() {
             onClick={handleReset}
             disabled={messages.length <= 1 && !isTyping}
             title="Clear conversation"
+            className="h-9"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
             Clear conversation
@@ -469,90 +484,106 @@ export default function AIAssistant() {
         </div>
       }
     >
-      <div className="max-w-4xl mx-auto">
-        {/* Phase UI-6: scope confirmation banner — makes it visually obvious
-            whether the assistant is answering about a single policy or the
-            whole portfolio. */}
-        <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-          <Database className="w-3.5 h-3.5" />
-          {selectedPolicy ? (
-            <span>
-              Answering about{' '}
-              <span className="font-medium text-foreground">
-                {selectedPolicy.file_name || 'the selected policy'}
-              </span>
-              {' '}only. Switch the picker to ask about another.
-            </span>
-          ) : (
-            <span>Answering across <span className="font-medium text-foreground">all your policies</span>. Pick one to scope answers and unlock per-policy citations.</span>
-          )}
-        </div>
+      <div className="flex-1 min-h-0 w-full flex flex-col">
+        <Card className="flex-1 min-h-0 shadow-sm overflow-hidden flex flex-col">
+          {/* Context pills: policy scope (always) + analysis context (after first answer).
+              Grouped at the top of the card so they read as metadata for the
+              conversation panel below, not as floating page banners. */}
+          <div className="px-5 pt-4 pb-3 border-b border-border/60 flex flex-wrap items-center gap-2">
+            {selectedPolicy ? (
+              <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 gap-1.5 font-normal">
+                <Database className="w-3 h-3" />
+                Answering about <span className="font-semibold">{selectedPolicy.file_name || 'the selected policy'}</span>
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground gap-1.5 font-normal">
+                <Database className="w-3 h-3" />
+                Answering across all your policies
+              </Badge>
+            )}
+            {contextSummary && <ContextStrip summary={contextSummary} />}
+          </div>
 
-        {contextSummary && <ContextStrip summary={contextSummary} />}
-
-        <Card className="shadow-sm overflow-hidden">
-          {/* Chat Messages */}
-          <ScrollArea className="h-[500px] p-6" ref={scrollRef}>
-            <div className="space-y-4">
-              {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
-              ))}
-
-              {isTyping && (
-                <div className="flex gap-3">
-                  <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-400 to-teal-600 flex-shrink-0">
-                    <AvatarFallback className="bg-transparent">
-                      <Bot className="w-4 h-4 text-white" />
-                    </AvatarFallback>
-                  </Avatar>
-                  {/* Phase UI-6: bouncing-dots typing indicator. Reads as
-                      "thinking" instead of a generic loading spinner. */}
-                  <div className="bg-muted text-muted-foreground rounded-2xl px-4 py-3">
-                    <div className="flex items-center gap-2" aria-label="Assistant is thinking">
-                      <span className="flex gap-1">
-                        <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </span>
-                      <span className="text-sm">
-                        {selectedPolicy
-                          ? `Reading "${(selectedPolicy.file_name || '').slice(0, 40)}…"`
-                          : 'Reading your compliance data…'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-
-          {/* Suggested Questions — per-policy when scoped, portfolio otherwise. */}
-          {showSuggestions && (
-            <div className="px-6 py-3 border-t border-border bg-muted/40">
-              <p className="text-xs font-medium text-muted-foreground mb-2">
-                {selectedPolicy
-                  ? `Suggested questions for "${selectedPolicy.file_name || 'this policy'}":`
-                  : 'Try one of these:'}
+          {/* Body: centered hero in empty state, scrolling messages otherwise.
+              showSuggestions is the existing rule — true only when the only
+              message is the welcome and we're not typing. The body absorbs
+              all remaining vertical space via flex-1/min-h-0 so the input
+              stays pinned to the bottom and never falls below the viewport. */}
+          {showSuggestions ? (
+            <div className="flex-1 min-h-0 px-6 py-6 flex flex-col items-center text-center justify-center">
+              <Avatar className="h-12 w-12 bg-gradient-to-br from-emerald-400 to-teal-600 mb-3">
+                <AvatarFallback className="bg-transparent">
+                  <Bot className="w-6 h-6 text-white" />
+                </AvatarFallback>
+              </Avatar>
+              <h2 className="text-lg font-semibold text-foreground mb-1">
+                Hello, I'm your Himaya compliance assistant
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-md mb-5 leading-relaxed">
+                Ask me about your latest analysis, gaps, framework scores, or what to fix first —
+                I'll answer using your real data. If you haven't run an analysis yet, upload a
+                policy from the <span className="font-medium text-foreground">Policies</span> page
+                to get specific answers.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-xs text-muted-foreground mb-2.5">
+                {selectedPolicy
+                  ? `Suggested for "${(selectedPolicy.file_name || 'this policy').slice(0, 50)}"`
+                  : 'Try one of these'}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full max-w-2xl">
                 {suggestedQuestions.map((q) => (
                   <Button
-                    key={q}
+                    key={q.prompt}
                     variant="outline"
                     size="sm"
-                    onClick={() => sendMessage(q)}
+                    onClick={() => sendMessage(q.prompt)}
                     disabled={isTyping}
-                    className="text-xs h-7"
+                    className="text-xs h-auto min-h-[40px] py-2 px-3 whitespace-normal leading-snug flex items-center justify-center text-center hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-900 dark:hover:bg-emerald-500/10 dark:hover:border-emerald-500/40 dark:hover:text-emerald-200"
                   >
-                    {q}
+                    {q.label}
                   </Button>
                 ))}
               </div>
             </div>
+          ) : (
+            <ScrollArea className="flex-1 min-h-0 px-6 py-5" ref={scrollRef}>
+              <div className="space-y-4">
+                {messages.map((message) => (
+                  <MessageBubble key={message.id} message={message} />
+                ))}
+
+                {isTyping && (
+                  <div className="flex gap-3">
+                    <Avatar className="h-8 w-8 bg-gradient-to-br from-emerald-400 to-teal-600 flex-shrink-0">
+                      <AvatarFallback className="bg-transparent">
+                        <Bot className="w-4 h-4 text-white" />
+                      </AvatarFallback>
+                    </Avatar>
+                    {/* Phase UI-6: bouncing-dots typing indicator. Reads as
+                        "thinking" instead of a generic loading spinner. */}
+                    <div className="bg-muted text-muted-foreground rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-2" aria-label="Assistant is thinking">
+                        <span className="flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                        <span className="text-sm">
+                          {selectedPolicy
+                            ? `Reading "${(selectedPolicy.file_name || '').slice(0, 40)}…"`
+                            : 'Reading your compliance data…'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
           )}
 
-          {/* Input */}
-          <div className="p-4 border-t border-border bg-card">
+          {/* Input — anchored to the bottom of the card, separated by a subtle
+              top divider so messages visually scroll behind it. */}
+          <div className="p-4 border-t border-border bg-card shadow-[0_-1px_0_rgba(0,0,0,0.02)] dark:shadow-[0_-1px_0_rgba(255,255,255,0.04)]">
             <div className="flex gap-2">
               <Input
                 ref={inputRef}
@@ -561,7 +592,7 @@ export default function AIAssistant() {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isTyping}
-                className="flex-1"
+                className="flex-1 h-11"
                 aria-label="Message"
               />
               {/* Phase F: while a request is in flight, swap Send for Stop.
@@ -571,7 +602,7 @@ export default function AIAssistant() {
                 <Button
                   onClick={() => abortRef.current?.abort()}
                   variant="outline"
-                  className="border-red-500/40 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                  className="h-11 px-4 border-red-500/40 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
                   aria-label="Stop generating"
                   title="Stop generating"
                 >
@@ -582,14 +613,14 @@ export default function AIAssistant() {
                 <Button
                   onClick={handleSend}
                   disabled={!inputValue.trim()}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="h-11 px-4 bg-emerald-600 hover:bg-emerald-700"
                   aria-label="Send message"
                 >
                   <Send className="w-4 h-4" />
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
+            <p className="text-[11px] text-muted-foreground/70 mt-2 text-center">
               Answers are based on your stored policies and analyses. For
               complex decisions, consult your compliance team.
             </p>
@@ -621,9 +652,9 @@ function MessageBubble({ message }) {
       )}
 
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className={`max-w-[75%] rounded-2xl px-4 py-3 ${
           isUser
-            ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+            ? 'bg-emerald-100 text-emerald-900 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-50 dark:border-emerald-500/30'
             : isError
             ? 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30'
             : isNoData
@@ -644,9 +675,7 @@ function MessageBubble({ message }) {
           </div>
         )}
         <div
-          className={`text-sm prose prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${
-            isUser ? 'prose-invert' : 'dark:prose-invert'
-          }`}
+          className={`text-sm prose prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 dark:prose-invert`}
         >
           <ReactMarkdown
             components={{
@@ -725,7 +754,7 @@ function ContextStrip({ summary }) {
 
   return (
     <div
-      className={`mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
         tone === 'ok'
           ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
           : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
