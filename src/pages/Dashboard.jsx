@@ -456,6 +456,21 @@ export default function Dashboard() {
     })),
   [complianceByFramework]);
 
+  // "Which framework needs the most attention?" — partial + missing per
+  // framework, sorted descending. Frameworks with zero gaps are filtered
+  // out so the chart only highlights actionable rows.
+  const gapsByFramework = useMemo(() =>
+    complianceByFramework
+      .map(f => ({
+        name:    f.framework,
+        Partial: f.partial,
+        Missing: f.missing,
+        total:   f.partial + f.missing,
+      }))
+      .filter(r => r.total > 0)
+      .sort((a, b) => b.total - a.total),
+  [complianceByFramework]);
+
   // KPI context lines — all derived from data already loaded above. Strict
   // rule: never invent a metric. If we can't compute it from the existing
   // payload, the line stays empty.
@@ -773,7 +788,7 @@ export default function Dashboard() {
               <Skeleton className="h-60 w-full rounded-xl" />
             ) : (
               <div className="flex items-center gap-6">
-                <div className="relative flex-shrink-0" style={{ width: 200, height: 200 }}>
+                <div className="relative flex-shrink-0 group" style={{ width: 200, height: 200 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -799,7 +814,7 @@ export default function Dashboard() {
                       <Tooltip content={<CustomTooltip />} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-150 group-hover:opacity-0">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">Risk</span>
                     <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground leading-none mt-1">{totalGaps}</span>
                     <span className="text-[11px] text-muted-foreground/70 mt-1">Total gaps</span>
@@ -861,8 +876,9 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground/70 mt-1">Run an analysis to see compliance status</p>
               </div>
             ) : (
+              <>
               <div className="flex items-center gap-6">
-                <div className="relative flex-shrink-0" style={{ width: 200, height: 200 }}>
+                <div className="relative flex-shrink-0 group" style={{ width: 200, height: 200 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -884,7 +900,7 @@ export default function Dashboard() {
                       <Tooltip content={<CustomTooltip />} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-150 group-hover:opacity-0">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">Compliance</span>
                     <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground leading-none mt-1">{compliancePct}%</span>
                     <span className="text-[11px] text-muted-foreground/70 mt-1">Compliant</span>
@@ -911,6 +927,29 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
+              {complianceByFramework.length > 0 && (
+                <div className="mt-6 pt-5 border-t border-border/60">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By Framework</p>
+                    <p className="text-[11px] text-muted-foreground/70 tabular-nums">{complianceByFramework.length} framework{complianceByFramework.length === 1 ? '' : 's'}</p>
+                  </div>
+                  <ul className="space-y-2.5">
+                    {complianceByFramework.map(f => {
+                      const tone = f.score >= 80 ? STATUS_COLORS.Covered : f.score >= 50 ? STATUS_COLORS.Partial : STATUS_COLORS.Missing;
+                      return (
+                        <li key={f.framework} className="flex items-center gap-3 text-sm">
+                          <span className="flex-1 truncate text-foreground font-medium" title={f.framework}>{f.framework}</span>
+                          <div className="w-28 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(0, Math.min(100, f.score))}%`, backgroundColor: tone }} />
+                          </div>
+                          <span className="w-10 text-right tabular-nums font-semibold text-foreground">{f.score}%</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -993,6 +1032,76 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Gaps by Framework — which framework needs the most attention ─── */}
+      <Card className="shadow-sm mb-6">
+        <CardHeader className="pb-3 border-b border-border/60">
+          <CardTitle className="text-base font-semibold flex items-center gap-2.5 text-foreground">
+            <CardIcon bg="bg-amber-50 dark:bg-amber-500/15">
+              <BarChart3 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </CardIcon>
+            Gaps by Framework
+            {statsRefreshing && (
+              <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin ml-auto" />
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6">
+          {statsSkeletons ? (
+            <Skeleton className="h-60 w-full rounded-xl" />
+          ) : complianceByFramework.length === 0 ? (
+            <ChartEmptyState
+              icon={BarChart3}
+              title="No framework gaps yet"
+              body="Run a compliance analysis to see which frameworks need attention."
+              ctaLabel="Open Policies"
+              ctaTo={createPageUrl('Policies')}
+            />
+          ) : gapsByFramework.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mb-3">
+                <CheckCircle2 className="w-6 h-6 text-emerald-500/70" />
+              </div>
+              <p className="text-sm font-medium text-foreground">No open gaps</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Every framework is fully covered</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(180, gapsByFramework.length * 44)}>
+              <BarChart
+                data={gapsByFramework}
+                layout="vertical"
+                barSize={22}
+                margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={140}
+                />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.12)', radius: 4 }} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={v => <span className="text-muted-foreground" style={{ fontSize: 12 }}>{v}</span>}
+                />
+                <Bar dataKey="Partial" stackId="g" fill={STATUS_COLORS.Partial} />
+                <Bar dataKey="Missing" stackId="g" fill={STATUS_COLORS.Missing} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Bottom Row ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
