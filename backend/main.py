@@ -322,8 +322,90 @@ def startup_seed():
             print("[startup] CCC-2:2024 framework row ensured")
         except Exception as e:
             print(f"[startup] CCC-2:2024 row warning: {e}")
+
+        # Seed additional Saudi cybersecurity frameworks as "Not Loaded" rows
+        # (no reference document, no chunks). They appear on the Frameworks
+        # page only — every other selector filters them out automatically via
+        # the chunks > 0 rule in /api/entities/Framework. Uploading a doc to
+        # any of these flips it into the active dropdown without code change.
+        try:
+            _seed_additional_frameworks(db)
+        except Exception as e:
+            print(f"[startup] additional frameworks warning: {e}")
     finally:
         db.close()
+
+
+def _seed_additional_frameworks(db):
+    """Insert Saudi framework rows that have no reference document yet.
+
+    Idempotent — ON CONFLICT (name) DO NOTHING means re-runs are a no-op.
+    None of these names are in _STRUCTURED_NAMES, so they will not surface
+    in other pages' selectors until a reference document is uploaded
+    (which creates framework_chunks and flips the visibility rule).
+    """
+    import uuid as _uuid
+    from sqlalchemy import text as _t
+
+    _ADDITIONAL_FRAMEWORKS = [
+        # ── NCA — National Cybersecurity Authority ─────────────────────────
+        ("NCNICC-1:2025", "2025", "Non-CNI Private Sector Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("CSCC-1:2019",   "2019", "Critical Systems Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("OTCC-1:2022",   "2022", "Operational Technology Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("DCC-1:2022",    "2022", "Data Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("TCC-1:2021",    "2021", "Telework Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("OSMACC-1:2021", "2021", "Social Media Accounts Cybersecurity Controls — NCA, Saudi Arabia."),
+        ("NCS-1:2020",    "2020", "National Cryptographic Standards — NCA, Saudi Arabia."),
+        ("SCyWF",         None,   "Saudi Cybersecurity Workforce Framework — NCA, Saudi Arabia."),
+        ("SCyber-Edu",    None,   "Cybersecurity Higher Education Framework — NCA, Saudi Arabia."),
+        ("MSOC Policy",   None,   "National Policy for Managed Security Operations Centers — NCA, Saudi Arabia."),
+        ("MSOC Licensing", None,  "Regulatory Framework for Licensing MSOC Services — NCA, Saudi Arabia."),
+        ("e-Commerce",    None,   "Cybersecurity Guidelines for e-Commerce — NCA, Saudi Arabia."),
+
+        # ── SAMA — Saudi Central Bank ─────────────────────────────────────
+        ("CSF-1:2017",       "2017", "Cyber Security Framework — Saudi Central Bank (SAMA)."),
+        ("FEER",             None,   "Financial Entities Ethical Red Teaming Guidelines — SAMA."),
+        ("BCM",              None,   "Business Continuity Management Framework — SAMA."),
+        ("IT Governance",    None,   "IT Governance Framework — SAMA."),
+        ("Outsourcing",      None,   "Outsourcing Regulations (cyber requirements) — SAMA."),
+        ("Open Banking",     None,   "Open Banking Framework (API security) — SAMA."),
+        ("SAMA Cloud Computing", None, "Cloud Computing Regulatory Framework — SAMA."),
+
+        # ── SDAIA / NDMO — Data and AI ─────────────────────────────────────
+        ("PDPL",           None, "Personal Data Protection Law — SDAIA / NDMO, Saudi Arabia."),
+        ("NDMO Standards", None, "Data Management Standards — NDMO, Saudi Arabia."),
+        ("AI Ethics",      None, "SDAIA AI Ethics Principles — Saudi Arabia."),
+
+        # ── CST — Communications, Space and Technology Commission ─────────
+        ("CRF",  None, "Cybersecurity Regulatory Framework (ICT sector) — CST, Saudi Arabia."),
+        ("CCRF", None, "Cloud Computing Regulatory Framework — CST, Saudi Arabia."),
+
+        # ── Sector-Specific ────────────────────────────────────────────────
+        ("CMA",  None, "Capital Market Authority Cybersecurity Guidelines — Saudi Arabia."),
+        ("PIF",  None, "Public Investment Fund Cybersecurity Guidelines — Saudi Arabia."),
+        ("MOH",  None, "Ministry of Health Cybersecurity Requirements — Saudi Arabia."),
+        ("GAMI", None, "Defense Industry Cybersecurity Requirements — GAMI, Saudi Arabia."),
+
+        # ── Cross-Cutting ──────────────────────────────────────────────────
+        ("Anti-Cyber Crime Law", "2007 (amended 2015)",
+            "Anti-Cyber Crime Law — Royal Decree, Saudi Arabia."),
+    ]
+
+    inserted = 0
+    for name, version, desc in _ADDITIONAL_FRAMEWORKS:
+        db.execute(_t("""
+            INSERT INTO frameworks (id, name, description, version)
+            VALUES (:id, :name, :desc, :ver)
+            ON CONFLICT (name) DO NOTHING
+        """), {
+            "id":   str(_uuid.uuid4()),
+            "name": name,
+            "desc": desc,
+            "ver":  version,
+        })
+        inserted += 1
+    db.commit()
+    print(f"[startup] {inserted} additional framework rows ensured")
 
 
 @app.exception_handler(Exception)
