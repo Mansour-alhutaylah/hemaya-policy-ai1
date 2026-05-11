@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -33,11 +32,10 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { usePolicies } from '@/hooks/usePolicies';
+import { CONFIDENCE_THRESHOLD, isLowConfidence } from '@/lib/confidence';
 
 const MappingReview = api.entities.MappingReview;
-const Policy = api.entities.Policy;
-
-const CONFIDENCE_THRESHOLD = 0.6;
 
 export default function Explainability() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,10 +43,7 @@ export default function Explainability() {
   const [confidenceFilter, setConfidenceFilter] = useState('all');
   const [policyId, setPolicyId] = useState('all');
 
-  const { data: policies = [] } = useQuery({
-    queryKey: ['policies'],
-    queryFn: () => Policy.list('-last_analyzed_at'),
-  });
+  const { data: policies = [] } = usePolicies();
 
   // Default selection: most recent analyzed policy. Skipped if the user
   // has already picked something — including 'all'.
@@ -239,7 +234,7 @@ export default function Explainability() {
         {filteredMappings.map((mapping) => {
           const confidence = mapping.confidence_score || 0;
           const colors = getConfidenceColor(confidence);
-          const isLowConfidence = confidence < CONFIDENCE_THRESHOLD;
+          const lowConfidence = isLowConfidence(confidence);
           const policy = policyMap[mapping.policy_id];
           const policyName = mapping.policy_file_name || policy?.file_name || '—';
           const controlCode = mapping.control_id || '—';
@@ -254,7 +249,7 @@ export default function Explainability() {
 
           return (
             <Card key={mapping.id} className="shadow-sm overflow-hidden">
-              {isLowConfidence && (
+              {lowConfidence && (
                 <div className="bg-amber-50 border-b border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-2 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
@@ -327,48 +322,9 @@ export default function Explainability() {
                         {mapping.ai_rationale
                           ? <p className="text-sm text-purple-800 dark:text-purple-200 whitespace-pre-wrap">{mapping.ai_rationale}</p>
                           : <p className="text-sm text-muted-foreground">Rationale not available.</p>}
-
-                        {mapping.matched_keywords && mapping.matched_keywords.length > 0 && (
-                          <div className="mt-3">
-                            <p className="text-xs font-medium text-purple-600 dark:text-purple-300 mb-1">Matched Keywords:</p>
-                            <div className="flex flex-wrap gap-1">
-                              {mapping.matched_keywords.map((keyword, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs bg-card">
-                                  {keyword}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {mapping.similarity_score && (
-                          <div className="mt-3">
-                            <p className="text-xs font-medium text-purple-600 dark:text-purple-300 mb-1">Semantic Similarity:</p>
-                            <div className="flex items-center gap-2">
-                              <Progress value={mapping.similarity_score * 100} className="h-2 flex-1" />
-                              <span className="text-xs font-medium text-foreground">{Math.round(mapping.similarity_score * 100)}%</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
-
-                  {isLowConfidence && mapping.uncertainty_reason && (
-                    <AccordionItem value="uncertainty" className="border-0">
-                      <AccordionTrigger className="hover:no-underline py-2">
-                        <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
-                          <AlertTriangle className="w-4 h-4" />
-                          Uncertainty Explanation
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="bg-amber-50 rounded-lg p-4 mt-2 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30">
-                          <p className="text-sm text-amber-800 dark:text-amber-200">{mapping.uncertainty_reason}</p>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )}
                 </Accordion>
 
                 <div className="flex justify-end mt-4">

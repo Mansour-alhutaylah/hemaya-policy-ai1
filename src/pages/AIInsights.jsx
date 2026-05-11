@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 import PageContainer from '@/components/layout/PageContainer';
 import StatsCard from '@/components/ui/StatsCard';
@@ -36,9 +36,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-
-const AIInsight = api.entities.AIInsight;
-const Policy = api.entities.Policy;
+import { usePolicies } from '@/hooks/usePolicies';
 
 const insightTypeConfig = {
   gap_priority: {
@@ -77,17 +75,18 @@ export default function AIInsightsPage() {
   const [policyId, setPolicyId] = useState('all');
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
+  // Insights are computed deterministically on read from gaps + low-confidence
+  // mappings + policy-level rollups by the /api/insights endpoint. Re-queries
+  // automatically when the policy filter changes so the server can scope.
   const { data: insights = [], isLoading } = useQuery({
-    queryKey: ['aiInsights'],
-    queryFn: () => AIInsight.list('-created_at'),
+    queryKey: ['aiInsights', policyId],
+    queryFn: () => api.get(policyId && policyId !== 'all'
+      ? `/insights?policy_id=${encodeURIComponent(policyId)}`
+      : '/insights'),
   });
 
-  const { data: policies = [] } = useQuery({
-    queryKey: ['policies'],
-    queryFn: () => Policy.list('-last_analyzed_at'),
-  });
+  const { data: policies = [] } = usePolicies();
 
   // Default selection: most recent analyzed policy. Only set once so the user
   // can switch to "All policies" without it being overridden on the next render.
@@ -122,13 +121,6 @@ export default function AIInsightsPage() {
     return insights.filter(i => i.policy_id === policyId);
   }, [insights, policyId]);
 
-  const updateInsightMutation = useMutation({
-    mutationFn: ({ id, data }) => AIInsight.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['aiInsights'] });
-    },
-  });
-
   const filteredInsights = scopedInsights.filter(insight => {
     if (activeTab === 'all') return true;
     if (activeTab === 'new') return insight.status === 'New';
@@ -143,26 +135,17 @@ export default function AIInsightsPage() {
   const handleViewInsight = (insight) => {
     setSelectedInsight(insight);
     setShowDetailDialog(true);
-    if (insight.status === 'New' && insight.id) {
-      updateInsightMutation.mutate({
-        id: insight.id,
-        data: { status: 'Viewed' },
-      });
-    }
   };
 
-  const handleActionInsight = (insight, action) => {
-    if (insight?.id) {
-      updateInsightMutation.mutate({
-        id: insight.id,
-        data: { status: action },
-      });
-    }
+  // Insights are computed on-read and not persisted, so Actioned/Dismissed
+  // state can't survive a refresh. The dialog still closes and the toast
+  // confirms intent — when persistence ships, swap this for a mutation.
+  const handleActionInsight = (_insight, action) => {
     toast({
       title: action === 'Actioned' ? 'Insight Actioned' : 'Insight Dismissed',
       description: action === 'Actioned'
-        ? 'This insight has been marked as actioned.'
-        : 'This insight has been dismissed.',
+        ? 'Marked as actioned for this session. Persistence coming soon.'
+        : 'Dismissed for this session. Persistence coming soon.',
     });
     setShowDetailDialog(false);
   };

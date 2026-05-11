@@ -1600,6 +1600,185 @@ def get_gaps(
     ]
 
 
+# Confidence threshold for "human review recommended" — mirrors the canonical
+# UI value in src/lib/confidence.js. Keep these in sync.
+_INSIGHTS_CONFIDENCE_THRESHOLD = 0.6
+_INSIGHTS_HIGH_GAP_COUNT = 10
+_INSIGHTS_LOW_AVG_CONFIDENCE = 0.5
+
+
+@app.get("/api/insights")
+def list_insights(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Deterministic AI Insights derived on read from gaps + mapping assessments.
+
+    No LLM call, no persistence — every insight traces back to a concrete row
+    (gap.id or policy_ecc_assessments composite key) so re-renders are stable.
+    Scoped to the current user's policies (admins see all).
+
+    Rules:
+      - gap_priority         — one per open Critical/High gap
+      - control_recommendation — one per low-confidence assessment
+      - policy_improvement   — one per policy with ≥10 open gaps or avg
+                                confidence < 0.5
+    """
+    from sqlalchemy import text as _t
+    params = dict(request.query_params)
+    policy_id_filter = params.get("policy_id")
+    _is_admin = is_admin(current_user)
+
+    policy_where = []
+    sql_params: dict = {}
+    if policy_id_filter and policy_id_filter != "all":
+        policy_where.append("p.id = :pid")
+        sql_params["pid"] = policy_id_filter
+    if not _is_admin:
+        policy_where.append("p.owner_id = :uid")
+        sql_params["uid"] = str(current_user.id)
+    policy_where_sql = ("WHERE " + " AND ".join(policy_where)) if policy_where else ""
+
+    # 1. Open Critical/High gaps → gap_priority insights
+    gap_rows = db.execute(_t(f"""
+        SELECT g.id, g.policy_id, g.control_name, g.severity, g.status,
+               g.description, g.created_at, f.name AS framework_name,
+               cl.control_code, p.file_name
+        FROM gaps g
+        JOIN policies p ON p.id = g.policy_id
+        LEFT JOIN frameworks f ON g.framework_id = f.id
+        LEFT JOIN control_library cl ON g.control_id = cl.id
+        {policy_where_sql}
+        {"AND" if policy_where_sql else "WHERE"} g.severity IN ('Critical','High')
+          AND COALESCE(g.status, 'Open') <> 'Resolved'
+        ORDER BY g.created_at DESC
+    """), sql_params).fetchall()
+
+    insights: list[dict] = []
+    for r in gap_rows:
+        gid, pid, ctrl_name, severity, _g_status, desc, created, fw_name, ctrl_code, p_name = r
+        insights.append({
+            "id": f"gap:{gid}",
+            "insight_type": "gap_priority",
+            "priority": severity,
+            "status": "New",
+            "title": ctrl_name or f"Open {severity.lower()} gap",
+            "description": (desc or
+                f"A {severity.lower()}-severity gap is open"
+                f" in {p_name or 'this policy'}."),
+            "policy_id": pid,
+            "framework": fw_name,
+            "control_reference": ctrl_code or None,
+            "confidence": None,
+            "evidence_snippet": None,
+            "created_at": created.isoformat() if created else None,
+        })
+
+    # 2. Low-confidence assessments → control_recommendation
+    assess_rows = db.execute(_t(f"""
+        SELECT a.policy_id::text, a.framework_id::text, a.control_code,
+               a.confidence_score, a.evidence_text, a.assessed_at,
+               p.file_name
+        FROM policy_ecc_assessments a
+        JOIN policies p ON p.id::text = a.policy_id::text
+        {policy_where_sql}
+        {"AND" if policy_where_sql else "WHERE"} a.confidence_score IS NOT NULL
+          AND a.confidence_score < :thresh
+        ORDER BY a.confidence_score ASC
+    """), {**sql_params, "thresh": _INSIGHTS_CONFIDENCE_THRESHOLD}).fetchall()
+
+    for r in assess_rows:
+        a_pid, a_fwid, a_code, a_conf, a_evidence, a_at, p_name = r
+        pct = int(round((a_conf or 0) * 100))
+        insights.append({
+            "id": f"lowconf:{a_pid}:{a_fwid}:{a_code}",
+            "insight_type": "control_recommendation",
+            "priority": "Medium",
+            "status": "New",
+            "title": f"Human review recommended — {a_code or 'control'}",
+            "description": (
+                f"Mapping confidence is {pct}% "
+                f"(below the {int(_INSIGHTS_CONFIDENCE_THRESHOLD * 100)}% threshold). "
+                f"Recommend manual review of {p_name or 'the policy'} "
+                f"against this control."
+            ),
+            "policy_id": a_pid,
+            "framework": a_fwid,
+            "control_reference": a_code,
+            "confidence": round(float(a_conf or 0.0), 3),
+            "evidence_snippet": (a_evidence or "")[:280] or None,
+            "created_at": a_at.isoformat() if a_at else None,
+        })
+
+    # 3. Policy-level summaries → policy_improvement
+    policy_stats_rows = db.execute(_t(f"""
+        SELECT p.id, p.file_name,
+               (SELECT COUNT(*)
+                  FROM gaps g
+                 WHERE g.policy_id = p.id
+                   AND COALESCE(g.status, 'Open') <> 'Resolved') AS open_gap_count,
+               (SELECT AVG(a.confidence_score)
+                  FROM policy_ecc_assessments a
+                 WHERE a.policy_id::text = p.id::text
+                   AND a.confidence_score IS NOT NULL) AS avg_conf
+        FROM policies p
+        {policy_where_sql}
+    """), sql_params).fetchall()
+
+    for r in policy_stats_rows:
+        p_id, p_name, open_gaps, avg_conf = r
+        open_gaps = int(open_gaps or 0)
+        if open_gaps >= _INSIGHTS_HIGH_GAP_COUNT:
+            insights.append({
+                "id": f"policy_gaps:{p_id}",
+                "insight_type": "policy_improvement",
+                "priority": "High",
+                "status": "New",
+                "title": f"{p_name}: high gap volume",
+                "description": (
+                    f"{open_gaps} open gaps across mapped controls. "
+                    "Prioritise remediation, or split this policy into "
+                    "focused documents per domain."
+                ),
+                "policy_id": p_id,
+                "framework": None,
+                "control_reference": None,
+                "confidence": None,
+                "evidence_snippet": None,
+                "created_at": None,
+            })
+        if avg_conf is not None and float(avg_conf) < _INSIGHTS_LOW_AVG_CONFIDENCE:
+            pct = int(round(float(avg_conf) * 100))
+            insights.append({
+                "id": f"policy_lowconf:{p_id}",
+                "insight_type": "policy_improvement",
+                "priority": "High",
+                "status": "New",
+                "title": f"{p_name}: low overall confidence",
+                "description": (
+                    f"Average mapping confidence is {pct}%. "
+                    "Consider clarifying policy language or adding "
+                    "control-specific sections to raise evidence strength."
+                ),
+                "policy_id": p_id,
+                "framework": None,
+                "control_reference": None,
+                "confidence": round(float(avg_conf), 3),
+                "evidence_snippet": None,
+                "created_at": None,
+            })
+
+    # Sort: Critical > High > Medium > Low, then by created_at desc
+    _PRIORITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    insights.sort(key=lambda i: (
+        _PRIORITY_ORDER.get(i.get("priority"), 99),
+        i.get("created_at") or "",
+    ))
+    return insights
+
+
 # Phase HOTFIX (Explainability): for ECC-2 / SACS-002 mapping_reviews,
 # `mr.control_id` is NULL because those analyzers don't link to control_library
 # (their controls live in ecc_framework / sacs_framework, not control_library).

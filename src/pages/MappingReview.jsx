@@ -291,6 +291,17 @@ export default function MappingReviewPage() {
     }
   }, [policyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Deep-link target control (e.g. from Explainability "Review Mapping" link).
+  // We scroll the matching card into view and pulse a ring around it once
+  // the data lands. Cleared after the first scroll so re-filters don't yank
+  // the user around mid-session.
+  const focusControl = searchParams.get('control');
+  const [pendingFocusControl, setPendingFocusControl] = useState(focusControl);
+  useEffect(() => {
+    if (!focusControl) return;
+    setPendingFocusControl(focusControl);
+  }, [focusControl]);
+
   // Policies
   const { data: policies = [], isLoading: policiesLoading } = useQuery({
     queryKey: ['policies'],
@@ -343,6 +354,26 @@ export default function MappingReviewPage() {
     }
     return out;
   }, [items, search, confidenceTier]);
+
+  // Scroll to the requested control once it appears in the filtered list,
+  // then clear the pending target so subsequent filter changes don't snap
+  // back to it.
+  useEffect(() => {
+    if (!pendingFocusControl || filtered.length === 0) return;
+    const match = filtered.find(it => it.control_code === pendingFocusControl);
+    if (!match) return;
+    const node = document.querySelector(
+      `[data-mapping-control="${CSS.escape(pendingFocusControl)}"]`,
+    );
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      node.classList.add('ring-2', 'ring-emerald-500', 'ring-offset-2', 'rounded-lg');
+      window.setTimeout(() => {
+        node.classList.remove('ring-2', 'ring-emerald-500', 'ring-offset-2', 'rounded-lg');
+      }, 2500);
+    }
+    setPendingFocusControl(null);
+  }, [pendingFocusControl, filtered]);
 
   // Counts (over the unfiltered backend response so the totals don't change
   // when the user types a search query).
@@ -645,16 +676,21 @@ export default function MappingReviewPage() {
           ) : (
             <div className="space-y-4">
               {filtered.map(item => (
-                <ExplainabilityCard
+                <div
                   key={`${item.framework_id}|${item.control_code}`}
-                  item={item}
-                  onGenerateDraft={handleGenerateDraft}
-                  isGenerating={
-                    generateDraftMutation.isPending &&
-                    generateDraftMutation.variables?.mapping_review_id ===
-                      item.mapping_review_id
-                  }
-                />
+                  data-mapping-control={item.control_code}
+                  className="transition-shadow"
+                >
+                  <ExplainabilityCard
+                    item={item}
+                    onGenerateDraft={handleGenerateDraft}
+                    isGenerating={
+                      generateDraftMutation.isPending &&
+                      generateDraftMutation.variables?.mapping_review_id ===
+                        item.mapping_review_id
+                    }
+                  />
+                </div>
               ))}
             </div>
           )}
