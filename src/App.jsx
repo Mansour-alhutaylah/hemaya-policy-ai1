@@ -51,7 +51,7 @@ const LayoutWrapper = ({ children, currentPageName }) =>
 const AdminOnly = ({ children }) => {
   const { user } = useAuth();
   if (!user?.is_admin) {
-    return <Navigate to="/Dashboard" replace />;
+    return <Navigate to="/Home" replace />;
   }
   return children;
 };
@@ -63,7 +63,7 @@ const AuthenticatedApp = () => {
   // إذا كان مسجّل دخول وحاول يفتح /login حوله للداشبورد
   const publicRoutes = (
     <Routes>
-      <Route path="/" element={isAuthed ? <Navigate to="/Dashboard" replace /> : <Landing />} />
+      <Route path="/" element={isAuthed ? <Navigate to="/Home" replace /> : <Landing />} />
       <Route path="/login" element={isAuthed ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/signup" element={isAuthed ? <Navigate to="/" replace /> : <Signup />} />
       <Route path="/verify-otp" element={<VerifyOTP />} />

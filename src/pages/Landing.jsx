@@ -32,7 +32,7 @@ const features = [
     icon: GitCompare,
     title: 'Automated control mapping',
     description:
-      'Each clause is matched to NCA ECC, ISO 27001, and NIST 800-53 controls with traceable evidence and confidence scores.',
+      'Each clause is matched to Saudi and global cybersecurity controls — NCA, SAMA, SDAIA, CST, ISO and NIST families — with traceable evidence and confidence scores.',
     accent: 'from-blue-500 to-indigo-600',
   },
   {
@@ -86,7 +86,7 @@ const benefits = [
   'Reduce compliance review time from weeks to minutes',
   'Map one policy to multiple frameworks simultaneously',
   'Every score is fully explainable — no black-box decisions',
-  'Purpose-built for NCA ECC, ISO 27001, and NIST 800-53',
+  'Purpose-built for Saudi (NCA, SAMA, SDAIA, CST) and global (ISO, NIST) frameworks',
 ];
 
 function Logo() {
@@ -179,9 +179,9 @@ function DashboardPreview() {
   const isDark = resolved === 'dark';
 
   const frameworks = [
-    { label: 'NCA ECC', score: 96 },
-    { label: 'ISO 27001', score: 89 },
-    { label: 'NIST 800-53', score: 91 },
+    { label: 'NCA ECC-2', score: 96 },
+    { label: 'CCC-2', score: 89 },
+    { label: 'SACS-002', score: 91 },
   ];
 
   const severity = [
@@ -483,9 +483,9 @@ function Hero() {
 
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
               Himaya transforms dense security documentation into structured, mapped, and
-              scored compliance evidence. Analyze policies against NCA ECC, ISO 27001, and
-              NIST 800-53 in minutes — not months — with full traceability behind every
-              decision.
+              scored compliance evidence. Analyze policies against Saudi (NCA, SAMA, SDAIA,
+              CST) and global (ISO, NIST) frameworks in minutes — not months — with full
+              traceability behind every decision.
             </p>
 
             <ul className="mt-8 grid sm:grid-cols-2 gap-y-2 gap-x-6 max-w-xl">
@@ -508,7 +508,7 @@ function Hero() {
 }
 
 function Frameworks() {
-  const items = ['NCA ECC', 'ISO 27001', 'NIST 800-53'];
+  const items = ['NCA', 'SAMA', 'SDAIA / NDMO', 'CST', 'ISO', 'NIST'];
   return (
     <section id="frameworks" className="border-y border-border bg-card">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">

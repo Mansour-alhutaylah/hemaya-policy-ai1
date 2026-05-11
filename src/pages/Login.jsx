@@ -97,7 +97,7 @@ export default function Login() {
       }
 
       login({ token, user, session_timeout_minutes: data?.session_timeout_minutes });
-      nav(user?.is_admin ? "/admin" : "/Dashboard");
+      nav(user?.is_admin ? "/admin" : "/Home");
     } catch (err) {
       clearTimeout(timeoutId);
       if (err?.name === "AbortError" || err?.name === "TimeoutError") {
