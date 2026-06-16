@@ -1861,7 +1861,7 @@ function SettingsSection({ adminUser }) {
             </div>
             <div>
               <label className="text-muted-foreground text-xs block mb-1">Email</label>
-              <Input defaultValue={user?.email || ''} disabled className="bg-muted border-border text-muted-foreground" />
+              <Input defaultValue={adminUser?.email || ''} disabled className="bg-muted border-border text-muted-foreground" />
             </div>
             <Button className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2"
               disabled={savingProfile} onClick={saveProfile}>
